@@ -7,13 +7,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Brain,
   Send,
   Loader2,
@@ -25,20 +18,15 @@ import {
   Target,
   FileText,
   AlertCircle,
-  Zap,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import { cn } from '@/lib/utils'
-
-type AIProvider = 'groq' | 'openai' | 'anthropic'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
-  provider?: AIProvider
-  model?: string
 }
 
 interface ChatContext {
@@ -46,25 +34,12 @@ interface ChatContext {
   includeNotes?: boolean
 }
 
-const providerLabels: Record<AIProvider, string> = {
-  groq: 'Groq (Llama)',
-  openai: 'ChatGPT',
-  anthropic: 'Claude',
-}
-
-const providerColors: Record<AIProvider, string> = {
-  groq: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-  openai: 'bg-green-500/10 text-green-500 border-green-500/20',
-  anthropic: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-}
-
 export function AIChatbot() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [availableProviders, setAvailableProviders] = useState<AIProvider[]>([])
-  const [selectedProvider, setSelectedProvider] = useState<AIProvider | null>(null)
+  const [isConfigured, setIsConfigured] = useState<boolean | null>(null)
   const [context, setContext] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
@@ -83,23 +58,19 @@ export function AIChatbot() {
     },
   })
 
-  // Fetch available providers on mount
+  // Check if AI is configured
   useEffect(() => {
     fetch('/api/ai/chat')
       .then(res => res.json())
       .then(data => {
-        if (data.providers && data.providers.length > 0) {
-          setAvailableProviders(data.providers)
-          setSelectedProvider(data.default || data.providers[0])
-        }
+        setIsConfigured(data.configured === true)
       })
-      .catch(err => {
-        console.error('Failed to fetch providers:', err)
-        setError('Failed to connect to AI service')
+      .catch(() => {
+        setIsConfigured(false)
       })
   }, [])
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -139,42 +110,26 @@ export function AIChatbot() {
             content: m.content,
           })),
           context,
-          provider: selectedProvider,
         }),
       })
 
       const data = await response.json()
 
-      if (!response.ok) {
+      if (!response.ok || data.error) {
         throw new Error(data.error || 'Failed to get response')
-      }
-
-      // Update available providers if returned
-      if (data.availableProviders) {
-        setAvailableProviders(data.availableProviders)
       }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.response || 'I apologize, I could not generate a response.',
+        content: data.response,
         timestamp: new Date(),
-        provider: data.provider,
-        model: data.model,
       }
 
       setMessages(prev => [...prev, assistantMessage])
     } catch (err) {
-      console.error('Chat error:', err)
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       setError(errorMsg)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `Error: ${errorMsg}`,
-        timestamp: new Date(),
-      }
-      setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
     }
@@ -192,6 +147,17 @@ export function AIChatbot() {
     setError(null)
   }
 
+  // Still checking configuration
+  if (isConfigured === null) {
+    return (
+      <Card className="flex flex-col h-[600px] border-amber-500/20">
+        <CardContent className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card className="flex flex-col h-[600px] border-amber-500/20">
       <CardHeader className="flex-shrink-0 pb-3 border-b">
@@ -201,42 +167,20 @@ export function AIChatbot() {
               <Brain className="w-5 h-5 text-amber-500" />
             </div>
             <span>BrainBox</span>
+            <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-500 border-orange-500/20">
+              Groq
+            </Badge>
           </CardTitle>
-          <div className="flex items-center gap-2">
-            {availableProviders.length > 0 && (
-              <Select
-                value={selectedProvider || undefined}
-                onValueChange={(value) => setSelectedProvider(value as AIProvider)}
-              >
-                <SelectTrigger className="w-[140px] h-8 text-xs">
-                  <Zap className="w-3 h-3 mr-1" />
-                  <SelectValue placeholder="Select AI" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableProviders.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {providerLabels[provider]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {messages.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearChat}>
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Clear
-              </Button>
-            )}
-          </div>
+          {messages.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={clearChat}>
+              <RefreshCw className="w-4 h-4 mr-1" />
+              Clear
+            </Button>
+          )}
         </div>
 
-        {/* Status indicators */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          {selectedProvider && (
-            <Badge variant="outline" className={cn('text-xs', providerColors[selectedProvider])}>
-              {providerLabels[selectedProvider]}
-            </Badge>
-          )}
+        {/* Context toggles */}
+        <div className="flex items-center gap-2 mt-2">
           <span className="text-xs text-muted-foreground">Include:</span>
           <Button
             variant={context.includeGoals ? 'secondary' : 'outline'}
@@ -258,27 +202,27 @@ export function AIChatbot() {
           </Button>
         </div>
 
-        {/* Error display */}
-        {error && (
-          <div className="mt-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-destructive" />
-            <span className="text-xs text-destructive">{error}</span>
-          </div>
-        )}
-
-        {/* No providers warning */}
-        {availableProviders.length === 0 && !error && (
+        {/* Not configured warning */}
+        {!isConfigured && (
           <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5" />
             <div className="text-xs text-amber-500">
-              <p className="font-medium">No AI providers configured</p>
-              <p className="opacity-80">Add GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY to enable AI chat.</p>
+              <p className="font-medium">AI not configured</p>
+              <p className="opacity-80">GROQ_API_KEY needs to be added to environment variables.</p>
             </div>
+          </div>
+        )}
+
+        {/* Error display */}
+        {error && (
+          <div className="mt-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
+            <span className="text-xs text-destructive">{error}</span>
           </div>
         )}
       </CardHeader>
 
-      {/* Messages Area */}
+      {/* Messages */}
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -286,17 +230,14 @@ export function AIChatbot() {
               <Sparkles className="w-8 h-8 text-amber-500" />
             </div>
             <h3 className="font-semibold mb-2">Hi! I&apos;m BrainBox</h3>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              Your unified AI assistant connected to {availableProviders.length > 0
-                ? availableProviders.map(p => providerLabels[p]).join(', ')
-                : 'multiple AI providers'
-              }. Ask me anything!
+            <p className="text-sm text-muted-foreground max-w-sm mb-4">
+              Your AI assistant powered by Groq. Ask me anything about career planning, tech, or productivity!
             </p>
-            <div className="flex flex-wrap gap-2 mt-4 justify-center">
+            <div className="flex flex-wrap gap-2 justify-center">
               {[
-                'Help me prepare for tech interviews',
-                'Suggest project ideas for my portfolio',
-                'What skills should I learn next?',
+                'Help me prepare for interviews',
+                'Suggest project ideas',
+                'What skills should I learn?',
               ].map((suggestion) => (
                 <Button
                   key={suggestion}
@@ -304,7 +245,7 @@ export function AIChatbot() {
                   size="sm"
                   className="text-xs"
                   onClick={() => setInput(suggestion)}
-                  disabled={availableProviders.length === 0}
+                  disabled={!isConfigured}
                 >
                   {suggestion}
                 </Button>
@@ -335,16 +276,9 @@ export function AIChatbot() {
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-[10px] opacity-50">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    {message.provider && (
-                      <Badge variant="outline" className={cn('text-[9px] h-4', providerColors[message.provider])}>
-                        {providerLabels[message.provider]}
-                      </Badge>
-                    )}
-                  </div>
+                  <p className="text-[10px] opacity-50 mt-1">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
                 {message.role === 'user' && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
@@ -361,9 +295,7 @@ export function AIChatbot() {
                 <div className="bg-muted rounded-2xl px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                    <span className="text-sm text-muted-foreground">
-                      Thinking with {selectedProvider ? providerLabels[selectedProvider] : 'AI'}...
-                    </span>
+                    <span className="text-sm text-muted-foreground">Thinking...</span>
                   </div>
                 </div>
               </div>
@@ -372,7 +304,7 @@ export function AIChatbot() {
         )}
       </ScrollArea>
 
-      {/* Input Area */}
+      {/* Input */}
       <CardContent className="flex-shrink-0 border-t p-4">
         <div className="flex gap-2 items-end">
           <div className="flex-1 relative">
@@ -381,49 +313,33 @@ export function AIChatbot() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isRecording ? 'Recording...' : 'Type a message or use voice...'}
-              className="min-h-[44px] max-h-[150px] resize-none pr-12"
+              placeholder={isRecording ? 'Recording...' : 'Type a message...'}
+              className="min-h-[44px] max-h-[150px] resize-none"
               rows={1}
-              disabled={isLoading || isRecording || availableProviders.length === 0}
+              disabled={isLoading || isRecording || !isConfigured}
             />
-            {isTranscribing && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-              </div>
-            )}
           </div>
           <Button
             variant={isRecording ? 'destructive' : 'outline'}
             size="icon"
             onClick={toggleRecording}
-            disabled={isTranscribing || isLoading}
-            className={cn(
-              'flex-shrink-0 h-11 w-11',
-              isRecording && 'animate-pulse'
-            )}
+            disabled={isTranscribing || isLoading || !isConfigured}
+            className={cn('flex-shrink-0 h-11 w-11', isRecording && 'animate-pulse')}
           >
-            {isRecording ? (
-              <Square className="w-4 h-4" />
-            ) : (
-              <Mic className="w-4 h-4" />
-            )}
+            {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </Button>
           <Button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading || isRecording || availableProviders.length === 0}
+            disabled={!input.trim() || isLoading || isRecording || !isConfigured}
             className="flex-shrink-0 h-11 bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
           >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
         {isRecording && (
           <p className="text-xs text-destructive mt-2 flex items-center gap-2 animate-pulse">
             <span className="w-2 h-2 rounded-full bg-destructive" />
-            Recording... Click the stop button when done.
+            Recording... Click stop when done.
           </p>
         )}
       </CardContent>

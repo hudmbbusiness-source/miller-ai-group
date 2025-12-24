@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#a855f7"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c4b5fd;stop-opacity:0.5"/>
+      <stop offset="100%" style="stop-color:#6366f1;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#6366f1" flood-opacity="0.3"/>
+    </filter>
+    <filter id="glow-filter" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.15); opacity: 0.8; }
+    }
+    @keyframes rotate-glow {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes node-pulse {
+      0%, 100% { opacity: 0.9; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+    @keyframes data-flow {
+      0% { stroke-dashoffset: 20; opacity: 0.4; }
+      50% { opacity: 0.8; }
+      100% { stroke-dashoffset: 0; opacity: 0.4; }
+    }
+    @keyframes center-glow {
+      0%, 100% { filter: url(#glow-filter); opacity: 1; }
+      50% { filter: none; opacity: 0.9; }
+    }
+    .outer-glow {
+      animation: rotate-glow 20s linear infinite;
+      transform-origin: 100px 100px;
+    }
+    .center-node {
+      animation: pulse 2s ease-in-out infinite;
+      transform-origin: 100px 100px;
+    }
+    .node-1 { animation: node-pulse 2s ease-in-out infinite; transform-origin: 100px 45px; animation-delay: 0s; }
+    .node-2 { animation: node-pulse 2s ease-in-out infinite; transform-origin: 145px 75px; animation-delay: 0.3s; }
+    .node-3 { animation: node-pulse 2s ease-in-out infinite; transform-origin: 145px 125px; animation-delay: 0.6s; }
+    .node-4 { animation: node-pulse 2s ease-in-out infinite; transform-origin: 100px 155px; animation-delay: 0.9s; }
+    .node-5 { animation: node-pulse 2s ease-in-out infinite; transform-origin: 55px 125px; animation-delay: 1.2s; }
+    .node-6 { animation: node-pulse 2s ease-in-out infinite; transform-origin: 55px 75px; animation-delay: 1.5s; }
+    .connection {
+      stroke-dasharray: 5 3;
+      animation: data-flow 1.5s linear infinite;
+    }
+    .inner-pulse {
+      animation: center-glow 2s ease-in-out infinite;
+    }
+  </style>
+
+  <!-- Outer glow ring - rotating -->
+  <circle class="outer-glow" cx="100" cy="100" r="95" fill="url(#glow)" opacity="0.3"/>
+
+  <!-- Main circle -->
+  <circle cx="100" cy="100" r="85" fill="url(#bg-gradient)" filter="url(#shadow)"/>
+
+  <!-- Connection lines with data flow animation -->
+  <line class="connection" x1="100" y1="88" x2="100" y2="53" stroke="white" stroke-width="2" opacity="0.7"/>
+  <line class="connection" x1="110" y1="94" x2="138" y2="80" stroke="white" stroke-width="2" opacity="0.7" style="animation-delay: 0.2s"/>
+  <line class="connection" x1="110" y1="106" x2="138" y2="120" stroke="white" stroke-width="2" opacity="0.7" style="animation-delay: 0.4s"/>
+  <line class="connection" x1="100" y1="112" x2="100" y2="147" stroke="white" stroke-width="2" opacity="0.7" style="animation-delay: 0.6s"/>
+  <line class="connection" x1="90" y1="106" x2="62" y2="120" stroke="white" stroke-width="2" opacity="0.7" style="animation-delay: 0.8s"/>
+  <line class="connection" x1="90" y1="94" x2="62" y2="80" stroke="white" stroke-width="2" opacity="0.7" style="animation-delay: 1s"/>
+
+  <!-- Cross connections -->
+  <line x1="100" y1="53" x2="138" y2="80" stroke="white" stroke-width="1.5" opacity="0.4"/>
+  <line x1="138" y1="80" x2="138" y2="120" stroke="white" stroke-width="1.5" opacity="0.4"/>
+  <line x1="138" y1="120" x2="100" y2="147" stroke="white" stroke-width="1.5" opacity="0.4"/>
+  <line x1="100" y1="147" x2="62" y2="120" stroke="white" stroke-width="1.5" opacity="0.4"/>
+  <line x1="62" y1="120" x2="62" y2="80" stroke="white" stroke-width="1.5" opacity="0.4"/>
+  <line x1="62" y1="80" x2="100" y2="53" stroke="white" stroke-width="1.5" opacity="0.4"/>
+
+  <!-- Center node - pulsing -->
+  <circle class="center-node" cx="100" cy="100" r="12" fill="white"/>
+
+  <!-- Outer nodes - staggered pulse -->
+  <circle class="node-1" cx="100" cy="45" r="8" fill="white" opacity="0.9"/>
+  <circle class="node-2" cx="145" cy="75" r="8" fill="white" opacity="0.9"/>
+  <circle class="node-3" cx="145" cy="125" r="8" fill="white" opacity="0.9"/>
+  <circle class="node-4" cx="100" cy="155" r="8" fill="white" opacity="0.9"/>
+  <circle class="node-5" cx="55" cy="125" r="8" fill="white" opacity="0.9"/>
+  <circle class="node-6" cx="55" cy="75" r="8" fill="white" opacity="0.9"/>
+
+  <!-- Inner detail - AI pulse effect -->
+  <circle class="inner-pulse" cx="100" cy="100" r="6" fill="url(#bg-gradient)" opacity="0.8"/>
+  <circle cx="100" cy="100" r="3" fill="white"/>
+</svg>

@@ -67,19 +67,28 @@ export default function IntroPage() {
     try {
       const supabase = createClient()
 
-      // Let Supabase handle the redirect automatically
-      const { error } = await supabase.auth.signInWithOAuth({
+      // Get the OAuth URL explicitly and redirect
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=/app`,
+          skipBrowserRedirect: true, // Get URL to redirect manually
         },
       })
 
       if (error) {
         setLoginError(`GitHub login failed: ${error.message}`)
         setLoginLoading(false)
+        return
       }
-      // If no error, Supabase will redirect to GitHub automatically
+
+      if (data?.url) {
+        // Redirect to GitHub
+        window.location.href = data.url
+      } else {
+        setLoginError('No OAuth URL returned. Check Supabase configuration.')
+        setLoginLoading(false)
+      }
     } catch (err) {
       setLoginError(`Error: ${err instanceof Error ? err.message : String(err)}`)
       setLoginLoading(false)

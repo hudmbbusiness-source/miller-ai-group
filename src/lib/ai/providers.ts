@@ -1,5 +1,3 @@
-'use server'
-
 import Groq from 'groq-sdk'
 import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'

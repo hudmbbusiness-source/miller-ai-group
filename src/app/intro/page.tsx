@@ -10,11 +10,12 @@ import { AlertCircle, DollarSign, Github, Loader2, ArrowRight } from 'lucide-rea
 export default function IntroPage() {
   const [videoEnded, setVideoEnded] = useState(false)
   const [videoError, setVideoError] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authChecking, setAuthChecking] = useState(true)
   const [holdProgress, setHoldProgress] = useState(0)
   const [isHolding, setIsHolding] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
+  const [loginError, setLoginError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const holdIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const router = useRouter()
@@ -27,20 +28,14 @@ export default function IntroPage() {
 
     const checkAuth = async () => {
       try {
-        // Use getSession first (doesn't throw AuthSessionMissingError)
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        const { data: { user }, error } = await supabase.auth.getUser()
 
-        if (sessionError) {
-          console.error('Session check error:', sessionError)
+        if (error || !user) {
           setIsAuthenticated(false)
-        } else if (session?.user) {
-          setIsAuthenticated(true)
-          console.log('User already authenticated:', session.user.email)
         } else {
-          setIsAuthenticated(false)
+          setIsAuthenticated(true)
         }
-      } catch (err) {
-        console.error('Auth check failed:', err)
+      } catch {
         setIsAuthenticated(false)
       } finally {
         setAuthChecking(false)
@@ -48,12 +43,9 @@ export default function IntroPage() {
     }
     checkAuth()
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event, session?.user?.email)
       if (event === 'SIGNED_IN' && session?.user) {
         setIsAuthenticated(true)
-        // Auto-redirect to app after successful sign in
         router.push('/app')
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false)
@@ -94,28 +86,37 @@ export default function IntroPage() {
 
   const handleGitHubLogin = async () => {
     setLoginLoading(true)
+    setLoginError(null)
+
     try {
       const supabase = createClient()
-      // Use NEXT_PUBLIC_SITE_URL if set, otherwise use current origin
-      // This should be set to https://kachow.app in production
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
 
-      console.log('Starting OAuth with redirect to:', `${siteUrl}/auth/callback?next=/app`)
+      // Clear any stale session and password verification
+      await supabase.auth.signOut()
+      localStorage.removeItem('miller-ai-group-access-verified')
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const redirectUrl = `${window.location.origin}/auth/callback?next=/app`
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${siteUrl}/auth/callback?next=/app`,
-          skipBrowserRedirect: false,
+          redirectTo: redirectUrl,
+          scopes: 'read:user user:email',
         },
       })
 
       if (error) {
-        console.error('GitHub login error:', error)
+        setLoginError(error.message)
         setLoginLoading(false)
+        return
+      }
+
+      // Redirect to GitHub
+      if (data?.url) {
+        window.location.href = data.url
       }
     } catch (err) {
-      console.error('Login error:', err)
+      setLoginError('Failed to connect to GitHub. Please try again.')
       setLoginLoading(false)
     }
   }
@@ -279,7 +280,13 @@ export default function IntroPage() {
                 </Button>
               ) : (
                 // Not logged in - show login options
-                <>
+                <div className="flex flex-col items-center gap-4">
+                  {loginError && (
+                    <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-2 rounded-lg flex items-center gap-2 max-w-md">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span className="text-sm">{loginError}</span>
+                    </div>
+                  )}
                   <Button
                     onClick={handleGitHubLogin}
                     disabled={loginLoading}
@@ -293,21 +300,15 @@ export default function IntroPage() {
                     )}
                     {loginLoading ? 'Redirecting to GitHub...' : 'Login with GitHub'}
                   </Button>
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
+                  <Button
+                    onClick={() => router.push('/resume')}
+                    variant="ghost"
+                    size="lg"
+                    className="text-white/70 hover:text-white hover:bg-white/10"
                   >
-                    <Button
-                      onClick={() => router.push('/resume')}
-                      variant="ghost"
-                      size="lg"
-                      className="text-white/70 hover:text-white hover:bg-white/10"
-                    >
-                      View Public Portfolio
-                    </Button>
-                  </motion.div>
-                </>
+                    View Public Portfolio
+                  </Button>
+                </div>
               )}
             </motion.div>
           </motion.div>

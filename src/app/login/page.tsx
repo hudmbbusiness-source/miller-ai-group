@@ -22,7 +22,7 @@ function LoginContent() {
       setEnvError(true)
     }
 
-    // Check for auth errors in URL with specific messages
+    // Check for auth errors in URL
     const authError = searchParams.get('error')
     if (authError) {
       const errorMessages: Record<string, string> = {
@@ -35,19 +35,20 @@ function LoginContent() {
       setError(errorMessages[authError] || 'Authentication failed. Please try again.')
     }
 
-    // Check if already logged in - go directly to app (password gate will handle the rest)
     const supabase = createClient()
-    const checkSession = async () => {
+
+    // Check if already logged in with valid session
+    const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.user) {
+        const { data: { user }, error } = await supabase.auth.getUser()
+        if (user && !error) {
           router.push('/app')
         }
-      } catch (err) {
-        console.error('Session check failed:', err)
+      } catch {
+        // Not logged in, stay on login page
       }
     }
-    checkSession()
+    checkAuth()
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -67,22 +68,33 @@ function LoginContent() {
 
     try {
       const supabase = createClient()
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      // Clear any stale session and password verification
+      await supabase.auth.signOut()
+      localStorage.removeItem('miller-ai-group-access-verified')
+
+      const redirectUrl = `${window.location.origin}/auth/callback?next=/app`
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${siteUrl}/auth/callback?next=/app`,
-          scopes: 'repo read:user user:email read:org gist notifications workflow',
+          redirectTo: redirectUrl,
+          scopes: 'read:user user:email',
         },
       })
 
       if (error) {
         setError(error.message)
         setLoading(false)
+        return
+      }
+
+      // Redirect to GitHub
+      if (data?.url) {
+        window.location.href = data.url
       }
     } catch (err) {
-      setError('An unexpected error occurred')
+      setError('Failed to connect to GitHub. Please try again.')
       setLoading(false)
     }
   }

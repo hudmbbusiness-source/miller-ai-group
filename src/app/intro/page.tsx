@@ -61,37 +61,37 @@ export default function IntroPage() {
     setLoginError(null)
 
     // Clear all auth state
-    localStorage.removeItem('miller-ai-group-access-verified')
-    localStorage.removeItem('sb-mrmynzeymwgzevxyxnln-auth-token')
+    localStorage.clear()
     sessionStorage.clear()
 
     try {
       const supabase = createClient()
-
-      // Sign out any existing session first
       await supabase.auth.signOut()
 
+      // Force get URL and redirect manually
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=/app`,
+          skipBrowserRedirect: true,
         },
       })
 
       if (error) {
-        setLoginError(`GitHub login failed: ${error.message}`)
+        setLoginError(`OAuth error: ${error.message}`)
         setLoginLoading(false)
         return
       }
 
       if (data?.url) {
-        window.location.href = data.url
+        // Force redirect to GitHub
+        window.location.replace(data.url)
       } else {
-        setLoginError('No redirect URL from Supabase. Verify GitHub provider is enabled in Supabase dashboard.')
+        setLoginError('Supabase returned no OAuth URL. Check GitHub provider in Supabase Auth settings.')
         setLoginLoading(false)
       }
     } catch (err) {
-      setLoginError(`Connection error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setLoginError(`Error: ${err instanceof Error ? err.message : String(err)}`)
       setLoginLoading(false)
     }
   }

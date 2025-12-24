@@ -77,7 +77,8 @@ export default function IntroPage() {
       })
 
       // Debug: show what we got
-      alert(`OAuth result:\nURL: ${data?.url || 'NONE'}\nError: ${error?.message || 'NONE'}`)
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'NOT SET'
+      alert(`Supabase URL: ${supabaseUrl}\nOAuth URL: ${data?.url || 'NONE'}\nError: ${error?.message || 'NONE'}\nProvider: ${data?.provider || 'NONE'}`)
 
       if (error) {
         setLoginError(`OAuth error: ${error.message}`)

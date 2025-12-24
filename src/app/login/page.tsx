@@ -34,41 +34,23 @@ function LoginContent() {
       }
       setError(errorMessages[authError] || 'Authentication failed. Please try again.')
     }
-
-    const supabase = createClient()
-
-    // Check if already logged in with valid session
-    const checkAuth = async () => {
-      try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-        if (user && !error) {
-          router.push('/app')
-        }
-      } catch {
-        // Not logged in, stay on login page
-      }
-    }
-    checkAuth()
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        router.push('/app')
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router, searchParams])
+    // Don't auto-redirect - always show login page
+  }, [searchParams])
 
   const handleGitHubLogin = async () => {
     setLoading(true)
     setError(null)
+
+    // Clear all auth state
     localStorage.removeItem('miller-ai-group-access-verified')
+    localStorage.removeItem('sb-mrmynzeymwgzevxyxnln-auth-token')
+    sessionStorage.clear()
 
     try {
       const supabase = createClient()
+
+      // Sign out any existing session first
+      await supabase.auth.signOut()
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
@@ -86,7 +68,7 @@ function LoginContent() {
       if (data?.url) {
         window.location.href = data.url
       } else {
-        setError('No redirect URL received. Check Supabase GitHub provider settings.')
+        setError('No redirect URL from Supabase. Verify GitHub provider is enabled in Supabase dashboard.')
         setLoading(false)
       }
     } catch (err) {

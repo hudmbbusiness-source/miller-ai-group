@@ -24,38 +24,10 @@ export default function IntroPage() {
   const UPDATE_INTERVAL = 50 // Update every 50ms
 
   useEffect(() => {
-    const supabase = createClient()
-
-    const checkAuth = async () => {
-      try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-
-        if (error || !user) {
-          setIsAuthenticated(false)
-        } else {
-          setIsAuthenticated(true)
-        }
-      } catch {
-        setIsAuthenticated(false)
-      } finally {
-        setAuthChecking(false)
-      }
-    }
-    checkAuth()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setIsAuthenticated(true)
-        router.push('/app')
-      } else if (event === 'SIGNED_OUT') {
-        setIsAuthenticated(false)
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router])
+    // Always show login button - don't auto-detect sessions
+    setAuthChecking(false)
+    setIsAuthenticated(false)
+  }, [])
 
   // Cleanup interval on unmount
   useEffect(() => {
@@ -87,10 +59,17 @@ export default function IntroPage() {
   const handleGitHubLogin = async () => {
     setLoginLoading(true)
     setLoginError(null)
+
+    // Clear all auth state
     localStorage.removeItem('miller-ai-group-access-verified')
+    localStorage.removeItem('sb-mrmynzeymwgzevxyxnln-auth-token')
+    sessionStorage.clear()
 
     try {
       const supabase = createClient()
+
+      // Sign out any existing session first
+      await supabase.auth.signOut()
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
@@ -108,7 +87,7 @@ export default function IntroPage() {
       if (data?.url) {
         window.location.href = data.url
       } else {
-        setLoginError('No redirect URL received. Check Supabase GitHub provider settings.')
+        setLoginError('No redirect URL from Supabase. Verify GitHub provider is enabled in Supabase dashboard.')
         setLoginLoading(false)
       }
     } catch (err) {

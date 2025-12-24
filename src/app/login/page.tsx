@@ -47,30 +47,20 @@ function LoginContent() {
 
     try {
       const supabase = createClient()
-      await supabase.auth.signOut()
 
-      // Force get URL and redirect manually
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // Let Supabase handle the redirect automatically
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=/app`,
-          skipBrowserRedirect: true,
         },
       })
 
       if (error) {
-        setError(`OAuth error: ${error.message}`)
-        setLoading(false)
-        return
-      }
-
-      if (data?.url) {
-        // Force redirect to GitHub
-        window.location.replace(data.url)
-      } else {
-        setError('Supabase returned no OAuth URL. Check GitHub provider in Supabase Auth settings.')
+        setError(`GitHub login failed: ${error.message}`)
         setLoading(false)
       }
+      // If no error, Supabase will redirect to GitHub automatically
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : String(err)}`)
       setLoading(false)

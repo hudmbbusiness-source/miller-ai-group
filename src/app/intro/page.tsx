@@ -68,7 +68,6 @@ export default function IntroPage() {
       const supabase = createClient()
       await supabase.auth.signOut()
 
-      // Force get URL and redirect manually
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
@@ -77,6 +76,9 @@ export default function IntroPage() {
         },
       })
 
+      // Debug: show what we got
+      alert(`OAuth result:\nURL: ${data?.url || 'NONE'}\nError: ${error?.message || 'NONE'}`)
+
       if (error) {
         setLoginError(`OAuth error: ${error.message}`)
         setLoginLoading(false)
@@ -84,13 +86,13 @@ export default function IntroPage() {
       }
 
       if (data?.url) {
-        // Force redirect to GitHub
-        window.location.replace(data.url)
+        window.location.href = data.url
       } else {
-        setLoginError('Supabase returned no OAuth URL. Check GitHub provider in Supabase Auth settings.')
+        setLoginError('No OAuth URL returned from Supabase')
         setLoginLoading(false)
       }
     } catch (err) {
+      alert(`Catch error: ${err}`)
       setLoginError(`Error: ${err instanceof Error ? err.message : String(err)}`)
       setLoginLoading(false)
     }

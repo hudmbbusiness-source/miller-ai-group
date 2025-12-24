@@ -132,6 +132,42 @@
   }
 }
 
+/* Global text overflow prevention */
+h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Truncate utility */
+.truncate-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Multi-line truncate */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Prevent container overflow */
+.overflow-container {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Safe area support for iOS devices */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0);

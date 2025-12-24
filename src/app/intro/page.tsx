@@ -87,36 +87,32 @@ export default function IntroPage() {
   const handleGitHubLogin = async () => {
     setLoginLoading(true)
     setLoginError(null)
+    localStorage.removeItem('miller-ai-group-access-verified')
 
     try {
       const supabase = createClient()
 
-      // Clear any stale session and password verification
-      await supabase.auth.signOut()
-      localStorage.removeItem('miller-ai-group-access-verified')
-
-      const redirectUrl = `${window.location.origin}/auth/callback?next=/app`
-
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: redirectUrl,
-          scopes: 'read:user user:email',
+          redirectTo: `${window.location.origin}/auth/callback?next=/app`,
         },
       })
 
       if (error) {
-        setLoginError(error.message)
+        setLoginError(`GitHub login failed: ${error.message}`)
         setLoginLoading(false)
         return
       }
 
-      // Redirect to GitHub
       if (data?.url) {
         window.location.href = data.url
+      } else {
+        setLoginError('No redirect URL received. Check Supabase GitHub provider settings.')
+        setLoginLoading(false)
       }
     } catch (err) {
-      setLoginError('Failed to connect to GitHub. Please try again.')
+      setLoginError(`Connection error: ${err instanceof Error ? err.message : 'Unknown error'}`)
       setLoginLoading(false)
     }
   }

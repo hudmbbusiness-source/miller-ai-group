@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { chat, type AIMessage } from '@/lib/ai/groq'
+import { chat, getAvailableProviders, type AIMessage, type AIProvider } from '@/lib/ai/providers'
 import type { UserPreferences } from '@/app/api/preferences/route'
 
 interface ChatContext {
   includeGoals?: boolean
   includeNotes?: boolean
   topic?: string
+}
+
+interface ChatRequest {
+  messages: AIMessage[]
+  context?: ChatContext
+  provider?: AIProvider
+  model?: string
+}
+
+export async function GET() {
+  // Return available providers
+  const providers = getAvailableProviders()
+  return NextResponse.json({
+    providers,
+    default: providers[0] || null,
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -18,14 +34,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { messages, context } = await request.json() as {
-      messages: AIMessage[]
-      context?: ChatContext
-    }
+    const body = await request.json() as ChatRequest
+    const { messages, context, provider, model } = body
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Messages array required' }, { status: 400 })
     }
+
+    // Check if any provider is available
+    const availableProviders = getAvailableProviders()
+    if (availableProviders.length === 0) {
+      return NextResponse.json({
+        error: 'No AI providers configured. Please add GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY to your environment.',
+      }, { status: 503 })
+    }
+
+    // Use requested provider or first available
+    const selectedProvider = provider && availableProviders.includes(provider)
+      ? provider
+      : availableProviders[0]
 
     // Fetch user preferences for personalization
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,7 +127,7 @@ export async function POST(request: NextRequest) {
     // Add system context
     const systemMessage: AIMessage = {
       role: 'system',
-      content: `You are an AI assistant for ${userName}'s personal founder hub - Miller AI Group.
+      content: `You are BrainBox, the AI assistant for ${userName}'s personal founder hub - Miller AI Group.
 
 You help with:
 - Career planning and tech industry insights
@@ -119,13 +146,23 @@ Guidelines:
 - Current date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
     }
 
-    const response = await chat([systemMessage, ...messages])
+    const result = await chat([systemMessage, ...messages], {
+      provider: selectedProvider,
+      model,
+    })
 
-    return NextResponse.json({ success: true, response })
+    return NextResponse.json({
+      success: true,
+      response: result.response,
+      provider: result.provider,
+      model: result.model,
+      availableProviders,
+    })
   } catch (error) {
     console.error('AI Chat API Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Failed to get AI response'
     return NextResponse.json(
-      { error: 'Failed to get AI response' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

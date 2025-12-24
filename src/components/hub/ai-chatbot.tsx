@@ -7,6 +7,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Brain,
   Send,
   Loader2,
@@ -17,15 +24,21 @@ import {
   RefreshCw,
   Target,
   FileText,
+  AlertCircle,
+  Zap,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import { cn } from '@/lib/utils'
+
+type AIProvider = 'groq' | 'openai' | 'anthropic'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  provider?: AIProvider
+  model?: string
 }
 
 interface ChatContext {
@@ -33,10 +46,25 @@ interface ChatContext {
   includeNotes?: boolean
 }
 
+const providerLabels: Record<AIProvider, string> = {
+  groq: 'Groq (Llama)',
+  openai: 'ChatGPT',
+  anthropic: 'Claude',
+}
+
+const providerColors: Record<AIProvider, string> = {
+  groq: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  openai: 'bg-green-500/10 text-green-500 border-green-500/20',
+  anthropic: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+}
+
 export function AIChatbot() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [availableProviders, setAvailableProviders] = useState<AIProvider[]>([])
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider | null>(null)
   const [context, setContext] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
@@ -54,6 +82,22 @@ export function AIChatbot() {
       console.error('Voice recording error:', err)
     },
   })
+
+  // Fetch available providers on mount
+  useEffect(() => {
+    fetch('/api/ai/chat')
+      .then(res => res.json())
+      .then(data => {
+        if (data.providers && data.providers.length > 0) {
+          setAvailableProviders(data.providers)
+          setSelectedProvider(data.default || data.providers[0])
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch providers:', err)
+        setError('Failed to connect to AI service')
+      })
+  }, [])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -73,6 +117,7 @@ export function AIChatbot() {
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
 
+    setError(null)
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -94,29 +139,39 @@ export function AIChatbot() {
             content: m.content,
           })),
           context,
+          provider: selectedProvider,
         }),
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to get response')
+        throw new Error(data.error || 'Failed to get response')
       }
 
-      const data = await response.json()
+      // Update available providers if returned
+      if (data.availableProviders) {
+        setAvailableProviders(data.availableProviders)
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.response || 'I apologize, I could not generate a response.',
         timestamp: new Date(),
+        provider: data.provider,
+        model: data.model,
       }
 
       setMessages(prev => [...prev, assistantMessage])
-    } catch (error) {
-      console.error('Chat error:', error)
+    } catch (err) {
+      console.error('Chat error:', err)
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      setError(errorMsg)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: `Error: ${errorMsg}`,
         timestamp: new Date(),
       }
       setMessages(prev => [...prev, errorMessage])
@@ -134,6 +189,7 @@ export function AIChatbot() {
 
   const clearChat = () => {
     setMessages([])
+    setError(null)
   }
 
   return (
@@ -144,12 +200,27 @@ export function AIChatbot() {
             <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20">
               <Brain className="w-5 h-5 text-amber-500" />
             </div>
-            <span>AI Assistant</span>
-            <Badge variant="outline" className="text-xs font-normal">
-              Powered by Groq
-            </Badge>
+            <span>BrainBox</span>
           </CardTitle>
           <div className="flex items-center gap-2">
+            {availableProviders.length > 0 && (
+              <Select
+                value={selectedProvider || undefined}
+                onValueChange={(value) => setSelectedProvider(value as AIProvider)}
+              >
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <Zap className="w-3 h-3 mr-1" />
+                  <SelectValue placeholder="Select AI" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableProviders.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {providerLabels[provider]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {messages.length > 0 && (
               <Button variant="ghost" size="sm" onClick={clearChat}>
                 <RefreshCw className="w-4 h-4 mr-1" />
@@ -158,13 +229,19 @@ export function AIChatbot() {
             )}
           </div>
         </div>
-        {/* Context toggles */}
-        <div className="flex items-center gap-2 mt-2">
+
+        {/* Status indicators */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          {selectedProvider && (
+            <Badge variant="outline" className={cn('text-xs', providerColors[selectedProvider])}>
+              {providerLabels[selectedProvider]}
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground">Include:</span>
           <Button
             variant={context.includeGoals ? 'secondary' : 'outline'}
             size="sm"
-            className="h-7 text-xs gap-1"
+            className="h-6 text-xs gap-1"
             onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
           >
             <Target className="w-3 h-3" />
@@ -173,13 +250,32 @@ export function AIChatbot() {
           <Button
             variant={context.includeNotes ? 'secondary' : 'outline'}
             size="sm"
-            className="h-7 text-xs gap-1"
+            className="h-6 text-xs gap-1"
             onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
           >
             <FileText className="w-3 h-3" />
             Notes
           </Button>
         </div>
+
+        {/* Error display */}
+        {error && (
+          <div className="mt-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-destructive" />
+            <span className="text-xs text-destructive">{error}</span>
+          </div>
+        )}
+
+        {/* No providers warning */}
+        {availableProviders.length === 0 && !error && (
+          <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5" />
+            <div className="text-xs text-amber-500">
+              <p className="font-medium">No AI providers configured</p>
+              <p className="opacity-80">Add GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY to enable AI chat.</p>
+            </div>
+          </div>
+        )}
       </CardHeader>
 
       {/* Messages Area */}
@@ -189,10 +285,12 @@ export function AIChatbot() {
             <div className="p-4 rounded-full bg-gradient-to-br from-amber-500/10 to-purple-500/10 mb-4">
               <Sparkles className="w-8 h-8 text-amber-500" />
             </div>
-            <h3 className="font-semibold mb-2">Hi! I&apos;m your AI Assistant</h3>
+            <h3 className="font-semibold mb-2">Hi! I&apos;m BrainBox</h3>
             <p className="text-sm text-muted-foreground max-w-sm">
-              I can help with career planning, goal setting, technical questions, and more.
-              Try asking about interview prep, project ideas, or industry trends!
+              Your unified AI assistant connected to {availableProviders.length > 0
+                ? availableProviders.map(p => providerLabels[p]).join(', ')
+                : 'multiple AI providers'
+              }. Ask me anything!
             </p>
             <div className="flex flex-wrap gap-2 mt-4 justify-center">
               {[
@@ -206,6 +304,7 @@ export function AIChatbot() {
                   size="sm"
                   className="text-xs"
                   onClick={() => setInput(suggestion)}
+                  disabled={availableProviders.length === 0}
                 >
                   {suggestion}
                 </Button>
@@ -236,9 +335,16 @@ export function AIChatbot() {
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  <p className="text-[10px] opacity-50 mt-1">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-[10px] opacity-50">
+                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    {message.provider && (
+                      <Badge variant="outline" className={cn('text-[9px] h-4', providerColors[message.provider])}>
+                        {providerLabels[message.provider]}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 {message.role === 'user' && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
@@ -255,7 +361,9 @@ export function AIChatbot() {
                 <div className="bg-muted rounded-2xl px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                    <span className="text-sm text-muted-foreground">
+                      Thinking with {selectedProvider ? providerLabels[selectedProvider] : 'AI'}...
+                    </span>
                   </div>
                 </div>
               </div>
@@ -276,7 +384,7 @@ export function AIChatbot() {
               placeholder={isRecording ? 'Recording...' : 'Type a message or use voice...'}
               className="min-h-[44px] max-h-[150px] resize-none pr-12"
               rows={1}
-              disabled={isLoading || isRecording}
+              disabled={isLoading || isRecording || availableProviders.length === 0}
             />
             {isTranscribing && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -302,7 +410,7 @@ export function AIChatbot() {
           </Button>
           <Button
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading || isRecording}
+            disabled={!input.trim() || isLoading || isRecording || availableProviders.length === 0}
             className="flex-shrink-0 h-11 bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
           >
             {isLoading ? (

@@ -29,15 +29,15 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  timestamp: Date
+  timestamp: string
 }
 
 interface Conversation {
   id: string
   title: string
   messages: Message[]
-  createdAt: Date
-  updatedAt: Date
+  created_at: string
+  updated_at: string
 }
 
 interface ChatContext {
@@ -45,14 +45,13 @@ interface ChatContext {
   includeNotes?: boolean
 }
 
-const STORAGE_KEY = 'brainbox-conversations'
-
 export function AIChatbot() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
@@ -74,32 +73,22 @@ export function AIChatbot() {
     },
   })
 
-  // Load conversations from localStorage
-  useEffect(() => {
+  // Load conversations from Supabase
+  const loadConversations = useCallback(async () => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        setConversations(parsed.map((c: Conversation) => ({
-          ...c,
-          createdAt: new Date(c.createdAt),
-          updatedAt: new Date(c.updatedAt),
-          messages: c.messages.map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
-        })))
+      const res = await fetch('/api/conversations')
+      const data = await res.json()
+      if (data.conversations) {
+        setConversations(data.conversations)
       }
     } catch (e) {
       console.error('Failed to load conversations:', e)
     }
   }, [])
 
-  // Save conversations to localStorage
-  const saveConversations = useCallback((convs: Conversation[]) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(convs))
-    } catch (e) {
-      console.error('Failed to save conversations:', e)
-    }
-  }, [])
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
 
   // Check if AI is configured
   useEffect(() => {
@@ -131,7 +120,7 @@ export function AIChatbot() {
     if (currentConversationId) {
       const conv = conversations.find(c => c.id === currentConversationId)
       if (conv) {
-        setMessages(conv.messages)
+        setMessages(conv.messages || [])
       }
     } else {
       setMessages([])
@@ -144,13 +133,52 @@ export function AIChatbot() {
     setError(null)
   }
 
-  const deleteConversation = (id: string) => {
-    const updated = conversations.filter(c => c.id !== id)
-    setConversations(updated)
-    saveConversations(updated)
-    if (currentConversationId === id) {
-      setCurrentConversationId(null)
-      setMessages([])
+  const deleteConversation = async (id: string) => {
+    try {
+      await fetch(`/api/conversations?id=${id}`, { method: 'DELETE' })
+      setConversations(prev => prev.filter(c => c.id !== id))
+      if (currentConversationId === id) {
+        setCurrentConversationId(null)
+        setMessages([])
+      }
+    } catch (e) {
+      console.error('Failed to delete conversation:', e)
+    }
+  }
+
+  const saveConversation = async (msgs: Message[], title: string) => {
+    setIsSaving(true)
+    try {
+      if (currentConversationId) {
+        // Update existing
+        const res = await fetch('/api/conversations', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: currentConversationId, messages: msgs }),
+        })
+        const data = await res.json()
+        if (data.conversation) {
+          setConversations(prev =>
+            prev.map(c => c.id === currentConversationId ? data.conversation : c)
+          )
+        }
+      } else {
+        // Create new
+        const res = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, messages: msgs }),
+        })
+        const data = await res.json()
+        if (data.conversation) {
+          setConversations(prev => [data.conversation, ...prev])
+          setCurrentConversationId(data.conversation.id)
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save conversation:', e)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -162,7 +190,7 @@ export function AIChatbot() {
       id: Date.now().toString(),
       role: 'user',
       content: input.trim(),
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     }
 
     const newMessages = [...messages, userMessage]
@@ -193,38 +221,15 @@ export function AIChatbot() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.response,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
       }
 
       const updatedMessages = [...newMessages, assistantMessage]
       setMessages(updatedMessages)
 
-      // Save/update conversation
-      const title = userMessage.content.slice(0, 40) + (userMessage.content.length > 40 ? '...' : '')
-
-      if (currentConversationId) {
-        // Update existing conversation
-        const updated = conversations.map(c =>
-          c.id === currentConversationId
-            ? { ...c, messages: updatedMessages, updatedAt: new Date() }
-            : c
-        )
-        setConversations(updated)
-        saveConversations(updated)
-      } else {
-        // Create new conversation
-        const newConv: Conversation = {
-          id: Date.now().toString(),
-          title,
-          messages: updatedMessages,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-        const updated = [newConv, ...conversations]
-        setConversations(updated)
-        saveConversations(updated)
-        setCurrentConversationId(newConv.id)
-      }
+      // Save to Supabase
+      const title = userMessage.content.slice(0, 50) + (userMessage.content.length > 50 ? '...' : '')
+      await saveConversation(updatedMessages, title)
 
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
@@ -306,7 +311,7 @@ export function AIChatbot() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 md:hidden"
+                className="h-8 w-8 lg:hidden"
                 onClick={() => setShowSidebar(!showSidebar)}
               >
                 <ChevronLeft className={cn('w-4 h-4 transition-transform', !showSidebar && 'rotate-180')} />
@@ -318,6 +323,7 @@ export function AIChatbot() {
               <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20">
                 Groq
               </Badge>
+              {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -327,7 +333,7 @@ export function AIChatbot() {
                 onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
               >
                 <Target className="w-3 h-3" />
-                Goals
+                <span className="hidden sm:inline">Goals</span>
               </Button>
               <Button
                 variant={context.includeNotes ? 'secondary' : 'ghost'}
@@ -336,12 +342,12 @@ export function AIChatbot() {
                 onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
               >
                 <FileText className="w-3 h-3" />
-                Notes
+                <span className="hidden sm:inline">Notes</span>
               </Button>
               {messages.length > 0 && (
                 <Button variant="ghost" size="sm" className="h-7" onClick={createNewConversation}>
-                  <RefreshCw className="w-3 h-3 mr-1" />
-                  New
+                  <RefreshCw className="w-3 h-3 sm:mr-1" />
+                  <span className="hidden sm:inline">New</span>
                 </Button>
               )}
             </div>
@@ -413,7 +419,7 @@ export function AIChatbot() {
                   >
                     <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                     <p className="text-[10px] opacity-50 mt-1">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                   {message.role === 'user' && (

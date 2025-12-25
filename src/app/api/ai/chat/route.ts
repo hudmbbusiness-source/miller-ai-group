@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import Groq from 'groq-sdk'
 
 interface AIMessage {
   role: 'system' | 'user' | 'assistant'
@@ -12,18 +11,7 @@ interface ChatContext {
   includeNotes?: boolean
 }
 
-// Initialize Groq client
-function getGroqClient(): Groq | null {
-  const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey) {
-    console.error('GROQ_API_KEY not found in environment')
-    return null
-  }
-  return new Groq({ apiKey })
-}
-
 export async function GET() {
-  // Check if Groq is configured
   const hasGroq = !!process.env.GROQ_API_KEY
   return NextResponse.json({
     configured: hasGroq,
@@ -32,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+
   try {
     // Check authentication
     const supabase = await createClient()
@@ -52,15 +42,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages array required' }, { status: 400 })
     }
 
-    // Get Groq client
-    const groq = getGroqClient()
-    if (!groq) {
+    // Check API key
+    const apiKey = process.env.GROQ_API_KEY
+    if (!apiKey) {
       return NextResponse.json({
-        error: 'AI not configured. GROQ_API_KEY is missing from environment variables.',
+        error: 'GROQ_API_KEY not configured in environment',
       }, { status: 503 })
     }
 
-    // Build user context from their data
+    // Build user context
     let userContext = ''
     const userName = user.user_metadata?.full_name || user.user_metadata?.name || 'User'
 
@@ -115,24 +105,49 @@ ${userContext}
 Be concise, practical, and helpful. Current date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`,
     }
 
-    // Call Groq API
-    const completion = await groq.chat.completions.create({
-      messages: [systemMessage, ...messages].map(m => ({
-        role: m.role,
-        content: m.content,
-      })),
-      model: 'llama-3.3-70b-versatile',
-      temperature: 0.7,
-      max_tokens: 2048,
+    // Call Groq API directly with fetch
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [systemMessage, ...messages].map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
     })
 
-    const responseContent = completion.choices[0]?.message?.content
+    if (!groqResponse.ok) {
+      const errorText = await groqResponse.text()
+      console.error('Groq API Error:', groqResponse.status, errorText)
 
-    if (!responseContent) {
+      if (groqResponse.status === 401) {
+        return NextResponse.json({ error: 'Invalid Groq API key' }, { status: 401 })
+      }
+      if (groqResponse.status === 429) {
+        return NextResponse.json({ error: 'Rate limit exceeded. Try again in a moment.' }, { status: 429 })
+      }
+
       return NextResponse.json({
-        error: 'No response generated from AI',
+        error: `Groq API error: ${groqResponse.status}`
       }, { status: 500 })
     }
+
+    const data = await groqResponse.json()
+    const responseContent = data.choices?.[0]?.message?.content
+
+    if (!responseContent) {
+      return NextResponse.json({ error: 'No response from AI' }, { status: 500 })
+    }
+
+    const duration = Date.now() - startTime
+    console.log(`AI Chat completed in ${duration}ms`)
 
     return NextResponse.json({
       success: true,
@@ -144,24 +159,10 @@ Be concise, practical, and helpful. Current date: ${new Date().toLocaleDateStrin
   } catch (error) {
     console.error('AI Chat Error:', error)
 
-    // Provide specific error messages
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-    // Check for common Groq errors
-    if (errorMessage.includes('401') || errorMessage.includes('authentication')) {
-      return NextResponse.json({
-        error: 'Invalid Groq API key. Please check your GROQ_API_KEY.',
-      }, { status: 401 })
-    }
-
-    if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
-      return NextResponse.json({
-        error: 'Rate limit exceeded. Please wait a moment and try again.',
-      }, { status: 429 })
-    }
-
     return NextResponse.json({
-      error: `AI Error: ${errorMessage}`,
+      error: `Server error: ${errorMessage}`,
     }, { status: 500 })
   }
 }

@@ -136,9 +136,8 @@ interface CareerData {
   marketInsights?: MarketInsights
 }
 
-// Cache key for localStorage - version 3 with market insights
-const CACHE_KEY = 'career_data_cache_v3'
-const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000 // 7 days in ms
+// Cache key for Supabase user_cache - version 4
+const CACHE_KEY = 'career_data_v4'
 
 function formatSalary(amount: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -541,17 +540,15 @@ export function CareerPlanning() {
     loadStarredJobs()
   }, [loadStarredJobs])
 
-  const getCachedData = useCallback(() => {
-    if (typeof window === 'undefined') return null
+  const getCachedData = useCallback(async (): Promise<CareerData | null> => {
     try {
-      const cached = localStorage.getItem(CACHE_KEY)
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached)
-        const age = Date.now() - timestamp
-        if (age < CACHE_DURATION) {
-          setLastUpdated(new Date(timestamp))
-          return data
+      const res = await fetch(`/api/cache?key=${CACHE_KEY}`)
+      const result = await res.json()
+      if (result.data) {
+        if (result.timestamp) {
+          setLastUpdated(new Date(result.timestamp))
         }
+        return result.data as CareerData
       }
     } catch {
       // Cache read failed, proceed with fetch
@@ -559,12 +556,17 @@ export function CareerPlanning() {
     return null
   }, [])
 
-  const setCachedData = useCallback((newData: CareerData) => {
-    if (typeof window === 'undefined') return
+  const setCachedData = useCallback(async (newData: CareerData) => {
     try {
-      const timestamp = Date.now()
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ data: newData, timestamp }))
-      setLastUpdated(new Date(timestamp))
+      const res = await fetch('/api/cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: CACHE_KEY, value: newData, ttl_days: 7 }),
+      })
+      const result = await res.json()
+      if (result.timestamp) {
+        setLastUpdated(new Date(result.timestamp))
+      }
     } catch {
       // Cache write failed, continue without caching
     }
@@ -573,7 +575,7 @@ export function CareerPlanning() {
   const fetchCareerData = useCallback(async (forceRefresh = false) => {
     // Check cache first unless forcing refresh
     if (!forceRefresh) {
-      const cached = getCachedData()
+      const cached = await getCachedData()
       if (cached) {
         setData(cached)
         setLoading(false)
@@ -604,12 +606,12 @@ export function CareerPlanning() {
       const result = await response.json()
       if (result.success && result.plan) {
         setData(result.plan)
-        setCachedData(result.plan)
+        await setCachedData(result.plan)
       }
     } catch (error) {
       console.error('Failed to fetch career data:', error)
       // Try to use cached data as fallback
-      const cached = getCachedData()
+      const cached = await getCachedData()
       if (cached) {
         setData(cached)
       }

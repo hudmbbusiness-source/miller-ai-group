@@ -23,7 +23,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Plus, Search, Pin, PinOff, Edit2, Trash2, Loader2, Sparkles, Lightbulb, Building2, CheckCircle2, BookOpen, X, Mic, MicOff, Square } from 'lucide-react'
+import { Plus, Search, Pin, PinOff, Edit2, Trash2, Loader2, Sparkles, Lightbulb, Building2, CheckCircle2, BookOpen, X, Mic, Square, Globe, ExternalLink, PlusCircle } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import type { Tables } from '@/types/database'
 
@@ -40,6 +40,12 @@ interface NoteInsights {
   }
   actionItems: string[]
   relatedTopics: string[]
+}
+
+interface Fact {
+  text: string
+  source: string
+  url: string
 }
 
 function NotesContent() {
@@ -59,6 +65,13 @@ function NotesContent() {
   const [currentInsights, setCurrentInsights] = useState<NoteInsights | null>(null)
   const [insightsNote, setInsightsNote] = useState<Note | null>(null)
   const [insightsError, setInsightsError] = useState<string | null>(null)
+
+  // Fact Search state
+  const [factSearchOpen, setFactSearchOpen] = useState(false)
+  const [factSearchQuery, setFactSearchQuery] = useState('')
+  const [factSearchLoading, setFactSearchLoading] = useState(false)
+  const [facts, setFacts] = useState<Fact[]>([])
+  const [factSearchError, setFactSearchError] = useState<string | null>(null)
 
   // Form state
   const [title, setTitle] = useState('')
@@ -114,6 +127,43 @@ function NotesContent() {
     } finally {
       setInsightsLoading(false)
     }
+  }
+
+  const searchFacts = async () => {
+    if (!factSearchQuery.trim() || factSearchQuery.length < 2) return
+
+    setFactSearchLoading(true)
+    setFacts([])
+    setFactSearchError(null)
+
+    try {
+      const response = await fetch('/api/ai/fact-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: factSearchQuery.trim() }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.facts) {
+        setFacts(data.facts)
+        if (data.facts.length === 0) {
+          setFactSearchError('No facts found. Try a different search term.')
+        }
+      } else {
+        setFactSearchError(data.error || 'Failed to search. Please try again.')
+      }
+    } catch (error) {
+      console.error('Fact search error:', error)
+      setFactSearchError('Network error. Please check your connection.')
+    } finally {
+      setFactSearchLoading(false)
+    }
+  }
+
+  const addFactToNote = (fact: Fact) => {
+    const citation = `\n\n${fact.text}\n— Source: ${fact.source} (${fact.url})`
+    setContent(prev => prev + citation)
   }
 
   const fetchNotes = useCallback(async () => {
@@ -394,6 +444,16 @@ function NotesContent() {
                   )}
                   <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFactSearchOpen(true)}
+                    className="gap-2"
+                  >
+                    <Globe className="w-3 h-3" />
+                    Search Facts
+                  </Button>
+                  <Button
+                    type="button"
                     variant={isRecording ? 'destructive' : 'outline'}
                     size="sm"
                     onClick={toggleRecording}
@@ -600,6 +660,100 @@ function NotesContent() {
                 <Sparkles className="w-12 h-12 text-muted-foreground/20 mb-4" />
                 <p className="text-sm text-muted-foreground">
                   Select a note to get AI-powered insights
+                </p>
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Fact Search Sheet */}
+      <Sheet open={factSearchOpen} onOpenChange={setFactSearchOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-hidden flex flex-col">
+          <SheetHeader className="flex-shrink-0">
+            <SheetTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5 text-blue-500" />
+              Search Facts
+            </SheetTitle>
+            <p className="text-sm text-muted-foreground">
+              Search the web for facts to add to your note with citations.
+            </p>
+          </SheetHeader>
+
+          {/* Search Input */}
+          <div className="flex gap-2 mt-4">
+            <Input
+              placeholder="e.g., Roth IRA contribution limits"
+              value={factSearchQuery}
+              onChange={(e) => setFactSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchFacts()}
+              className="flex-1"
+            />
+            <Button onClick={searchFacts} disabled={factSearchLoading || factSearchQuery.length < 2}>
+              {factSearchLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1 -mx-6 px-6 mt-4">
+            {factSearchLoading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
+                <p className="text-sm text-muted-foreground">Searching the web...</p>
+              </div>
+            ) : factSearchError && facts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Search className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  {factSearchError}
+                </p>
+              </div>
+            ) : facts.length > 0 ? (
+              <div className="space-y-3 py-2">
+                {facts.map((fact, i) => (
+                  <div
+                    key={i}
+                    className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                  >
+                    <p className="text-sm leading-relaxed mb-3">
+                      {fact.text}
+                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <a
+                        href={fact.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 truncate max-w-[60%]"
+                      >
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        {fact.source}
+                      </a>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addFactToNote(fact)}
+                        className="gap-1 flex-shrink-0"
+                      >
+                        <PlusCircle className="w-3 h-3" />
+                        Add to Note
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Globe className="w-12 h-12 text-muted-foreground/20 mb-4" />
+                <p className="text-sm text-muted-foreground">
+                  Search for facts about any topic
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Results will include source citations
                 </p>
               </div>
             )}

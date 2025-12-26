@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import {
   Brain,
   Send,
@@ -12,15 +10,7 @@ import {
   Mic,
   Square,
   User,
-  Sparkles,
-  RefreshCw,
-  Target,
-  FileText,
   AlertCircle,
-  MessageSquare,
-  Trash2,
-  Plus,
-  ChevronLeft,
   Globe,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
@@ -33,14 +23,6 @@ interface Message {
   timestamp: string
 }
 
-interface Conversation {
-  id: string
-  title: string
-  messages: Message[]
-  created_at: string
-  updated_at: string
-}
-
 interface ChatContext {
   includeGoals?: boolean
   includeNotes?: boolean
@@ -48,17 +30,12 @@ interface ChatContext {
 }
 
 export function AIChatbot() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null)
-  // Hide sidebar by default on mobile
-  const [showSidebar, setShowSidebar] = useState(false)
-  const [context, setContext] = useState<ChatContext>({
+  const [context] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
     enableWebSearch: true,
@@ -79,27 +56,9 @@ export function AIChatbot() {
     onError: (err) => {
       console.error('Voice recording error:', err)
       setVoiceError(err)
-      // Clear error after 5 seconds
       setTimeout(() => setVoiceError(null), 5000)
     },
   })
-
-  // Load conversations from Supabase
-  const loadConversations = useCallback(async () => {
-    try {
-      const res = await fetch('/api/conversations')
-      const data = await res.json()
-      if (data.conversations) {
-        setConversations(data.conversations)
-      }
-    } catch (e) {
-      console.error('Failed to load conversations:', e)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
 
   // Check if AI is configured
   useEffect(() => {
@@ -124,76 +83,9 @@ export function AIChatbot() {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`
     }
   }, [input])
-
-  // Load conversation messages when switching
-  useEffect(() => {
-    if (currentConversationId) {
-      const conv = conversations.find(c => c.id === currentConversationId)
-      if (conv) {
-        setMessages(conv.messages || [])
-      }
-    } else {
-      setMessages([])
-    }
-  }, [currentConversationId, conversations])
-
-  const createNewConversation = () => {
-    setCurrentConversationId(null)
-    setMessages([])
-    setError(null)
-  }
-
-  const deleteConversation = async (id: string) => {
-    try {
-      await fetch(`/api/conversations?id=${id}`, { method: 'DELETE' })
-      setConversations(prev => prev.filter(c => c.id !== id))
-      if (currentConversationId === id) {
-        setCurrentConversationId(null)
-        setMessages([])
-      }
-    } catch (e) {
-      console.error('Failed to delete conversation:', e)
-    }
-  }
-
-  const saveConversation = async (msgs: Message[], title: string) => {
-    setIsSaving(true)
-    try {
-      if (currentConversationId) {
-        // Update existing
-        const res = await fetch('/api/conversations', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: currentConversationId, messages: msgs }),
-        })
-        const data = await res.json()
-        if (data.conversation) {
-          setConversations(prev =>
-            prev.map(c => c.id === currentConversationId ? data.conversation : c)
-          )
-        }
-      } else {
-        // Create new
-        const res = await fetch('/api/conversations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, messages: msgs }),
-        })
-        const data = await res.json()
-        if (data.conversation) {
-          setConversations(prev => [data.conversation, ...prev])
-          setCurrentConversationId(data.conversation.id)
-        }
-      }
-    } catch (e) {
-      console.error('Failed to save conversation:', e)
-    } finally {
-      setIsSaving(false)
-    }
-  }
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
@@ -230,7 +122,6 @@ export function AIChatbot() {
         throw new Error(data.error || 'Failed to get response')
       }
 
-      // Track if web search was used
       setLastSearchUsed(data.webSearchUsed === true)
 
       const assistantMessage: Message = {
@@ -240,24 +131,11 @@ export function AIChatbot() {
         timestamp: new Date().toISOString(),
       }
 
-      const updatedMessages = [...newMessages, assistantMessage]
-      setMessages(updatedMessages)
-
-      // Save to Supabase
-      const title = userMessage.content.slice(0, 50) + (userMessage.content.length > 50 ? '...' : '')
-      await saveConversation(updatedMessages, title)
+      setMessages([...newMessages, assistantMessage])
 
     } catch (err) {
       console.error('Chat error:', err)
-      let errorMsg = 'Something went wrong. Please try again.'
-      if (err instanceof Error) {
-        if (err.message.includes('fetch')) {
-          errorMsg = 'Network error. Check your connection.'
-        } else {
-          errorMsg = err.message
-        }
-      }
-      setError(errorMsg)
+      setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setIsLoading(false)
     }
@@ -272,192 +150,39 @@ export function AIChatbot() {
 
   if (isConfigured === null) {
     return (
-      <div className="flex items-center justify-center h-[600px]">
+      <div className="flex items-center justify-center h-full">
         <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
       </div>
     )
   }
 
   return (
-    <div className="relative flex flex-col h-full min-h-[600px]">
-      {/* Sidebar Overlay - Always overlay, never takes layout space */}
-      {showSidebar && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setShowSidebar(false)}
-        />
-      )}
-
-      {/* Sidebar - Conversation List (Always overlay) */}
-      <Card className={cn(
-        "flex flex-col z-50",
-        "fixed inset-y-0 left-0 w-[280px] transform transition-transform duration-200",
-        showSidebar ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <CardHeader className="py-3 px-4 border-b">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">History</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={createNewConversation}>
-                <Plus className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setShowSidebar(false)}>
-                <ChevronLeft className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <div className="flex-1 overflow-y-auto p-3">
-          {conversations.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No conversations yet</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={cn(
-                    'group flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-muted/50 transition-colors min-h-[48px]',
-                    currentConversationId === conv.id && 'bg-muted'
-                  )}
-                  onClick={() => {
-                    setCurrentConversationId(conv.id)
-                    setShowSidebar(false) // Close on mobile after selection
-                  }}
-                >
-                  <MessageSquare className="w-5 h-5 flex-shrink-0 text-muted-foreground" />
-                  <span className="text-sm truncate flex-1">{conv.title}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteConversation(conv.id)
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* Main Chat Area - Full width */}
-      <div className="flex-1 flex flex-col min-w-0 bg-card rounded-xl border border-amber-500/20">
-        {/* Header - Simplified for mobile */}
-        <CardHeader className="flex-shrink-0 py-3 px-4 border-b">
-          <div className="flex items-center justify-between gap-3">
-            {/* Left side - Menu + Title */}
-            <div className="flex items-center gap-3 min-w-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 flex-shrink-0"
-                onClick={() => setShowSidebar(!showSidebar)}
-              >
-                <MessageSquare className="w-5 h-5" />
-              </Button>
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex-shrink-0">
-                  <Brain className="w-5 h-5 text-amber-500" />
-                </div>
-                <span className="font-semibold text-lg">BrainBox</span>
-              </div>
-              {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-            </div>
-
-            {/* Right side - Just New button on mobile */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Web search indicator */}
-              {webSearchAvailable && context.enableWebSearch && (
-                <Globe className="w-4 h-4 text-green-500" />
-              )}
-              {messages.length > 0 && (
-                <Button variant="outline" size="sm" className="h-10 px-3" onClick={createNewConversation}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  New
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Context toggles */}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            {webSearchAvailable && (
-              <Button
-                variant={context.enableWebSearch ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn(
-                  "h-8 text-xs",
-                  context.enableWebSearch && "bg-green-500/20 hover:bg-green-500/30 text-green-600"
-                )}
-                onClick={() => setContext(prev => ({ ...prev, enableWebSearch: !prev.enableWebSearch }))}
-              >
-                <Globe className="w-4 h-4 mr-1" />
-                Web Search
-              </Button>
-            )}
-            <Button
-              variant={context.includeGoals ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
-            >
-              <Target className="w-4 h-4 mr-1" />
-              Goals
-            </Button>
-            <Button
-              variant={context.includeNotes ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
-            >
-              <FileText className="w-4 h-4 mr-1" />
-              Notes
-            </Button>
-          </div>
-
-          {!isConfigured && (
-            <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-amber-500">GROQ_API_KEY not configured</p>
-            </div>
-          )}
-
-          {error && (
-            <div className="mt-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-        </CardHeader>
-
-        {/* Messages - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+    <div className="flex flex-col h-full w-full bg-background">
+      {/* Messages Area - Takes all available space */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-4 py-6">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <div className="p-4 rounded-full bg-gradient-to-br from-amber-500/10 to-purple-500/10 mb-4">
-                <Sparkles className="w-8 h-8 text-amber-500" />
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+              <div className="p-5 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 mb-6">
+                <Brain className="w-12 h-12 text-amber-500" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">Hi! I&apos;m BrainBox</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mb-4">
-                Your AI assistant{webSearchAvailable ? ' with live web search' : ''}.
+              <h2 className="text-2xl font-bold mb-2">BrainBox</h2>
+              <p className="text-muted-foreground mb-6 max-w-md">
+                Your AI assistant {webSearchAvailable ? 'with live web search' : ''}. Ask me anything!
               </p>
               {webSearchAvailable && (
-                <div className="flex items-center gap-2 text-sm text-green-600 mb-4">
-                  <Globe className="w-4 h-4" />
+                <div className="flex items-center gap-2 text-green-600 mb-6">
+                  <Globe className="w-5 h-5" />
                   <span>Web search enabled</span>
                 </div>
               )}
-              <div className="flex flex-wrap gap-2 justify-center">
-                {['Interview tips', 'Project ideas', 'Skills to learn'].map((s) => (
+              <div className="flex flex-wrap gap-3 justify-center">
+                {['Help me plan my career', 'What should I learn next?', 'Give me project ideas'].map((s) => (
                   <Button
                     key={s}
                     variant="outline"
-                    size="sm"
-                    className="text-sm h-10 px-4 rounded-xl"
+                    size="lg"
+                    className="rounded-full"
                     onClick={() => setInput(s)}
                     disabled={!isConfigured}
                   >
@@ -467,85 +192,95 @@ export function AIChatbot() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {messages.map((message) => (
                 <div
                   key={message.id}
                   className={cn(
-                    'flex gap-3',
+                    'flex gap-4',
                     message.role === 'user' ? 'justify-end' : 'justify-start'
                   )}
                 >
                   {message.role === 'assistant' && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
-                      <Brain className="w-4 h-4 text-amber-500" />
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
+                      <Brain className="w-5 h-5 text-amber-500" />
                     </div>
                   )}
                   <div
                     className={cn(
-                      'max-w-[90%] rounded-2xl px-4 py-3',
+                      'max-w-[80%] rounded-2xl px-5 py-4',
                       message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-amber-500 text-black'
                         : 'bg-muted'
                     )}
                   >
-                    <p className="text-base leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
-                    <p className="text-xs opacity-50 mt-1">
-                      {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <p className="text-base leading-relaxed whitespace-pre-wrap break-words">
+                      {message.content}
                     </p>
                   </div>
                   {message.role === 'user' && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                      <User className="w-4 h-4 text-primary-foreground" />
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
+                      <User className="w-5 h-5 text-black" />
                     </div>
                   )}
                 </div>
               ))}
               {isLoading && (
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
-                    <Brain className="w-4 h-4 text-amber-500" />
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
+                    <Brain className="w-5 h-5 text-amber-500" />
                   </div>
-                  <div className="bg-muted rounded-2xl px-4 py-3 flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                    {context.enableWebSearch && webSearchAvailable && (
-                      <span className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Globe className="w-3 h-3" />
-                        Searching...
-                      </span>
-                    )}
+                  <div className="bg-muted rounded-2xl px-5 py-4 flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                    <span className="text-muted-foreground">
+                      {webSearchAvailable ? 'Searching & thinking...' : 'Thinking...'}
+                    </span>
                   </div>
                 </div>
               )}
               {lastSearchUsed && messages.length > 0 && !isLoading && (
-                <div className="flex items-center gap-2 text-xs text-green-600 ml-11">
-                  <Globe className="w-3 h-3" />
-                  <span>Response used live web data</span>
+                <div className="flex items-center gap-2 text-sm text-green-600 ml-14">
+                  <Globe className="w-4 h-4" />
+                  <span>Used live web data</span>
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
+      </div>
 
-        {/* Input - Fixed at bottom */}
-        <CardContent className="flex-shrink-0 border-t p-3 lg:p-4">
+      {/* Input Area - Fixed at bottom */}
+      <div className="flex-shrink-0 border-t bg-background/95 backdrop-blur">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          {error && (
+            <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
           {voiceError && (
-            <div className="mb-3 px-3 py-2 bg-destructive/10 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+            <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
               <p className="text-sm text-destructive">{voiceError}</p>
             </div>
           )}
-          <div className="flex gap-2 lg:gap-3 items-end">
-            <div className="flex-1 min-w-0">
+          {!isConfigured && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+              <p className="text-sm text-amber-500">AI not configured. Please add GROQ_API_KEY.</p>
+            </div>
+          )}
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
               <Textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isRecording ? 'Recording...' : 'Type a message...'}
-                className="min-h-[44px] lg:min-h-[48px] max-h-[120px] resize-none text-base rounded-xl"
-                style={{ fontSize: '16px' }} // Prevents iOS zoom on focus
+                placeholder={isRecording ? 'Recording...' : 'Ask me anything...'}
+                className="min-h-[56px] max-h-[150px] resize-none text-base rounded-2xl border-2 focus:border-amber-500"
+                style={{ fontSize: '16px' }}
                 rows={1}
                 disabled={isLoading || isRecording || !isConfigured}
               />
@@ -555,19 +290,19 @@ export function AIChatbot() {
               size="icon"
               onClick={toggleRecording}
               disabled={isTranscribing || isLoading || !isConfigured}
-              className={cn('flex-shrink-0 h-11 w-11 rounded-xl', isRecording && 'animate-pulse')}
+              className={cn('h-14 w-14 rounded-2xl', isRecording && 'animate-pulse')}
             >
-              {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              {isRecording ? <Square className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
             </Button>
             <Button
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isRecording || !isConfigured}
-              className="flex-shrink-0 h-11 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
+              className="h-14 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-semibold"
             >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
             </Button>
           </div>
-        </CardContent>
+        </div>
       </div>
     </div>
   )

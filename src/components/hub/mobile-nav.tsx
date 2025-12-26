@@ -31,8 +31,6 @@ const primaryNav = [
 
 const expandedNav = [
   { href: '/app/boards', label: 'Boards', icon: Grid3X3 },
-  { href: '/app/links', label: 'Links', icon: Link2 },
-  { href: '/app/files', label: 'Files', icon: FolderOpen },
   { href: '/app/assets', label: 'Assets', icon: ShoppingBag },
   { href: '/app/zuckerberg', label: 'Zuckerberg', icon: FileCheck },
   { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },

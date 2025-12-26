@@ -48,8 +48,6 @@ const navItems = [
   { href: '/app/assets', label: 'Assets', icon: ShoppingBag },
   { href: '/app/notes', label: 'Notes', icon: FileText },
   { href: '/app/boards', label: 'Boards', icon: Grid3X3 },
-  { href: '/app/links', label: 'Links', icon: Link2 },
-  { href: '/app/files', label: 'Files', icon: FolderOpen },
   { href: '/app/zuckerberg', label: 'Zuckerberg Project', icon: FileCheck },
   { href: '/app/settings', label: 'Settings', icon: Settings },
 ]

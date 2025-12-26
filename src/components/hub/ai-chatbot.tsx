@@ -4,6 +4,12 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import {
   Brain,
   Send,
   Loader2,
@@ -12,6 +18,10 @@ import {
   User,
   AlertCircle,
   Globe,
+  History,
+  Plus,
+  Trash2,
+  MessageSquare,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import { cn } from '@/lib/utils'
@@ -23,6 +33,14 @@ interface Message {
   timestamp: string
 }
 
+interface Conversation {
+  id: string
+  title: string
+  messages: Message[]
+  created_at: string
+  updated_at: string
+}
+
 interface ChatContext {
   includeGoals?: boolean
   includeNotes?: boolean
@@ -30,11 +48,15 @@ interface ChatContext {
 }
 
 export function AIChatbot() {
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [context] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
@@ -59,6 +81,23 @@ export function AIChatbot() {
       setTimeout(() => setVoiceError(null), 5000)
     },
   })
+
+  // Load conversations from Supabase
+  const loadConversations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/conversations')
+      const data = await res.json()
+      if (data.conversations) {
+        setConversations(data.conversations)
+      }
+    } catch (e) {
+      console.error('Failed to load conversations:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
 
   // Check if AI is configured
   useEffect(() => {
@@ -86,6 +125,70 @@ export function AIChatbot() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`
     }
   }, [input])
+
+  // Load conversation messages when switching
+  useEffect(() => {
+    if (currentConversationId) {
+      const conv = conversations.find(c => c.id === currentConversationId)
+      if (conv) {
+        setMessages(conv.messages || [])
+      }
+    }
+  }, [currentConversationId, conversations])
+
+  const createNewConversation = () => {
+    setCurrentConversationId(null)
+    setMessages([])
+    setError(null)
+    setHistoryOpen(false)
+  }
+
+  const deleteConversation = async (id: string) => {
+    try {
+      await fetch(`/api/conversations?id=${id}`, { method: 'DELETE' })
+      setConversations(prev => prev.filter(c => c.id !== id))
+      if (currentConversationId === id) {
+        setCurrentConversationId(null)
+        setMessages([])
+      }
+    } catch (e) {
+      console.error('Failed to delete conversation:', e)
+    }
+  }
+
+  const saveConversation = async (msgs: Message[], title: string) => {
+    setIsSaving(true)
+    try {
+      if (currentConversationId) {
+        const res = await fetch('/api/conversations', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: currentConversationId, messages: msgs }),
+        })
+        const data = await res.json()
+        if (data.conversation) {
+          setConversations(prev =>
+            prev.map(c => c.id === currentConversationId ? data.conversation : c)
+          )
+        }
+      } else {
+        const res = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, messages: msgs }),
+        })
+        const data = await res.json()
+        if (data.conversation) {
+          setConversations(prev => [data.conversation, ...prev])
+          setCurrentConversationId(data.conversation.id)
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save conversation:', e)
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
@@ -131,7 +234,12 @@ export function AIChatbot() {
         timestamp: new Date().toISOString(),
       }
 
-      setMessages([...newMessages, assistantMessage])
+      const updatedMessages = [...newMessages, assistantMessage]
+      setMessages(updatedMessages)
+
+      // Save to Supabase
+      const title = userMessage.content.slice(0, 50) + (userMessage.content.length > 50 ? '...' : '')
+      await saveConversation(updatedMessages, title)
 
     } catch (err) {
       console.error('Chat error:', err)
@@ -158,24 +266,48 @@ export function AIChatbot() {
 
   return (
     <div className="flex flex-col h-full w-full bg-background">
-      {/* Messages Area - Takes all available space */}
+      {/* Header with History button */}
+      <div className="flex-shrink-0 border-b px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500/20 to-purple-500/20">
+            <Brain className="w-6 h-6 text-amber-500" />
+          </div>
+          <div>
+            <h1 className="font-bold text-lg">BrainBox</h1>
+            {webSearchAvailable && (
+              <div className="flex items-center gap-1 text-xs text-green-600">
+                <Globe className="w-3 h-3" />
+                <span>Web search on</span>
+              </div>
+            )}
+          </div>
+          {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        </div>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <Button variant="outline" size="sm" onClick={createNewConversation}>
+              <Plus className="w-4 h-4 mr-1" />
+              New
+            </Button>
+          )}
+          <Button variant="outline" size="icon" onClick={() => setHistoryOpen(true)}>
+            <History className="w-5 h-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-4 py-6">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
               <div className="p-5 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 mb-6">
                 <Brain className="w-12 h-12 text-amber-500" />
               </div>
-              <h2 className="text-2xl font-bold mb-2">BrainBox</h2>
+              <h2 className="text-2xl font-bold mb-2">How can I help?</h2>
               <p className="text-muted-foreground mb-6 max-w-md">
-                Your AI assistant {webSearchAvailable ? 'with live web search' : ''}. Ask me anything!
+                Ask me anything. I can search the web for current information.
               </p>
-              {webSearchAvailable && (
-                <div className="flex items-center gap-2 text-green-600 mb-6">
-                  <Globe className="w-5 h-5" />
-                  <span>Web search enabled</span>
-                </div>
-              )}
               <div className="flex flex-wrap gap-3 justify-center">
                 {['Help me plan my career', 'What should I learn next?', 'Give me project ideas'].map((s) => (
                   <Button
@@ -250,7 +382,7 @@ export function AIChatbot() {
         </div>
       </div>
 
-      {/* Input Area - Fixed at bottom */}
+      {/* Input Area */}
       <div className="flex-shrink-0 border-t bg-background/95 backdrop-blur">
         <div className="max-w-4xl mx-auto px-4 py-4">
           {error && (
@@ -304,6 +436,61 @@ export function AIChatbot() {
           </div>
         </div>
       </div>
+
+      {/* History Sheet */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent side="left" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center justify-between">
+              <span>Conversation History</span>
+              <Button variant="outline" size="sm" onClick={createNewConversation}>
+                <Plus className="w-4 h-4 mr-1" />
+                New Chat
+              </Button>
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-2">
+            {conversations.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No conversations yet. Start chatting!
+              </p>
+            ) : (
+              conversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className={cn(
+                    'group flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-muted transition-colors',
+                    currentConversationId === conv.id && 'bg-muted'
+                  )}
+                  onClick={() => {
+                    setCurrentConversationId(conv.id)
+                    setHistoryOpen(false)
+                  }}
+                >
+                  <MessageSquare className="w-5 h-5 flex-shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{conv.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(conv.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteConversation(conv.id)
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

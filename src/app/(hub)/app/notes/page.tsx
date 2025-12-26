@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,7 +23,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Plus, Search, Pin, PinOff, Edit2, Trash2, Loader2, Sparkles, Lightbulb, Building2, CheckCircle2, BookOpen, X, Mic, Square, Globe, ExternalLink, PlusCircle } from 'lucide-react'
+import { Plus, Search, Pin, PinOff, Edit2, Trash2, Loader2, Sparkles, Lightbulb, Building2, CheckCircle2, BookOpen, X, Mic, Square, Globe, ExternalLink, PlusCircle, Paperclip, Link2, FileText, Download } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import type { Tables } from '@/types/database'
 
@@ -78,6 +78,16 @@ function NotesContent() {
   const [content, setContent] = useState('')
   const [tags, setTags] = useState('')
   const [pinned, setPinned] = useState(false)
+
+  // File upload state
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
+
+  // Link adding state
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkTitle, setLinkTitle] = useState('')
+  const [fetchingLinkMeta, setFetchingLinkMeta] = useState(false)
 
   // Voice recording
   const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -164,6 +174,88 @@ function NotesContent() {
   const addFactToNote = (fact: Fact) => {
     const citation = `\n\n${fact.text}\n— Source: ${fact.source} (${fact.url})`
     setContent(prev => prev + citation)
+  }
+
+  // File upload to note
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+
+    setUploadingFile(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setUploadingFile(false)
+      return
+    }
+
+    for (const file of Array.from(files)) {
+      const storagePath = `${user.id}/${Date.now()}-${file.name}`
+
+      const { data, error } = await supabase.storage
+        .from('hudson-files')
+        .upload(storagePath, file)
+
+      if (!error && data) {
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('hudson-files')
+          .getPublicUrl(data.path)
+
+        // Add file link to note content
+        const fileRef = `\n\n📎 **Attached File:** [${file.name}](${urlData.publicUrl})`
+        setContent(prev => prev + fileRef)
+      }
+    }
+
+    setUploadingFile(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // Add link to note
+  const handleAddLink = async () => {
+    if (!linkUrl.trim()) return
+
+    setFetchingLinkMeta(true)
+
+    try {
+      // Fetch metadata for the link
+      const response = await fetch('/api/metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: linkUrl }),
+      })
+
+      let displayTitle = linkTitle || linkUrl
+      if (response.ok) {
+        const meta = await response.json()
+        if (meta.title && !linkTitle) {
+          displayTitle = meta.title
+        }
+      }
+
+      // Add link to note content
+      const linkRef = `\n\n🔗 **Link:** [${displayTitle}](${linkUrl})`
+      setContent(prev => prev + linkRef)
+
+      // Reset and close
+      setLinkUrl('')
+      setLinkTitle('')
+      setLinkDialogOpen(false)
+    } catch (error) {
+      console.error('Failed to fetch link metadata:', error)
+      // Add link anyway
+      const linkRef = `\n\n🔗 **Link:** [${linkTitle || linkUrl}](${linkUrl})`
+      setContent(prev => prev + linkRef)
+      setLinkUrl('')
+      setLinkTitle('')
+      setLinkDialogOpen(false)
+    } finally {
+      setFetchingLinkMeta(false)
+    }
   }
 
   const fetchNotes = useCallback(async () => {
@@ -474,6 +566,41 @@ function NotesContent() {
                   </Button>
                 </div>
               </div>
+              {/* Attachment buttons */}
+              <div className="flex gap-2 mb-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  className="gap-2"
+                >
+                  {uploadingFile ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Paperclip className="w-3 h-3" />
+                  )}
+                  Attach File
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLinkDialogOpen(true)}
+                  className="gap-2"
+                >
+                  <Link2 className="w-3 h-3" />
+                  Add Link
+                </Button>
+              </div>
               <Textarea
                 id="content"
                 value={content}
@@ -760,6 +887,51 @@ function NotesContent() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* Add Link Dialog */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="w-5 h-5" />
+              Add Link
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="linkUrl">URL</Label>
+              <Input
+                id="linkUrl"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="linkTitle">Title (optional)</Label>
+              <Input
+                id="linkTitle"
+                value={linkTitle}
+                onChange={(e) => setLinkTitle(e.target.value)}
+                placeholder="Leave empty to auto-fetch from page"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddLink} disabled={!linkUrl.trim() || fetchingLinkMeta}>
+              {fetchingLinkMeta ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <PlusCircle className="w-4 h-4 mr-2" />
+              )}
+              Add Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -279,7 +279,7 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="relative flex flex-col lg:flex-row h-[calc(100vh-4rem)] lg:h-[calc(100vh-5rem)] min-h-[500px] gap-0 lg:gap-4">
+    <div className="relative flex flex-col lg:flex-row h-full min-h-[400px] gap-0 lg:gap-4">
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
         <div
@@ -290,7 +290,7 @@ export function AIChatbot() {
 
       {/* Sidebar - Conversation List */}
       <Card className={cn(
-        "lg:w-48 xl:w-56 flex-shrink-0 flex flex-col z-50",
+        "lg:w-44 xl:w-52 flex-shrink-0 flex flex-col z-50",
         // Mobile: fixed overlay from left
         "fixed lg:static inset-y-0 left-0 w-[280px] transform transition-transform duration-200",
         showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0",

@@ -156,6 +156,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages array required' }, { status: 400 })
     }
 
+    // Limit messages to prevent 413 errors - keep last 10 messages max
+    const limitedMessages = messages.slice(-10).map(m => ({
+      ...m,
+      // Truncate very long messages to 4000 chars
+      content: m.content.length > 4000 ? m.content.slice(0, 4000) + '...' : m.content
+    }))
+
     // Check Groq API key
     const groqKey = process.env.GROQ_API_KEY
     if (!groqKey) {
@@ -230,7 +237,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is asking about current/real-time information
-    const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || ''
+    const lastUserMessage = limitedMessages.filter(m => m.role === 'user').pop()?.content || ''
     const askingAboutCurrent = needsCurrentInfo(lastUserMessage)
 
     // ALWAYS perform web search if LangSearch is configured
@@ -315,7 +322,7 @@ Be concise, practical, and helpful. When answering questions about current event
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [systemMessage, ...messages].map(m => ({
+          messages: [systemMessage, ...limitedMessages].map(m => ({
             role: m.role,
             content: m.content,
           })),

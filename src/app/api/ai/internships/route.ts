@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getInternshipRecommendations } from '@/lib/ai/groq'
+import { getInternshipRecommendationsWithWebSearch } from '@/lib/ai/groq'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,13 +13,17 @@ export async function POST(request: NextRequest) {
 
     const { skills, interests, currentProgress } = await request.json()
 
-    const recommendations = await getInternshipRecommendations(
+    const result = await getInternshipRecommendationsWithWebSearch(
       skills || ['Python', 'JavaScript', 'Machine Learning'],
       interests || ['AI/ML', 'Startups', 'Product Development'],
       currentProgress || 0
     )
 
-    return NextResponse.json({ success: true, recommendations })
+    return NextResponse.json({
+      success: true,
+      recommendations: result.recommendations,
+      webSearchUsed: result.webSearchUsed,
+    })
   } catch (error) {
     console.error('AI Internship Recommendations Error:', error)
     return NextResponse.json(

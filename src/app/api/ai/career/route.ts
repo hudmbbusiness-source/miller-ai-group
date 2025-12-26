@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Groq from 'groq-sdk'
+import { searchTechJobs, searchAIIndustry, searchSalaryData, formatSearchResultsForAI, isWebSearchAvailable } from '@/lib/ai/web-search'
 
 // Lazy-initialize Groq client to avoid build-time errors
 function getGroqClient() {
@@ -1069,7 +1070,23 @@ export async function POST(request: NextRequest) {
         const { currentYear, skills, interests, targetRole } = data || {}
 
         try {
+          // Fetch real-time market data for roadmap generation
+          let webContext = ''
+          if (isWebSearchAvailable()) {
+            const [jobsSearch, aiSearch] = await Promise.all([
+              searchTechJobs(),
+              searchAIIndustry(),
+            ])
+            if (jobsSearch.searchPerformed) {
+              webContext += formatSearchResultsForAI(jobsSearch)
+            }
+            if (aiSearch.searchPerformed) {
+              webContext += formatSearchResultsForAI(aiSearch)
+            }
+          }
+
           const prompt = `You are a career advisor for a computer science student at BYU.
+${webContext ? `\nYou have access to LIVE MARKET DATA. Use this to provide current, accurate advice:\n${webContext}` : ''}
 
 Student Profile:
 - Current Year: ${currentYear || 'Junior'}
@@ -1200,6 +1217,33 @@ Respond in JSON format:
         }
 
         try {
+          // Fetch real-time web data for market insights
+          let webSearchContext = ''
+          let webSearchPerformed = false
+
+          if (isWebSearchAvailable()) {
+            console.log('Fetching real-time market data via web search...')
+            const [jobsSearch, aiSearch, salarySearch] = await Promise.all([
+              searchTechJobs(),
+              searchAIIndustry(),
+              searchSalaryData(),
+            ])
+
+            webSearchPerformed = jobsSearch.searchPerformed || aiSearch.searchPerformed || salarySearch.searchPerformed
+
+            if (jobsSearch.searchPerformed) {
+              webSearchContext += formatSearchResultsForAI(jobsSearch)
+            }
+            if (aiSearch.searchPerformed) {
+              webSearchContext += formatSearchResultsForAI(aiSearch)
+            }
+            if (salarySearch.searchPerformed) {
+              webSearchContext += formatSearchResultsForAI(salarySearch)
+            }
+
+            console.log(`Web search completed: ${webSearchPerformed ? 'success' : 'no results'}`)
+          }
+
           // Generate study plan
           const studyPrompt = `Generate a weekly study plan for a Business student studying AI Software Engineering targeting top tech companies.
 Include daily schedule, weekly milestones, monthly goals.
@@ -1215,8 +1259,9 @@ Respond in JSON: { "daily": { "morning": "...", "afternoon": "...", "evening": "
 
           studyPlan = JSON.parse(studyCompletion.choices[0]?.message?.content || '{}')
 
-          // Generate real-time market insights
-          const marketPrompt = `You are a tech career expert with knowledge of the current job market as of late 2024/early 2025.
+          // Generate real-time market insights with web search data
+          const marketPrompt = `You are a tech career expert with knowledge of the current job market.
+${webSearchContext ? `\nYou have access to LIVE WEB SEARCH DATA from today. Use this real data to provide accurate, current insights:\n${webSearchContext}` : ''}
 
 Provide REAL, ACCURATE insights about the tech job market right now:
 
@@ -1250,6 +1295,7 @@ Respond in JSON:
           marketInsights = {
             lastUpdated: new Date().toISOString(),
             aiGenerated: true,
+            webSearchUsed: webSearchPerformed,
             ...aiInsights,
           }
         } catch (err) {

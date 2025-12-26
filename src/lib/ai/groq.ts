@@ -1,4 +1,5 @@
 import Groq from 'groq-sdk'
+import { searchInternships, searchCompanyHiring, searchTechJobs, formatSearchResultsForAI, isWebSearchAvailable } from './web-search'
 
 // Lazy-initialize Groq client to avoid build-time errors
 let groqClient: Groq | null = null
@@ -41,17 +42,27 @@ export async function getCareerInsights(
   pendingItems: string[],
   careerGoal: string
 ): Promise<CareerInsight> {
+  // Fetch real-time market data
+  let webContext = ''
+  if (isWebSearchAvailable()) {
+    const jobSearch = await searchTechJobs()
+    if (jobSearch.searchPerformed) {
+      webContext = formatSearchResultsForAI(jobSearch)
+    }
+  }
+
   const prompt = `You are a career advisor for a computer science student at BYU pursuing AI/ML and entrepreneurship opportunities.
+${webContext ? `\nYou have access to LIVE MARKET DATA. Use this to provide current, accurate career advice:\n${webContext}` : ''}
 
 Current Progress:
 - Completed: ${completedItems.join(', ') || 'None yet'}
 - Pending: ${pendingItems.join(', ') || 'None'}
 - Career Goal: ${careerGoal}
 
-Based on current tech industry trends (as of late 2024/2025), provide:
+Based on current tech industry trends, provide:
 1. A specific recommendation for their next focus area
 2. 3-4 concrete next steps they should take this week
-3. Relevant market trends in AI/ML hiring
+3. Relevant market trends in AI/ML hiring (use the web search data if available)
 4. 2-3 skill gaps they should address
 
 Respond in JSON format:
@@ -211,7 +222,43 @@ export async function getInternshipRecommendations(
   interests: string[],
   currentProgress: number
 ): Promise<CompanyRecommendation[]> {
+  const result = await getInternshipRecommendationsWithWebSearch(skills, interests, currentProgress)
+  return result.recommendations
+}
+
+// Enhanced internship recommendations with web search for current data
+export async function getInternshipRecommendationsWithWebSearch(
+  skills: string[],
+  interests: string[],
+  currentProgress: number
+): Promise<{ recommendations: CompanyRecommendation[]; webSearchUsed: boolean }> {
+  // Fetch real-time internship data via web search
+  let webContext = ''
+  let webSearchUsed = false
+
+  if (isWebSearchAvailable()) {
+    console.log('Fetching real-time internship data...')
+    const [internshipSearch, googleSearch, anthropicSearch] = await Promise.all([
+      searchInternships(),
+      searchCompanyHiring('Google internship 2025'),
+      searchCompanyHiring('Anthropic OpenAI internship 2025'),
+    ])
+
+    webSearchUsed = internshipSearch.searchPerformed || googleSearch.searchPerformed || anthropicSearch.searchPerformed
+
+    if (internshipSearch.searchPerformed) {
+      webContext += formatSearchResultsForAI(internshipSearch)
+    }
+    if (googleSearch.searchPerformed) {
+      webContext += formatSearchResultsForAI(googleSearch)
+    }
+    if (anthropicSearch.searchPerformed) {
+      webContext += formatSearchResultsForAI(anthropicSearch)
+    }
+  }
+
   const prompt = `You are a career advisor for a computer science student at BYU interested in AI/ML and entrepreneurship.
+${webContext ? `\nYou have access to LIVE WEB SEARCH DATA about current internship opportunities. Use this real data to provide accurate, current recommendations:\n${webContext}` : ''}
 
 Student Profile:
 - Skills: ${skills.join(', ') || 'Python, JavaScript, basic ML'}
@@ -225,7 +272,7 @@ Provide exactly 10 specific companies they should apply to for Summer 2025 inter
 - 2 fintech/other tech companies
 
 For each company, provide the ACTUAL application URL (use real URLs like careers.google.com, jobs.lever.co/anthropic, etc.).
-Also include realistic INTERNSHIP salary data for Summer 2025 (based on levels.fyi and Glassdoor data).
+Also include realistic INTERNSHIP salary data for Summer 2025 (based on current market data).
 
 Respond in JSON format:
 {
@@ -261,7 +308,10 @@ Respond in JSON format:
     if (!content) throw new Error('No response from AI')
 
     const parsed = JSON.parse(content)
-    return (parsed.companies || []) as CompanyRecommendation[]
+    return {
+      recommendations: (parsed.companies || []) as CompanyRecommendation[],
+      webSearchUsed,
+    }
   } catch (error) {
     console.error('AI Internship Recommendations Error:', error)
     throw new Error('Failed to generate internship recommendations. Please try again.')

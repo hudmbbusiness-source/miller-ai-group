@@ -240,10 +240,9 @@ export async function POST(request: NextRequest) {
     const lastUserMessage = limitedMessages.filter(m => m.role === 'user').pop()?.content || ''
     const askingAboutCurrent = needsCurrentInfo(lastUserMessage)
 
-    // ALWAYS perform web search if LangSearch is configured
-    // This ensures real-time data is always available
+    // Only perform web search when user asks about current/real-time info
     const hasLangSearch = !!process.env.LANGSEARCH_API_KEY
-    const shouldSearch = hasLangSearch // Always search when configured
+    const shouldSearch = hasLangSearch && askingAboutCurrent // Only search when needed
 
     console.log(`[BrainBox] LANGSEARCH_API_KEY configured: ${hasLangSearch}`)
     console.log(`[BrainBox] Will perform web search: ${shouldSearch}`)

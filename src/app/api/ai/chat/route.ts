@@ -233,16 +233,13 @@ export async function POST(request: NextRequest) {
     const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || ''
     const askingAboutCurrent = needsCurrentInfo(lastUserMessage)
 
-    // Determine if we should perform web search:
-    // 1. If web search is explicitly enabled (toggle is on), always search
-    // 2. If asking about current info and web search is not explicitly disabled
-    const webSearchEnabled = context?.enableWebSearch
-    const shouldSearch = webSearchEnabled === true ||
-                         (askingAboutCurrent && webSearchEnabled !== false)
+    // ALWAYS perform web search if LangSearch is configured
+    // This ensures real-time data is always available
+    const hasLangSearch = !!process.env.LANGSEARCH_API_KEY
+    const shouldSearch = hasLangSearch // Always search when configured
 
-    console.log(`[BrainBox] Context received:`, JSON.stringify(context))
-    console.log(`[BrainBox] Web search enabled: ${webSearchEnabled}, Should search: ${shouldSearch}`)
-    console.log(`[BrainBox] LANGSEARCH_API_KEY configured: ${!!process.env.LANGSEARCH_API_KEY}`)
+    console.log(`[BrainBox] LANGSEARCH_API_KEY configured: ${hasLangSearch}`)
+    console.log(`[BrainBox] Will perform web search: ${shouldSearch}`)
 
     // Perform web search
     let webSearchContext = ''

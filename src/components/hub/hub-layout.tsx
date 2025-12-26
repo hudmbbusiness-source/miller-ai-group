@@ -14,7 +14,6 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { SOCIAL_LINKS } from '@/types'
-import { MobileNav } from './mobile-nav'
 import { GlobalSearch } from './global-search'
 import { KeyboardShortcutsProvider, KeyboardShortcutsButton } from './keyboard-shortcuts'
 import { OnboardingDialog } from './onboarding'
@@ -198,24 +197,24 @@ export function HubLayout({ children, user }: HubLayoutProps) {
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0">
-                <SheetHeader className="p-6 border-b border-border">
+              <SheetContent side="left" className="w-72 p-0 flex flex-col">
+                <SheetHeader className="p-6 border-b border-border flex-shrink-0">
                   <SheetTitle className="text-xl font-bold text-left">
                     Miller AI Group
                   </SheetTitle>
                 </SheetHeader>
-                <div className="flex flex-col h-[calc(100%-81px)]">
+                <div className="flex-1 overflow-y-auto">
                   <NavContent />
-                  <div className="p-4 border-t border-border mt-auto">
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-muted-foreground hover:text-destructive min-h-[44px]"
-                      onClick={handleLogout}
-                    >
-                      <LogOut className="w-5 h-5 mr-3" />
-                      Logout
-                    </Button>
-                  </div>
+                </div>
+                <div className="p-4 border-t border-border flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-muted-foreground hover:text-destructive min-h-[44px]"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="w-5 h-5 mr-3" />
+                    Logout
+                  </Button>
                 </div>
               </SheetContent>
             </Sheet>
@@ -261,7 +260,7 @@ export function HubLayout({ children, user }: HubLayoutProps) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto pb-20 lg:pb-0">
+        <main className="flex-1 overflow-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -277,7 +276,6 @@ export function HubLayout({ children, user }: HubLayoutProps) {
         </main>
       </div>
 
-      <MobileNav />
       <OnboardingDialog />
     </div>
     </KeyboardShortcutsProvider>

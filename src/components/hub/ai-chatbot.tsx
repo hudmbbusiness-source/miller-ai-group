@@ -279,7 +279,7 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="relative flex flex-col lg:flex-row h-[calc(100vh-7rem)] lg:h-[calc(100vh-10rem)] min-h-[400px] gap-0 lg:gap-4">
+    <div className="relative flex flex-col lg:flex-row h-[calc(100vh-4rem)] lg:h-[calc(100vh-5rem)] min-h-[500px] gap-0 lg:gap-4">
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
         <div
@@ -290,7 +290,7 @@ export function AIChatbot() {
 
       {/* Sidebar - Conversation List */}
       <Card className={cn(
-        "lg:w-56 xl:w-64 flex-shrink-0 flex flex-col z-50",
+        "lg:w-48 xl:w-56 flex-shrink-0 flex flex-col z-50",
         // Mobile: fixed overlay from left
         "fixed lg:static inset-y-0 left-0 w-[280px] transform transition-transform duration-200",
         showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
@@ -486,13 +486,13 @@ export function AIChatbot() {
                   )}
                   <div
                     className={cn(
-                      'max-w-[80%] rounded-2xl px-4 py-3',
+                      'max-w-[95%] lg:max-w-[85%] rounded-2xl px-4 py-3',
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted'
                     )}
                   >
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                     <p className="text-xs opacity-50 mt-1">
                       {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>

@@ -63,13 +63,18 @@ export function AIChatbot() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Voice recording
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const { isRecording, isTranscribing, toggleRecording } = useVoiceRecording({
     onTranscription: (text) => {
+      setVoiceError(null)
       setInput(prev => prev ? `${prev} ${text}` : text)
       textareaRef.current?.focus()
     },
     onError: (err) => {
       console.error('Voice recording error:', err)
+      setVoiceError(err)
+      // Clear error after 5 seconds
+      setTimeout(() => setVoiceError(null), 5000)
     },
   })
 
@@ -232,7 +237,15 @@ export function AIChatbot() {
       await saveConversation(updatedMessages, title)
 
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Chat error:', err)
+      let errorMsg = 'Something went wrong. Please try again.'
+      if (err instanceof Error) {
+        if (err.message.includes('fetch')) {
+          errorMsg = 'Network error. Check your connection.'
+        } else {
+          errorMsg = err.message
+        }
+      }
       setError(errorMsg)
     } finally {
       setIsLoading(false)
@@ -255,44 +268,49 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-12rem)] min-h-[500px] max-h-[800px] gap-4">
-      {/* Sidebar - Conversation List */}
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)] min-h-[400px] max-h-[800px] gap-2 lg:gap-4">
+      {/* Sidebar - Conversation List - Hidden on mobile by default */}
       {showSidebar && (
-        <Card className="w-64 flex-shrink-0 flex flex-col">
-          <CardHeader className="py-3 px-4 border-b">
+        <Card className="w-full lg:w-56 xl:w-64 flex-shrink-0 flex flex-col max-h-[200px] lg:max-h-none">
+          <CardHeader className="py-2 lg:py-3 px-3 lg:px-4 border-b">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Conversations</CardTitle>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={createNewConversation}>
-                <Plus className="w-4 h-4" />
-              </Button>
+              <CardTitle className="text-xs lg:text-sm font-medium">History</CardTitle>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-6 w-6 lg:h-7 lg:w-7" onClick={createNewConversation}>
+                  <Plus className="w-3 h-3 lg:w-4 lg:h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6 lg:hidden" onClick={() => setShowSidebar(false)}>
+                  <ChevronLeft className="w-3 h-3" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-1.5 lg:p-2">
             {conversations.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">No conversations yet</p>
+              <p className="text-[10px] lg:text-xs text-muted-foreground text-center py-2 lg:py-4">No conversations yet</p>
             ) : (
-              <div className="space-y-1">
+              <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0">
                 {conversations.map((conv) => (
                   <div
                     key={conv.id}
                     className={cn(
-                      'group flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors',
+                      'group flex items-center gap-1.5 lg:gap-2 p-1.5 lg:p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors flex-shrink-0 lg:flex-shrink',
                       currentConversationId === conv.id && 'bg-muted'
                     )}
                     onClick={() => setCurrentConversationId(conv.id)}
                   >
-                    <MessageSquare className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                    <span className="flex-1 text-sm truncate">{conv.title}</span>
+                    <MessageSquare className="w-3 h-3 lg:w-4 lg:h-4 flex-shrink-0 text-muted-foreground" />
+                    <span className="text-[10px] lg:text-sm truncate max-w-[100px] lg:max-w-none">{conv.title}</span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-5 w-5 lg:h-6 lg:w-6 opacity-0 group-hover:opacity-100 transition-opacity hidden lg:flex"
                       onClick={(e) => {
                         e.stopPropagation()
                         deleteConversation(conv.id)
                       }}
                     >
-                      <Trash2 className="w-3 h-3 text-destructive" />
+                      <Trash2 className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-destructive" />
                     </Button>
                   </div>
                 ))}
@@ -305,49 +323,53 @@ export function AIChatbot() {
       {/* Main Chat Area */}
       <Card className="flex-1 flex flex-col min-w-0 border-amber-500/20">
         {/* Header */}
-        <CardHeader className="flex-shrink-0 py-3 px-4 border-b">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+        <CardHeader className="flex-shrink-0 py-2 lg:py-3 px-2 sm:px-3 lg:px-4 border-b">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 lg:gap-2 min-w-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 lg:hidden"
+                className="h-7 w-7 lg:h-8 lg:w-8 flex-shrink-0"
                 onClick={() => setShowSidebar(!showSidebar)}
               >
-                <ChevronLeft className={cn('w-4 h-4 transition-transform', !showSidebar && 'rotate-180')} />
+                {showSidebar ? (
+                  <ChevronLeft className="w-4 h-4" />
+                ) : (
+                  <MessageSquare className="w-4 h-4" />
+                )}
               </Button>
-              <div className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20">
-                <Brain className="w-4 h-4 text-amber-500" />
+              <div className="p-1 lg:p-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex-shrink-0">
+                <Brain className="w-3 h-3 lg:w-4 lg:h-4 text-amber-500" />
               </div>
-              <span className="font-semibold">BrainBox</span>
-              <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20">
+              <span className="font-semibold text-sm lg:text-base truncate">BrainBox</span>
+              <Badge variant="outline" className="text-[8px] lg:text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex-shrink-0 hidden sm:flex">
                 Groq
               </Badge>
-              {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+              {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground flex-shrink-0" />}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 lg:gap-1 flex-shrink-0">
               <Button
                 variant={context.includeGoals ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 text-xs gap-1"
+                className="h-6 lg:h-7 text-[10px] lg:text-xs px-1.5 lg:px-2"
                 onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
               >
                 <Target className="w-3 h-3" />
-                <span className="hidden sm:inline">Goals</span>
+                <span className="hidden lg:inline ml-1">Goals</span>
               </Button>
               <Button
                 variant={context.includeNotes ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 text-xs gap-1"
+                className="h-6 lg:h-7 text-[10px] lg:text-xs px-1.5 lg:px-2"
                 onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
               >
                 <FileText className="w-3 h-3" />
-                <span className="hidden sm:inline">Notes</span>
+                <span className="hidden lg:inline ml-1">Notes</span>
               </Button>
               {messages.length > 0 && (
-                <Button variant="ghost" size="sm" className="h-7" onClick={createNewConversation}>
-                  <RefreshCw className="w-3 h-3 sm:mr-1" />
-                  <span className="hidden sm:inline">New</span>
+                <Button variant="ghost" size="sm" className="h-6 lg:h-7 px-1.5 lg:px-2" onClick={createNewConversation}>
+                  <RefreshCw className="w-3 h-3" />
+                  <span className="hidden lg:inline ml-1">New</span>
                 </Button>
               )}
             </div>
@@ -369,23 +391,23 @@ export function AIChatbot() {
         </CardHeader>
 
         {/* Messages - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+        <div className="flex-1 overflow-y-auto p-2 sm:p-3 lg:p-4 min-h-0">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="p-4 rounded-full bg-gradient-to-br from-amber-500/10 to-purple-500/10 mb-4">
-                <Sparkles className="w-8 h-8 text-amber-500" />
+            <div className="flex flex-col items-center justify-center h-full text-center px-2">
+              <div className="p-3 lg:p-4 rounded-full bg-gradient-to-br from-amber-500/10 to-purple-500/10 mb-3 lg:mb-4">
+                <Sparkles className="w-6 h-6 lg:w-8 lg:h-8 text-amber-500" />
               </div>
-              <h3 className="font-semibold mb-2">Hi! I&apos;m BrainBox</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mb-4">
-                Your AI assistant. Ask me anything about career, tech, or productivity!
+              <h3 className="font-semibold text-sm lg:text-base mb-1 lg:mb-2">Hi! I&apos;m BrainBox</h3>
+              <p className="text-xs lg:text-sm text-muted-foreground max-w-sm mb-3 lg:mb-4">
+                Your AI assistant with web search for current data.
               </p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {['Interview prep tips', 'Project ideas', 'Skills to learn'].map((s) => (
+              <div className="flex flex-wrap gap-1.5 lg:gap-2 justify-center">
+                {['Interview tips', 'Project ideas', 'Skills to learn'].map((s) => (
                   <Button
                     key={s}
                     variant="outline"
                     size="sm"
-                    className="text-xs"
+                    className="text-[10px] lg:text-xs h-7 lg:h-8 px-2 lg:px-3"
                     onClick={() => setInput(s)}
                     disabled={!isConfigured}
                   >
@@ -395,47 +417,47 @@ export function AIChatbot() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 lg:space-y-4">
               {messages.map((message) => (
                 <div
                   key={message.id}
                   className={cn(
-                    'flex gap-3',
+                    'flex gap-2 lg:gap-3',
                     message.role === 'user' ? 'justify-end' : 'justify-start'
                   )}
                 >
                   {message.role === 'assistant' && (
-                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
-                      <Brain className="w-3.5 h-3.5 text-amber-500" />
+                    <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
+                      <Brain className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-amber-500" />
                     </div>
                   )}
                   <div
                     className={cn(
-                      'max-w-[85%] rounded-2xl px-3 py-2',
+                      'max-w-[85%] rounded-2xl px-2.5 py-1.5 lg:px-3 lg:py-2',
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted'
                     )}
                   >
-                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                    <p className="text-[10px] opacity-50 mt-1">
+                    <p className="text-xs lg:text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                    <p className="text-[8px] lg:text-[10px] opacity-50 mt-0.5 lg:mt-1">
                       {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                   {message.role === 'user' && (
-                    <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary flex items-center justify-center">
-                      <User className="w-3.5 h-3.5 text-primary-foreground" />
+                    <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-primary flex items-center justify-center">
+                      <User className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-primary-foreground" />
                     </div>
                   )}
                 </div>
               ))}
               {isLoading && (
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
-                    <Brain className="w-3.5 h-3.5 text-amber-500" />
+                <div className="flex gap-2 lg:gap-3">
+                  <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
+                    <Brain className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-amber-500" />
                   </div>
-                  <div className="bg-muted rounded-2xl px-3 py-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                  <div className="bg-muted rounded-2xl px-2.5 py-1.5 lg:px-3 lg:py-2">
+                    <Loader2 className="w-3 h-3 lg:w-4 lg:h-4 animate-spin text-amber-500" />
                   </div>
                 </div>
               )}
@@ -445,16 +467,22 @@ export function AIChatbot() {
         </div>
 
         {/* Input - Fixed at bottom */}
-        <CardContent className="flex-shrink-0 border-t p-3">
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
+        <CardContent className="flex-shrink-0 border-t p-2 lg:p-3">
+          {voiceError && (
+            <div className="mb-2 px-2 py-1.5 bg-destructive/10 rounded-md flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
+              <p className="text-xs text-destructive">{voiceError}</p>
+            </div>
+          )}
+          <div className="flex gap-1.5 lg:gap-2 items-end">
+            <div className="flex-1 min-w-0">
               <Textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isRecording ? 'Recording...' : 'Type a message...'}
-                className="min-h-[40px] max-h-[120px] resize-none text-sm"
+                placeholder={isRecording ? 'Recording...' : 'Message...'}
+                className="min-h-[36px] lg:min-h-[40px] max-h-[100px] lg:max-h-[120px] resize-none text-xs lg:text-sm"
                 rows={1}
                 disabled={isLoading || isRecording || !isConfigured}
               />
@@ -464,16 +492,16 @@ export function AIChatbot() {
               size="icon"
               onClick={toggleRecording}
               disabled={isTranscribing || isLoading || !isConfigured}
-              className={cn('flex-shrink-0 h-10 w-10', isRecording && 'animate-pulse')}
+              className={cn('flex-shrink-0 h-9 w-9 lg:h-10 lg:w-10', isRecording && 'animate-pulse')}
             >
-              {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isRecording ? <Square className="w-3.5 h-3.5 lg:w-4 lg:h-4" /> : <Mic className="w-3.5 h-3.5 lg:w-4 lg:h-4" />}
             </Button>
             <Button
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isRecording || !isConfigured}
-              className="flex-shrink-0 h-10 px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
+              className="flex-shrink-0 h-9 lg:h-10 px-3 lg:px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
             >
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {isLoading ? <Loader2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 animate-spin" /> : <Send className="w-3.5 h-3.5 lg:w-4 lg:h-4" />}
             </Button>
           </div>
         </CardContent>

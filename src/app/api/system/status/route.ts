@@ -38,6 +38,12 @@ export async function GET() {
       category: 'ai',
     },
     {
+      name: 'LangSearch',
+      envKey: 'LANGSEARCH_API_KEY',
+      status: process.env.LANGSEARCH_API_KEY ? 'connected' : 'not_configured',
+      category: 'ai',
+    },
+    {
       name: 'Supabase',
       envKey: 'NEXT_PUBLIC_SUPABASE_URL',
       status: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'connected' : 'not_configured',

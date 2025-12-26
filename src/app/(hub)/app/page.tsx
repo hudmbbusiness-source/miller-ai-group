@@ -32,6 +32,13 @@ const statusColors: Record<string, string> = {
   'past': 'bg-gray-500/10 text-gray-400 border-gray-500/20',
 }
 
+const statusLabels: Record<string, string> = {
+  'active': 'Active',
+  'development': 'In Development',
+  'coming-soon': 'Coming Soon',
+  'past': 'Past Venture',
+}
+
 const priorityColors = {
   0: 'bg-gray-500/10 text-gray-500',
   1: 'bg-blue-500/10 text-blue-500',
@@ -316,7 +323,7 @@ export default async function DashboardPage() {
                 <div className="flex items-start justify-between">
                   <CardTitle className="text-lg">{project.name}</CardTitle>
                   <Badge variant="outline" className={statusColors[project.status]}>
-                    Not connected
+                    {statusLabels[project.status]}
                   </Badge>
                 </div>
                 <CardDescription>{project.description}</CardDescription>

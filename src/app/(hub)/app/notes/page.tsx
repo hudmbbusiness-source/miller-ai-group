@@ -67,12 +67,15 @@ function NotesContent() {
   const [pinned, setPinned] = useState(false)
 
   // Voice recording
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const { isRecording, isTranscribing, toggleRecording } = useVoiceRecording({
     onTranscription: (text) => {
+      setVoiceError(null)
       setContent(prev => prev ? `${prev}\n\n${text}` : text)
     },
     onError: (err) => {
       console.error('Voice recording error:', err)
+      setVoiceError(err)
     },
   })
 
@@ -422,6 +425,12 @@ function NotesContent() {
                 <p className="text-xs text-destructive animate-pulse flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-destructive" />
                   Recording... Click Stop when done.
+                </p>
+              )}
+              {voiceError && (
+                <p className="text-xs text-destructive flex items-center gap-2">
+                  <X className="w-3 h-3" />
+                  {voiceError}
                 </p>
               )}
             </div>

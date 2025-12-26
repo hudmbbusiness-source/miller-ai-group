@@ -3,16 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { TrendingUp, CheckCircle, Circle, AlertTriangle, ExternalLink, BarChart3, Cpu, Shield, Zap } from 'lucide-react'
+import { TrendingUp, ExternalLink, BarChart3, Cpu, Shield, Zap, Sparkles } from 'lucide-react'
 import Link from 'next/link'
-
-const readinessChecklist = [
-  { id: 'exchange', label: 'Exchange API Connections', status: 'pending' },
-  { id: 'ml', label: 'ML Model Training Pipeline', status: 'pending' },
-  { id: 'data', label: 'Real-time Market Data Feeds', status: 'pending' },
-  { id: 'risk', label: 'Risk Management System', status: 'pending' },
-  { id: 'execution', label: 'High-Frequency Execution Engine', status: 'pending' },
-]
 
 const features = [
   {
@@ -38,9 +30,6 @@ const features = [
 ]
 
 export default function StuntmanToolPage() {
-  const readyCount = readinessChecklist.filter(i => i.status === 'ready').length
-  const totalCount = readinessChecklist.length
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -83,60 +72,26 @@ export default function StuntmanToolPage() {
         </CardContent>
       </Card>
 
-      {/* Connection Status */}
-      <Card className="border-2 border-amber-500/30 bg-amber-500/5">
+      {/* Development Status */}
+      <Card className="border-2 border-emerald-500/30 bg-emerald-500/5">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="w-6 h-6 text-amber-500" />
-              <CardTitle>System In Development</CardTitle>
+              <Sparkles className="w-6 h-6 text-emerald-500" />
+              <CardTitle>Currently In Development</CardTitle>
             </div>
-            <Badge variant="secondary">Not Live</Badge>
           </div>
           <CardDescription>
-            StuntMan AI is currently in active development. The trading engine, AI models, and risk management
-            systems are being built and tested before going live with real capital.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      {/* Readiness Checklist */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Development Progress</CardTitle>
-          <CardDescription>
-            {readyCount} of {totalCount} core systems completed
+            StuntMan AI is in active development. The high-frequency trading engine, AI models,
+            exchange integrations, and risk management systems are being designed and tested
+            before any live trading with real capital.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {readinessChecklist.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 p-3 rounded-lg bg-muted/30"
-              >
-                {item.status === 'ready' ? (
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                ) : (
-                  <Circle className="w-5 h-5 text-muted-foreground" />
-                )}
-                <span className={item.status === 'ready' ? 'text-foreground' : 'text-muted-foreground'}>
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border">
-            <p className="text-sm text-muted-foreground mb-3">
-              StuntMan AI requires exchange API integrations, trained ML models, and robust risk management
-              infrastructure before live trading can begin.
-            </p>
-            <Button variant="outline" disabled className="gap-2">
-              <ExternalLink className="w-4 h-4" />
-              Technical Documentation (Coming Soon)
-            </Button>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Building a crypto trading system requires rigorous testing and backtesting before deployment.
+            StuntMan focuses on micro-scalping strategies that require precise execution and robust risk controls.
+          </p>
         </CardContent>
       </Card>
 
@@ -168,13 +123,10 @@ export default function StuntmanToolPage() {
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button variant="outline" asChild>
-            <Link href="/projects/stuntman">View Project Details</Link>
-          </Button>
-          <Button variant="outline" disabled>
-            View Backtest Results
-          </Button>
-          <Button variant="outline" disabled>
-            Configure Parameters
+            <Link href="/app/projects/stuntman">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              View Project Details
+            </Link>
           </Button>
         </CardContent>
       </Card>

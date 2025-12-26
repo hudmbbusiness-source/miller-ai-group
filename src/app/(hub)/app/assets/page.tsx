@@ -24,6 +24,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
   ShoppingBag,
   Plus,
   ExternalLink,
@@ -32,7 +39,10 @@ import {
   Check,
   Package,
   Heart,
-  ImageIcon,
+  Search,
+  Loader2,
+  Globe,
+  PlusCircle,
 } from 'lucide-react'
 import { ImageUpload } from '@/components/ui/image-upload'
 import {
@@ -43,6 +53,14 @@ import {
   markAssetOwned,
   type Asset,
 } from '@/lib/actions/assets'
+
+interface Product {
+  name: string
+  description: string
+  url: string
+  source: string
+  image_url: string | null
+}
 
 const priorityColors = {
   0: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
@@ -94,6 +112,14 @@ export default function AssetsPage() {
   const [category, setCategory] = useState<'want' | 'owned' | 'goal'>('want')
   const [priority, setPriority] = useState<number>(1)
   const [notes, setNotes] = useState('')
+
+  // Product Search state
+  const [productSearchOpen, setProductSearchOpen] = useState(false)
+  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [productSearchLoading, setProductSearchLoading] = useState(false)
+  const [products, setProducts] = useState<Product[]>([])
+  const [productSearchError, setProductSearchError] = useState<string | null>(null)
+  const [addingProduct, setAddingProduct] = useState<string | null>(null)
 
   useEffect(() => {
     loadAssets()
@@ -174,6 +200,59 @@ export default function AssetsPage() {
     loadAssets()
   }
 
+  const searchProducts = async () => {
+    if (!productSearchQuery.trim() || productSearchQuery.length < 2) return
+
+    setProductSearchLoading(true)
+    setProducts([])
+    setProductSearchError(null)
+
+    try {
+      const response = await fetch('/api/ai/product-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: productSearchQuery.trim() }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.products) {
+        setProducts(data.products)
+        if (data.products.length === 0) {
+          setProductSearchError('No products found. Try a different search term.')
+        }
+      } else {
+        setProductSearchError(data.error || 'Failed to search. Please try again.')
+      }
+    } catch (error) {
+      console.error('Product search error:', error)
+      setProductSearchError('Network error. Please check your connection.')
+    } finally {
+      setProductSearchLoading(false)
+    }
+  }
+
+  const addProductToList = async (product: Product, targetCategory: 'want' | 'owned') => {
+    setAddingProduct(product.url)
+    try {
+      await createAsset({
+        name: product.name,
+        description: product.description || undefined,
+        external_link: product.url,
+        image_url: product.image_url || undefined,
+        category: targetCategory,
+        priority: 1,
+      })
+      loadAssets()
+      // Remove from list to show it was added
+      setProducts(prev => prev.filter(p => p.url !== product.url))
+    } catch (error) {
+      console.error('Failed to add product:', error)
+    } finally {
+      setAddingProduct(null)
+    }
+  }
+
   const filteredAssets = assets.filter((asset) => {
     if (filter === 'all') return true
     return asset.category === filter
@@ -186,13 +265,18 @@ export default function AssetsPage() {
           <h1 className="text-3xl font-bold">Assets & Wishlist</h1>
           <p className="text-muted-foreground mt-1">Track things you want, own, or are working towards.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Item
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setProductSearchOpen(true)}>
+            <Globe className="w-4 h-4 mr-2" />
+            Search Products
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => handleOpenDialog()}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Item
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingAsset ? 'Edit Item' : 'Add Item'}</DialogTitle>
@@ -286,7 +370,8 @@ export default function AssetsPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* Filters - larger touch targets on mobile */}
@@ -449,6 +534,122 @@ export default function AssetsPage() {
           })}
         </div>
       )}
+
+      {/* Product Search Sheet */}
+      <Sheet open={productSearchOpen} onOpenChange={setProductSearchOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-hidden flex flex-col">
+          <SheetHeader className="flex-shrink-0">
+            <SheetTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5 text-blue-500" />
+              Search Products
+            </SheetTitle>
+            <p className="text-sm text-muted-foreground">
+              Find products online and add them to your wishlist or owned items.
+            </p>
+          </SheetHeader>
+
+          {/* Search Input */}
+          <div className="flex gap-2 mt-4">
+            <Input
+              placeholder="e.g., Sony WH-1000XM5 headphones"
+              value={productSearchQuery}
+              onChange={(e) => setProductSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchProducts()}
+              className="flex-1"
+            />
+            <Button onClick={searchProducts} disabled={productSearchLoading || productSearchQuery.length < 2}>
+              {productSearchLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1 -mx-6 px-6 mt-4">
+            {productSearchLoading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
+                <p className="text-sm text-muted-foreground">Searching for products...</p>
+              </div>
+            ) : productSearchError && products.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Search className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  {productSearchError}
+                </p>
+              </div>
+            ) : products.length > 0 ? (
+              <div className="space-y-3 py-2">
+                {products.map((product, i) => (
+                  <div
+                    key={i}
+                    className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                  >
+                    <h4 className="font-medium text-sm mb-1 line-clamp-2">{product.name}</h4>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
+                      {product.description}
+                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <a
+                        href={product.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 truncate max-w-[40%]"
+                      >
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        {product.source}
+                      </a>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => addProductToList(product, 'want')}
+                          disabled={addingProduct === product.url}
+                          className="gap-1 text-xs"
+                        >
+                          {addingProduct === product.url ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Heart className="w-3 h-3" />
+                          )}
+                          Wishlist
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => addProductToList(product, 'owned')}
+                          disabled={addingProduct === product.url}
+                          className="gap-1 text-xs"
+                        >
+                          {addingProduct === product.url ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Package className="w-3 h-3" />
+                          )}
+                          Owned
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <ShoppingBag className="w-12 h-12 text-muted-foreground/20 mb-4" />
+                <p className="text-sm text-muted-foreground">
+                  Search for any product
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add directly to your wishlist or owned items
+                </p>
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

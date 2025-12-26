@@ -278,49 +278,49 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)] min-h-[400px] max-h-[800px] gap-2 lg:gap-4">
-      {/* Sidebar - Conversation List - Hidden on mobile by default */}
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-8rem)] sm:h-[calc(100vh-10rem)] lg:h-[calc(100vh-12rem)] min-h-[300px] gap-3 lg:gap-4">
+      {/* Sidebar - Conversation List - Collapsible on mobile */}
       {showSidebar && (
-        <Card className="w-full lg:w-56 xl:w-64 flex-shrink-0 flex flex-col max-h-[200px] lg:max-h-none">
-          <CardHeader className="py-2 lg:py-3 px-3 lg:px-4 border-b">
+        <Card className="w-full lg:w-56 xl:w-64 flex-shrink-0 flex flex-col max-h-[140px] sm:max-h-[180px] lg:max-h-none">
+          <CardHeader className="py-2 px-3 border-b">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xs lg:text-sm font-medium">History</CardTitle>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-6 w-6 lg:h-7 lg:w-7" onClick={createNewConversation}>
-                  <Plus className="w-3 h-3 lg:w-4 lg:h-4" />
+              <CardTitle className="text-sm font-medium">History</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 min-w-[32px]" onClick={createNewConversation}>
+                  <Plus className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6 lg:hidden" onClick={() => setShowSidebar(false)}>
-                  <ChevronLeft className="w-3 h-3" />
+                <Button variant="ghost" size="icon" className="h-8 w-8 min-w-[32px] lg:hidden" onClick={() => setShowSidebar(false)}>
+                  <ChevronLeft className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <div className="flex-1 overflow-y-auto p-1.5 lg:p-2">
+          <div className="flex-1 overflow-y-auto p-2">
             {conversations.length === 0 ? (
-              <p className="text-[10px] lg:text-xs text-muted-foreground text-center py-2 lg:py-4">No conversations yet</p>
+              <p className="text-xs text-muted-foreground text-center py-3">No conversations yet</p>
             ) : (
-              <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0">
+              <div className="flex flex-col gap-1">
                 {conversations.map((conv) => (
                   <div
                     key={conv.id}
                     className={cn(
-                      'group flex items-center gap-1.5 lg:gap-2 p-1.5 lg:p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors flex-shrink-0 lg:flex-shrink',
+                      'group flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors min-h-[40px]',
                       currentConversationId === conv.id && 'bg-muted'
                     )}
                     onClick={() => setCurrentConversationId(conv.id)}
                   >
-                    <MessageSquare className="w-3 h-3 lg:w-4 lg:h-4 flex-shrink-0 text-muted-foreground" />
-                    <span className="text-[10px] lg:text-sm truncate max-w-[100px] lg:max-w-none">{conv.title}</span>
+                    <MessageSquare className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                    <span className="text-sm truncate flex-1">{conv.title}</span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-5 w-5 lg:h-6 lg:w-6 opacity-0 group-hover:opacity-100 transition-opacity hidden lg:flex"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity hidden lg:flex"
                       onClick={(e) => {
                         e.stopPropagation()
                         deleteConversation(conv.id)
                       }}
                     >
-                      <Trash2 className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-destructive" />
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
                     </Button>
                   </div>
                 ))}
@@ -333,68 +333,68 @@ export function AIChatbot() {
       {/* Main Chat Area */}
       <Card className="flex-1 flex flex-col min-w-0 border-amber-500/20">
         {/* Header */}
-        <CardHeader className="flex-shrink-0 py-2 lg:py-3 px-2 sm:px-3 lg:px-4 border-b">
+        <CardHeader className="flex-shrink-0 py-2 px-3 sm:px-4 border-b">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 lg:gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 lg:h-8 lg:w-8 flex-shrink-0"
+                className="h-9 w-9 min-w-[36px] flex-shrink-0"
                 onClick={() => setShowSidebar(!showSidebar)}
               >
                 {showSidebar ? (
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-5 h-5" />
                 ) : (
-                  <MessageSquare className="w-4 h-4" />
+                  <MessageSquare className="w-5 h-5" />
                 )}
               </Button>
-              <div className="p-1 lg:p-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex-shrink-0">
-                <Brain className="w-3 h-3 lg:w-4 lg:h-4 text-amber-500" />
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex-shrink-0">
+                <Brain className="w-4 h-4 text-amber-500" />
               </div>
-              <span className="font-semibold text-sm lg:text-base truncate">BrainBox</span>
-              <Badge variant="outline" className="text-[8px] lg:text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex-shrink-0 hidden sm:flex">
+              <span className="font-semibold text-base truncate">BrainBox</span>
+              <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex-shrink-0 hidden sm:flex">
                 Groq
               </Badge>
-              {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground flex-shrink-0" />}
+              {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
             </div>
-            <div className="flex items-center gap-0.5 lg:gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1 flex-shrink-0">
               {webSearchAvailable && (
                 <Button
                   variant={context.enableWebSearch ? 'secondary' : 'ghost'}
                   size="sm"
                   className={cn(
-                    "h-6 lg:h-7 text-[10px] lg:text-xs px-1.5 lg:px-2",
+                    "h-8 min-w-[32px] text-xs px-2",
                     context.enableWebSearch && "bg-green-500/20 hover:bg-green-500/30 text-green-600"
                   )}
                   onClick={() => setContext(prev => ({ ...prev, enableWebSearch: !prev.enableWebSearch }))}
                   title="Web search for current information"
                 >
-                  <Globe className="w-3 h-3" />
-                  <span className="hidden lg:inline ml-1">Web</span>
+                  <Globe className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1">Web</span>
                 </Button>
               )}
               <Button
                 variant={context.includeGoals ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-6 lg:h-7 text-[10px] lg:text-xs px-1.5 lg:px-2"
+                className="h-8 min-w-[32px] text-xs px-2"
                 onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
               >
-                <Target className="w-3 h-3" />
-                <span className="hidden lg:inline ml-1">Goals</span>
+                <Target className="w-4 h-4" />
+                <span className="hidden sm:inline ml-1">Goals</span>
               </Button>
               <Button
                 variant={context.includeNotes ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-6 lg:h-7 text-[10px] lg:text-xs px-1.5 lg:px-2"
+                className="h-8 min-w-[32px] text-xs px-2 hidden sm:flex"
                 onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
               >
-                <FileText className="w-3 h-3" />
+                <FileText className="w-4 h-4" />
                 <span className="hidden lg:inline ml-1">Notes</span>
               </Button>
               {messages.length > 0 && (
-                <Button variant="ghost" size="sm" className="h-6 lg:h-7 px-1.5 lg:px-2" onClick={createNewConversation}>
-                  <RefreshCw className="w-3 h-3" />
-                  <span className="hidden lg:inline ml-1">New</span>
+                <Button variant="ghost" size="sm" className="h-8 min-w-[32px] px-2" onClick={createNewConversation}>
+                  <RefreshCw className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1">New</span>
                 </Button>
               )}
             </div>

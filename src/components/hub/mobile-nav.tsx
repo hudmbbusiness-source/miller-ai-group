@@ -75,18 +75,18 @@ export function MobileNav() {
               </div>
 
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                 <span className="text-sm font-semibold">More Options</span>
                 <button
                   onClick={() => setIsExpanded(false)}
-                  className="p-2 -mr-2 text-muted-foreground hover:text-foreground"
+                  className="p-2.5 -mr-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-muted-foreground hover:text-foreground active:bg-muted rounded-lg"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Grid of options */}
-              <div className="grid grid-cols-4 gap-1 p-3 max-h-[50vh] overflow-y-auto">
+              <div className="grid grid-cols-4 gap-2 p-4 max-h-[50vh] overflow-y-auto">
                 {expandedNav.map((item) => {
                   const active = isActive(item.href)
                   return (
@@ -95,10 +95,10 @@ export function MobileNav() {
                       href={item.href}
                       onClick={() => setIsExpanded(false)}
                       className={cn(
-                        'flex flex-col items-center justify-center gap-1 p-3 rounded-xl transition-colors',
+                        'flex flex-col items-center justify-center gap-1.5 p-3 min-h-[72px] rounded-xl transition-colors active:scale-95',
                         active
                           ? 'bg-amber-500/10 text-amber-500'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted'
                       )}
                     >
                       <item.icon className="w-5 h-5" />
@@ -116,7 +116,7 @@ export function MobileNav() {
 
       {/* Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-card/95 backdrop-blur-md border-t border-border safe-area-bottom">
-        <div className="flex items-center justify-around h-16 px-1">
+        <div className="flex items-center justify-around h-[68px] px-2">
           {primaryNav.map((item) => {
             const active = isActive(item.href)
             return (
@@ -124,7 +124,7 @@ export function MobileNav() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 min-w-[56px] rounded-lg transition-colors relative',
+                  'flex flex-col items-center justify-center gap-1 px-4 py-2 min-w-[64px] min-h-[52px] rounded-xl transition-colors relative active:scale-95',
                   active
                     ? 'text-amber-500'
                     : 'text-muted-foreground active:text-foreground'
@@ -133,12 +133,12 @@ export function MobileNav() {
                 {active && (
                   <motion.div
                     layoutId="mobileNavActive"
-                    className="absolute inset-0 bg-amber-500/10 rounded-lg"
+                    className="absolute inset-0 bg-amber-500/10 rounded-xl"
                     transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                   />
                 )}
                 <item.icon className="w-5 h-5 relative z-10" />
-                <span className="text-[10px] font-medium relative z-10">{item.label}</span>
+                <span className="text-[11px] font-medium relative z-10">{item.label}</span>
               </Link>
             )
           })}
@@ -147,12 +147,12 @@ export function MobileNav() {
           <button
             onClick={() => setIsExpanded(true)}
             className={cn(
-              'flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 min-w-[56px] rounded-lg transition-colors',
-              'text-muted-foreground active:text-foreground'
+              'flex flex-col items-center justify-center gap-1 px-4 py-2 min-w-[64px] min-h-[52px] rounded-xl transition-colors active:scale-95',
+              'text-muted-foreground active:text-foreground active:bg-muted/50'
             )}
           >
             <ChevronUp className="w-5 h-5" />
-            <span className="text-[10px] font-medium">More</span>
+            <span className="text-[11px] font-medium">More</span>
           </button>
         </div>
       </nav>

@@ -127,10 +127,10 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Welcome back to your personal hub.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+        <p className="text-sm sm:text-base text-muted-foreground mt-1">Welcome back to your personal hub.</p>
       </div>
 
       {/* Stats Cards */}
@@ -300,13 +300,13 @@ export default async function DashboardPage() {
 
       {/* Productivity Analytics */}
       <div>
-        <h2 className="text-xl font-semibold mb-4">Productivity Analytics</h2>
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Productivity Analytics</h2>
         <ProductivityAnalytics />
       </div>
 
       {/* GitHub Section */}
       <div>
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
           <Github className="w-5 h-5" />
           GitHub Activity
         </h2>
@@ -315,7 +315,7 @@ export default async function DashboardPage() {
 
       {/* Projects Section */}
       <div>
-        <h2 className="text-xl font-semibold mb-4">Ventures</h2>
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Ventures</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {PROJECTS.map((project) => (
             <Card key={project.slug}>
@@ -343,42 +343,42 @@ export default async function DashboardPage() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <Button asChild>
+        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3">
+          <Button asChild className="h-10 sm:h-9 text-sm">
             <Link href="/app/notes?new=true">
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               New Note
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
             <Link href="/app/goals?new=true">
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               New Goal
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
             <Link href="/app/assets?new=true">
-              <Plus className="w-4 h-4 mr-2" />
-              Add to Wishlist
+              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
+              Wishlist
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
             <Link href="/app/boards?new=true">
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               New Board
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
             <Link href="/app/links?new=true">
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               Add Link
             </Link>
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
             <Link href="/app/files?upload=true">
-              <Plus className="w-4 h-4 mr-2" />
-              Upload File
+              <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
+              Upload
             </Link>
           </Button>
         </div>

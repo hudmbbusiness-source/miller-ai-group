@@ -85,36 +85,41 @@ function CareerCard({ career, isFounder = false }: { career: CareerPath; isFound
     : 'text-orange-500'
 
   return (
-    <div className={`p-4 rounded-lg border ${isFounder ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-border'}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <h4 className="font-semibold mb-1">{career.title}</h4>
-          <p className="text-sm text-muted-foreground mb-3">{career.description}</p>
+    <div className={`p-3 sm:p-4 rounded-lg border ${isFounder ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-border'}`}>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-sm sm:text-base mb-1">{career.title}</h4>
+          <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3">{career.description}</p>
 
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {career.skills.map((skill) => (
-              <Badge key={skill} variant="outline" className="text-xs">
+          <div className="flex flex-wrap gap-1 sm:gap-1.5 mb-2 sm:mb-3">
+            {career.skills.slice(0, 4).map((skill) => (
+              <Badge key={skill} variant="outline" className="text-[10px] sm:text-xs">
                 {skill}
               </Badge>
             ))}
+            {career.skills.length > 4 && (
+              <Badge variant="outline" className="text-[10px] sm:text-xs">
+                +{career.skills.length - 4}
+              </Badge>
+            )}
           </div>
         </div>
 
-        <div className="text-right shrink-0">
+        <div className="flex sm:flex-col items-center sm:items-end gap-3 sm:gap-1 sm:text-right shrink-0">
           {career.salaryRange ? (
-            <div className="flex items-center gap-1 text-sm font-medium mb-1">
-              <DollarSign className="w-3.5 h-3.5 text-green-500" />
+            <div className="flex items-center gap-1 text-xs sm:text-sm font-medium">
+              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-500" />
               <span>{formatSalary(career.salaryRange.min)} - {formatSalary(career.salaryRange.max)}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1 text-sm font-medium mb-1">
-              <DollarSign className="w-3.5 h-3.5 text-primary" />
+            <div className="flex items-center gap-1 text-xs sm:text-sm font-medium">
+              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary" />
               <span>Equity-based</span>
             </div>
           )}
 
-          <div className={`flex items-center gap-1 text-sm ${probabilityColor}`}>
-            <Percent className="w-3.5 h-3.5" />
+          <div className={`flex items-center gap-1 text-xs sm:text-sm ${probabilityColor}`}>
+            <Percent className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             <span>{career.probability}% likely</span>
           </div>
         </div>
@@ -370,15 +375,15 @@ export default function ZuckerbergPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">The Zuckerberg Project</h1>
-          <p className="text-muted-foreground mt-1">Top-Tier AI Internships + CEO/CTO Founder Track</p>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">The Zuckerberg Project</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">Top-Tier AI Internships + CEO/CTO Founder Track</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleExport} variant="outline">
-            <Download className="w-4 h-4 mr-2" />
+          <Button onClick={handleExport} variant="outline" size="sm" className="h-9 sm:h-10">
+            <Download className="w-4 h-4 mr-1.5 sm:mr-2" />
             Export
           </Button>
         </div>
@@ -386,92 +391,92 @@ export default function ZuckerbergPage() {
 
       {/* Career Snapshot - Top Accessible Roles */}
       <Card className="border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-transparent">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-amber-500" />
-            Career Snapshot - Best Entry Points
+        <CardHeader className="pb-2 px-3 sm:px-6">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 flex-shrink-0" />
+            <span className="truncate">Career Snapshot - Best Entry Points</span>
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Most accessible management/leadership roles for BYU CS + Business grads
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid sm:grid-cols-3 gap-4">
+        <CardContent className="px-3 sm:px-6">
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-3">
             {/* TPM - Best Entry */}
-            <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+            <div className="p-3 sm:p-4 rounded-lg bg-green-500/10 border border-green-500/20">
               <div className="flex items-center gap-2 mb-2">
-                <Badge className="bg-green-500/20 text-green-500">3-8% Likelihood</Badge>
+                <Badge className="bg-green-500/20 text-green-500 text-[10px] sm:text-xs">3-8% Likelihood</Badge>
               </div>
-              <h4 className="font-semibold mb-1">Technical Program Manager</h4>
-              <p className="text-sm text-muted-foreground mb-2">Amazon, Google, Meta</p>
-              <p className="text-sm font-medium text-green-500">$120k-$160k + RSUs</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Amazon recruits at BYU - best entry point for you
+              <h4 className="font-semibold text-sm sm:text-base mb-1">Technical Program Manager</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground mb-2">Amazon, Google, Meta</p>
+              <p className="text-xs sm:text-sm font-medium text-green-500">$120k-$160k + RSUs</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-2">
+                Amazon recruits at BYU - best entry point
               </p>
             </div>
 
             {/* BDR - Highest Likelihood */}
-            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <div className="p-3 sm:p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
               <div className="flex items-center gap-2 mb-2">
-                <Badge className="bg-blue-500/20 text-blue-500">15-30% Likelihood</Badge>
+                <Badge className="bg-blue-500/20 text-blue-500 text-[10px] sm:text-xs">15-30% Likelihood</Badge>
               </div>
-              <h4 className="font-semibold mb-1">Business Development Rep</h4>
-              <p className="text-sm text-muted-foreground mb-2">Google Cloud, AWS, Salesforce</p>
-              <p className="text-sm font-medium text-blue-500">$70k-$90k + OTE $150k</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Missionary experience is HIGHLY valued in sales
+              <h4 className="font-semibold text-sm sm:text-base mb-1">Business Development Rep</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground mb-2">Google Cloud, AWS, Salesforce</p>
+              <p className="text-xs sm:text-sm font-medium text-blue-500">$70k-$90k + OTE $150k</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-2">
+                Missionary experience is HIGHLY valued
               </p>
             </div>
 
             {/* Strategy & Ops */}
-            <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+            <div className="p-3 sm:p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
               <div className="flex items-center gap-2 mb-2">
-                <Badge className="bg-purple-500/20 text-purple-500">2-5% Likelihood</Badge>
+                <Badge className="bg-purple-500/20 text-purple-500 text-[10px] sm:text-xs">2-5% Likelihood</Badge>
               </div>
-              <h4 className="font-semibold mb-1">Strategy & Operations</h4>
-              <p className="text-sm text-muted-foreground mb-2">Stripe, Uber, DoorDash</p>
-              <p className="text-sm font-medium text-purple-500">$130k-$170k + Equity</p>
-              <p className="text-xs text-muted-foreground mt-2">
+              <h4 className="font-semibold text-sm sm:text-base mb-1">Strategy & Operations</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground mb-2">Stripe, Uber, DoorDash</p>
+              <p className="text-xs sm:text-sm font-medium text-purple-500">$130k-$170k + Equity</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-2">
                 BYU Marriott School brand helps here
               </p>
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-sm text-muted-foreground">
+          <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-border">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               <span className="font-medium">Your edge:</span> CS + Business dual focus, technical skills, and leadership experience
-              make you competitive for business-track tech roles. Focus on TPM and BizOps for best new grad odds.
+              make you competitive for business-track tech roles.
             </p>
           </div>
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="plan" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
-          <TabsTrigger value="plan">Plan</TabsTrigger>
-          <TabsTrigger value="career-hub" className="flex items-center gap-1">
+      <Tabs defaultValue="plan" className="space-y-4 sm:space-y-6">
+        <TabsList className="flex overflow-x-auto w-full pb-1 sm:pb-0 sm:grid sm:grid-cols-8 gap-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <TabsTrigger value="plan" className="flex-shrink-0 text-xs sm:text-sm px-2 sm:px-3">Plan</TabsTrigger>
+          <TabsTrigger value="career-hub" className="flex-shrink-0 flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3">
             <DollarSign className="w-3 h-3" />
             <span className="hidden sm:inline">Career Hub</span>
             <span className="sm:hidden">Jobs</span>
           </TabsTrigger>
-          <TabsTrigger value="requirements" className="flex items-center gap-1">
+          <TabsTrigger value="requirements" className="flex-shrink-0 flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3">
             <Rocket className="w-3 h-3" />
             <span className="hidden sm:inline">Internships</span>
             <span className="sm:hidden">Apply</span>
           </TabsTrigger>
-          <TabsTrigger value="github" className="flex items-center gap-1">
+          <TabsTrigger value="github" className="flex-shrink-0 flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3">
             <Github className="w-3 h-3" />
             <span className="hidden sm:inline">GitHub</span>
           </TabsTrigger>
-          <TabsTrigger value="insights" className="flex items-center gap-1">
+          <TabsTrigger value="insights" className="flex-shrink-0 flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3">
             <Sparkles className="w-3 h-3" />
             AI
           </TabsTrigger>
-          <TabsTrigger value="careers">Paths</TabsTrigger>
-          <TabsTrigger value="connections" className="flex items-center gap-1">
+          <TabsTrigger value="careers" className="flex-shrink-0 text-xs sm:text-sm px-2 sm:px-3">Paths</TabsTrigger>
+          <TabsTrigger value="connections" className="flex-shrink-0 flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3">
             <Key className="w-3 h-3" />
             <span className="hidden sm:inline">APIs</span>
           </TabsTrigger>
-          <TabsTrigger value="document">
+          <TabsTrigger value="document" className="flex-shrink-0 text-xs sm:text-sm px-2 sm:px-3">
             <span className="hidden sm:inline">Document</span>
             <span className="sm:hidden">Doc</span>
           </TabsTrigger>

@@ -236,8 +236,13 @@ export async function POST(request: NextRequest) {
     // Determine if we should perform web search:
     // 1. If web search is explicitly enabled (toggle is on), always search
     // 2. If asking about current info and web search is not explicitly disabled
-    const shouldSearch = context?.enableWebSearch === true ||
-                         (askingAboutCurrent && context?.enableWebSearch !== false)
+    const webSearchEnabled = context?.enableWebSearch
+    const shouldSearch = webSearchEnabled === true ||
+                         (askingAboutCurrent && webSearchEnabled !== false)
+
+    console.log(`[BrainBox] Context received:`, JSON.stringify(context))
+    console.log(`[BrainBox] Web search enabled: ${webSearchEnabled}, Should search: ${shouldSearch}`)
+    console.log(`[BrainBox] LANGSEARCH_API_KEY configured: ${!!process.env.LANGSEARCH_API_KEY}`)
 
     // Perform web search
     let webSearchContext = ''
@@ -245,7 +250,7 @@ export async function POST(request: NextRequest) {
     let searchError = ''
 
     if (shouldSearch) {
-      console.log(`Web search triggered for: "${lastUserMessage.slice(0, 50)}..."`)
+      console.log(`[BrainBox] Performing web search for: "${lastUserMessage.slice(0, 50)}..."`)
       const searchResult = await searchWeb(lastUserMessage)
       searchPerformed = searchResult.searchPerformed
 

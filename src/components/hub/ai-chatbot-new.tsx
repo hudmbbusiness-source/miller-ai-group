@@ -279,20 +279,23 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="relative flex flex-col h-full min-h-[600px]">
-      {/* Sidebar Overlay - Always overlay, never takes layout space */}
+    <div className="relative flex flex-col lg:flex-row h-full min-h-[400px] gap-0 lg:gap-4">
+      {/* Mobile Sidebar Overlay */}
       {showSidebar && (
         <div
-          className="fixed inset-0 bg-black/50 z-40"
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setShowSidebar(false)}
         />
       )}
 
-      {/* Sidebar - Conversation List (Always overlay) */}
+      {/* Sidebar - Conversation List */}
       <Card className={cn(
-        "flex flex-col z-50",
-        "fixed inset-y-0 left-0 w-[280px] transform transition-transform duration-200",
-        showSidebar ? "translate-x-0" : "-translate-x-full"
+        "lg:w-44 xl:w-52 flex-shrink-0 flex flex-col z-50",
+        // Mobile: fixed overlay from left
+        "fixed lg:static inset-y-0 left-0 w-[280px] transform transition-transform duration-200",
+        showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        // Desktop: always visible
+        "lg:flex"
       )}>
         <CardHeader className="py-3 px-4 border-b">
           <div className="flex items-center justify-between">
@@ -301,7 +304,7 @@ export function AIChatbot() {
               <Button variant="ghost" size="icon" className="h-10 w-10" onClick={createNewConversation}>
                 <Plus className="w-5 h-5" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setShowSidebar(false)}>
+              <Button variant="ghost" size="icon" className="h-10 w-10 lg:hidden" onClick={() => setShowSidebar(false)}>
                 <ChevronLeft className="w-5 h-5" />
               </Button>
             </div>
@@ -329,7 +332,7 @@ export function AIChatbot() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-8 w-8 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
                     onClick={(e) => {
                       e.stopPropagation()
                       deleteConversation(conv.id)
@@ -344,8 +347,8 @@ export function AIChatbot() {
         </div>
       </Card>
 
-      {/* Main Chat Area - Full width */}
-      <div className="flex-1 flex flex-col min-w-0 bg-card rounded-xl border border-amber-500/20">
+      {/* Main Chat Area */}
+      <Card className="flex-1 flex flex-col min-w-0 border-amber-500/20">
         {/* Header - Simplified for mobile */}
         <CardHeader className="flex-shrink-0 py-3 px-4 border-b">
           <div className="flex items-center justify-between gap-3">
@@ -370,9 +373,9 @@ export function AIChatbot() {
 
             {/* Right side - Just New button on mobile */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Web search indicator */}
+              {/* Web search indicator - icon only on mobile */}
               {webSearchAvailable && context.enableWebSearch && (
-                <Globe className="w-4 h-4 text-green-500" />
+                <Globe className="w-4 h-4 text-green-500 lg:hidden" />
               )}
               {messages.length > 0 && (
                 <Button variant="outline" size="sm" className="h-10 px-3" onClick={createNewConversation}>
@@ -383,8 +386,8 @@ export function AIChatbot() {
             </div>
           </div>
 
-          {/* Context toggles */}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
+          {/* Context toggles - Hidden on mobile, shown on desktop */}
+          <div className="hidden lg:flex items-center gap-2 mt-3">
             {webSearchAvailable && (
               <Button
                 variant={context.enableWebSearch ? 'secondary' : 'ghost'}
@@ -483,7 +486,7 @@ export function AIChatbot() {
                   )}
                   <div
                     className={cn(
-                      'max-w-[90%] rounded-2xl px-4 py-3',
+                      'max-w-[95%] lg:max-w-[85%] rounded-2xl px-4 py-3',
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted'
@@ -568,7 +571,8 @@ export function AIChatbot() {
             </Button>
           </div>
         </CardContent>
-      </div>
+      </Card>
     </div>
   )
 }
+

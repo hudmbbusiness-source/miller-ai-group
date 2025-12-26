@@ -18,6 +18,8 @@ import {
   FileVideo,
   FileAudio,
   Upload,
+  AlertCircle,
+  X,
 } from 'lucide-react'
 import type { Tables } from '@/types/database'
 
@@ -47,6 +49,7 @@ export default function FilesPage() {
   const [files, setFiles] = useState<FileIndex[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   const fetchFiles = useCallback(async () => {
@@ -82,27 +85,63 @@ export default function FilesPage() {
     if (!selectedFiles?.length) return
 
     setUploading(true)
+    setUploadError(null)
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+
+    if (!user) {
+      setUploadError('Please sign in to upload files')
+      setUploading(false)
+      return
+    }
+
+    let successCount = 0
+    let errorMessages: string[] = []
 
     for (const file of Array.from(selectedFiles)) {
-      const fileExt = file.name.split('.').pop()
+      // Check file size (max 50MB)
+      if (file.size > 50 * 1024 * 1024) {
+        errorMessages.push(`${file.name}: File too large (max 50MB)`)
+        continue
+      }
+
       const storagePath = `${user.id}/${Date.now()}-${file.name}`
 
-      const { data, error } = await supabase.storage
-        .from('hudson-files')
-        .upload(storagePath, file)
+      try {
+        const { data, error } = await supabase.storage
+          .from('hudson-files')
+          .upload(storagePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
 
-      if (!error && data) {
-        // @ts-expect-error - Supabase types not fully inferred at build time
-        await supabase.from('files_index').insert({
-          user_id: user.id,
-          filename: file.name,
-          storage_path: data.path,
-          size: file.size,
-          mime_type: file.type || null,
-        })
+        if (error) {
+          console.error('Storage upload error:', error)
+          errorMessages.push(`${file.name}: ${error.message}`)
+          continue
+        }
+
+        if (data) {
+          // @ts-expect-error - Supabase types not fully inferred at build time
+          const { error: indexError } = await supabase.from('files_index').insert({
+            user_id: user.id,
+            filename: file.name,
+            storage_path: data.path,
+            size: file.size,
+            mime_type: file.type || null,
+          })
+
+          if (indexError) {
+            console.error('Index insert error:', indexError)
+            errorMessages.push(`${file.name}: Failed to save file record`)
+          } else {
+            successCount++
+          }
+        }
+      } catch (err) {
+        console.error('Upload error:', err)
+        errorMessages.push(`${file.name}: Upload failed`)
       }
     }
 
@@ -110,7 +149,16 @@ export default function FilesPage() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-    fetchFiles()
+
+    if (errorMessages.length > 0) {
+      setUploadError(errorMessages.join('. '))
+      // Clear error after 10 seconds
+      setTimeout(() => setUploadError(null), 10000)
+    }
+
+    if (successCount > 0) {
+      fetchFiles()
+    }
   }
 
   const handleDownload = async (file: FileIndex) => {
@@ -196,6 +244,24 @@ export default function FilesPage() {
           className="pl-9"
         />
       </div>
+
+      {/* Upload Error */}
+      {uploadError && (
+        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-destructive">{uploadError}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-destructive"
+            onClick={() => setUploadError(null)}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Files List */}
       {filteredFiles.length === 0 ? (

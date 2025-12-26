@@ -204,6 +204,20 @@ html, body {
   }
 }
 
+/* CRITICAL: Prevent iOS zoom on input focus - must be 16px minimum */
+@media screen and (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* Better mobile touch targets */
+@media (max-width: 767px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+}
+
 /* Focus visible for keyboard navigation */
 :focus-visible {
   outline: 2px solid hsl(var(--ring));

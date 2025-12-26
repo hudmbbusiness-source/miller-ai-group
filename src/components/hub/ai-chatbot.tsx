@@ -56,7 +56,8 @@ export function AIChatbot() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null)
-  const [showSidebar, setShowSidebar] = useState(true)
+  // Hide sidebar by default on mobile
+  const [showSidebar, setShowSidebar] = useState(false)
   const [context, setContext] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
@@ -278,167 +279,188 @@ export function AIChatbot() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-8rem)] sm:h-[calc(100vh-10rem)] lg:h-[calc(100vh-12rem)] min-h-[300px] gap-3 lg:gap-4">
-      {/* Sidebar - Conversation List - Collapsible on mobile */}
+    <div className="relative flex flex-col lg:flex-row h-[calc(100vh-7rem)] lg:h-[calc(100vh-10rem)] min-h-[400px] gap-0 lg:gap-4">
+      {/* Mobile Sidebar Overlay */}
       {showSidebar && (
-        <Card className="w-full lg:w-56 xl:w-64 flex-shrink-0 flex flex-col max-h-[140px] sm:max-h-[180px] lg:max-h-none">
-          <CardHeader className="py-2 px-3 border-b">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">History</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8 min-w-[32px]" onClick={createNewConversation}>
-                  <Plus className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 min-w-[32px] lg:hidden" onClick={() => setShowSidebar(false)}>
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <div className="flex-1 overflow-y-auto p-2">
-            {conversations.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-3">No conversations yet</p>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {conversations.map((conv) => (
-                  <div
-                    key={conv.id}
-                    className={cn(
-                      'group flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors min-h-[40px]',
-                      currentConversationId === conv.id && 'bg-muted'
-                    )}
-                    onClick={() => setCurrentConversationId(conv.id)}
-                  >
-                    <MessageSquare className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                    <span className="text-sm truncate flex-1">{conv.title}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity hidden lg:flex"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteConversation(conv.id)
-                      }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setShowSidebar(false)}
+        />
       )}
+
+      {/* Sidebar - Conversation List */}
+      <Card className={cn(
+        "lg:w-56 xl:w-64 flex-shrink-0 flex flex-col z-50",
+        // Mobile: fixed overlay from left
+        "fixed lg:static inset-y-0 left-0 w-[280px] transform transition-transform duration-200",
+        showSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        // Desktop: always visible
+        "lg:flex"
+      )}>
+        <CardHeader className="py-3 px-4 border-b">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-medium">History</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={createNewConversation}>
+                <Plus className="w-5 h-5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-10 w-10 lg:hidden" onClick={() => setShowSidebar(false)}>
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <div className="flex-1 overflow-y-auto p-3">
+          {conversations.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No conversations yet</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {conversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className={cn(
+                    'group flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-muted/50 transition-colors min-h-[48px]',
+                    currentConversationId === conv.id && 'bg-muted'
+                  )}
+                  onClick={() => {
+                    setCurrentConversationId(conv.id)
+                    setShowSidebar(false) // Close on mobile after selection
+                  }}
+                >
+                  <MessageSquare className="w-5 h-5 flex-shrink-0 text-muted-foreground" />
+                  <span className="text-sm truncate flex-1">{conv.title}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteConversation(conv.id)
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Main Chat Area */}
       <Card className="flex-1 flex flex-col min-w-0 border-amber-500/20">
-        {/* Header */}
-        <CardHeader className="flex-shrink-0 py-2 px-3 sm:px-4 border-b">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+        {/* Header - Simplified for mobile */}
+        <CardHeader className="flex-shrink-0 py-3 px-4 border-b">
+          <div className="flex items-center justify-between gap-3">
+            {/* Left side - Menu + Title */}
+            <div className="flex items-center gap-3 min-w-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 min-w-[36px] flex-shrink-0"
+                className="h-10 w-10 flex-shrink-0"
                 onClick={() => setShowSidebar(!showSidebar)}
               >
-                {showSidebar ? (
-                  <ChevronLeft className="w-5 h-5" />
-                ) : (
-                  <MessageSquare className="w-5 h-5" />
-                )}
+                <MessageSquare className="w-5 h-5" />
               </Button>
-              <div className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex-shrink-0">
-                <Brain className="w-4 h-4 text-amber-500" />
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex-shrink-0">
+                  <Brain className="w-5 h-5 text-amber-500" />
+                </div>
+                <span className="font-semibold text-lg">BrainBox</span>
               </div>
-              <span className="font-semibold text-base truncate">BrainBox</span>
-              <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex-shrink-0 hidden sm:flex">
-                Groq
-              </Badge>
               {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {webSearchAvailable && (
-                <Button
-                  variant={context.enableWebSearch ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className={cn(
-                    "h-8 min-w-[32px] text-xs px-2",
-                    context.enableWebSearch && "bg-green-500/20 hover:bg-green-500/30 text-green-600"
-                  )}
-                  onClick={() => setContext(prev => ({ ...prev, enableWebSearch: !prev.enableWebSearch }))}
-                  title="Web search for current information"
-                >
-                  <Globe className="w-4 h-4" />
-                  <span className="hidden sm:inline ml-1">Web</span>
-                </Button>
+
+            {/* Right side - Just New button on mobile */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Web search indicator - icon only on mobile */}
+              {webSearchAvailable && context.enableWebSearch && (
+                <Globe className="w-4 h-4 text-green-500 lg:hidden" />
               )}
-              <Button
-                variant={context.includeGoals ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 min-w-[32px] text-xs px-2"
-                onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
-              >
-                <Target className="w-4 h-4" />
-                <span className="hidden sm:inline ml-1">Goals</span>
-              </Button>
-              <Button
-                variant={context.includeNotes ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-8 min-w-[32px] text-xs px-2 hidden sm:flex"
-                onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
-              >
-                <FileText className="w-4 h-4" />
-                <span className="hidden lg:inline ml-1">Notes</span>
-              </Button>
               {messages.length > 0 && (
-                <Button variant="ghost" size="sm" className="h-8 min-w-[32px] px-2" onClick={createNewConversation}>
-                  <RefreshCw className="w-4 h-4" />
-                  <span className="hidden sm:inline ml-1">New</span>
+                <Button variant="outline" size="sm" className="h-10 px-3" onClick={createNewConversation}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  New
                 </Button>
               )}
             </div>
           </div>
 
+          {/* Context toggles - Hidden on mobile, shown on desktop */}
+          <div className="hidden lg:flex items-center gap-2 mt-3">
+            {webSearchAvailable && (
+              <Button
+                variant={context.enableWebSearch ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn(
+                  "h-8 text-xs",
+                  context.enableWebSearch && "bg-green-500/20 hover:bg-green-500/30 text-green-600"
+                )}
+                onClick={() => setContext(prev => ({ ...prev, enableWebSearch: !prev.enableWebSearch }))}
+              >
+                <Globe className="w-4 h-4 mr-1" />
+                Web Search
+              </Button>
+            )}
+            <Button
+              variant={context.includeGoals ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setContext(prev => ({ ...prev, includeGoals: !prev.includeGoals }))}
+            >
+              <Target className="w-4 h-4 mr-1" />
+              Goals
+            </Button>
+            <Button
+              variant={context.includeNotes ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setContext(prev => ({ ...prev, includeNotes: !prev.includeNotes }))}
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              Notes
+            </Button>
+          </div>
+
           {!isConfigured && (
-            <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5" />
-              <p className="text-xs text-amber-500">GROQ_API_KEY not configured</p>
+            <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-amber-500">GROQ_API_KEY not configured</p>
             </div>
           )}
 
           {error && (
-            <div className="mt-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
-              <p className="text-xs text-destructive">{error}</p>
+            <div className="mt-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
         </CardHeader>
 
         {/* Messages - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-2 sm:p-3 lg:p-4 min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-2">
-              <div className="p-3 lg:p-4 rounded-full bg-gradient-to-br from-amber-500/10 to-purple-500/10 mb-3 lg:mb-4">
-                <Sparkles className="w-6 h-6 lg:w-8 lg:h-8 text-amber-500" />
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <div className="p-4 rounded-full bg-gradient-to-br from-amber-500/10 to-purple-500/10 mb-4">
+                <Sparkles className="w-8 h-8 text-amber-500" />
               </div>
-              <h3 className="font-semibold text-sm lg:text-base mb-1 lg:mb-2">Hi! I&apos;m BrainBox</h3>
-              <p className="text-xs lg:text-sm text-muted-foreground max-w-sm mb-3 lg:mb-4">
+              <h3 className="font-semibold text-lg mb-2">Hi! I&apos;m BrainBox</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mb-4">
                 Your AI assistant{webSearchAvailable ? ' with live web search' : ''}.
               </p>
               {webSearchAvailable && (
-                <div className="flex items-center gap-1.5 text-xs text-green-600 mb-3">
-                  <Globe className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-2 text-sm text-green-600 mb-4">
+                  <Globe className="w-4 h-4" />
                   <span>Web search enabled</span>
                 </div>
               )}
-              <div className="flex flex-wrap gap-1.5 lg:gap-2 justify-center">
+              <div className="flex flex-wrap gap-2 justify-center">
                 {['Interview tips', 'Project ideas', 'Skills to learn'].map((s) => (
                   <Button
                     key={s}
                     variant="outline"
                     size="sm"
-                    className="text-[10px] lg:text-xs h-7 lg:h-8 px-2 lg:px-3"
+                    className="text-sm h-10 px-4 rounded-xl"
                     onClick={() => setInput(s)}
                     disabled={!isConfigured}
                   >
@@ -448,50 +470,50 @@ export function AIChatbot() {
               </div>
             </div>
           ) : (
-            <div className="space-y-3 lg:space-y-4">
+            <div className="space-y-4">
               {messages.map((message) => (
                 <div
                   key={message.id}
                   className={cn(
-                    'flex gap-2 lg:gap-3',
+                    'flex gap-3',
                     message.role === 'user' ? 'justify-end' : 'justify-start'
                   )}
                 >
                   {message.role === 'assistant' && (
-                    <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
-                      <Brain className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-amber-500" />
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
+                      <Brain className="w-4 h-4 text-amber-500" />
                     </div>
                   )}
                   <div
                     className={cn(
-                      'max-w-[85%] rounded-2xl px-2.5 py-1.5 lg:px-3 lg:py-2',
+                      'max-w-[80%] rounded-2xl px-4 py-3',
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted'
                     )}
                   >
-                    <p className="text-xs lg:text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                    <p className="text-[8px] lg:text-[10px] opacity-50 mt-0.5 lg:mt-1">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                    <p className="text-xs opacity-50 mt-1">
                       {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                   {message.role === 'user' && (
-                    <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-primary flex items-center justify-center">
-                      <User className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-primary-foreground" />
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                      <User className="w-4 h-4 text-primary-foreground" />
                     </div>
                   )}
                 </div>
               ))}
               {isLoading && (
-                <div className="flex gap-2 lg:gap-3">
-                  <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
-                    <Brain className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-amber-500" />
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
+                    <Brain className="w-4 h-4 text-amber-500" />
                   </div>
-                  <div className="bg-muted rounded-2xl px-2.5 py-1.5 lg:px-3 lg:py-2 flex items-center gap-2">
-                    <Loader2 className="w-3 h-3 lg:w-4 lg:h-4 animate-spin text-amber-500" />
+                  <div className="bg-muted rounded-2xl px-4 py-3 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
                     {context.enableWebSearch && webSearchAvailable && (
-                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Globe className="w-2.5 h-2.5" />
+                      <span className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Globe className="w-3 h-3" />
                         Searching...
                       </span>
                     )}
@@ -499,8 +521,8 @@ export function AIChatbot() {
                 </div>
               )}
               {lastSearchUsed && messages.length > 0 && !isLoading && (
-                <div className="flex items-center gap-1.5 text-[10px] text-green-600 ml-9">
-                  <Globe className="w-2.5 h-2.5" />
+                <div className="flex items-center gap-2 text-xs text-green-600 ml-11">
+                  <Globe className="w-3 h-3" />
                   <span>Response used live web data</span>
                 </div>
               )}
@@ -510,22 +532,23 @@ export function AIChatbot() {
         </div>
 
         {/* Input - Fixed at bottom */}
-        <CardContent className="flex-shrink-0 border-t p-2 lg:p-3">
+        <CardContent className="flex-shrink-0 border-t p-3 lg:p-4">
           {voiceError && (
-            <div className="mb-2 px-2 py-1.5 bg-destructive/10 rounded-md flex items-center gap-2">
-              <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
-              <p className="text-xs text-destructive">{voiceError}</p>
+            <div className="mb-3 px-3 py-2 bg-destructive/10 rounded-lg flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive">{voiceError}</p>
             </div>
           )}
-          <div className="flex gap-1.5 lg:gap-2 items-end">
+          <div className="flex gap-2 lg:gap-3 items-end">
             <div className="flex-1 min-w-0">
               <Textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isRecording ? 'Recording...' : 'Message...'}
-                className="min-h-[36px] lg:min-h-[40px] max-h-[100px] lg:max-h-[120px] resize-none text-xs lg:text-sm"
+                placeholder={isRecording ? 'Recording...' : 'Type a message...'}
+                className="min-h-[44px] lg:min-h-[48px] max-h-[120px] resize-none text-base rounded-xl"
+                style={{ fontSize: '16px' }} // Prevents iOS zoom on focus
                 rows={1}
                 disabled={isLoading || isRecording || !isConfigured}
               />
@@ -535,16 +558,16 @@ export function AIChatbot() {
               size="icon"
               onClick={toggleRecording}
               disabled={isTranscribing || isLoading || !isConfigured}
-              className={cn('flex-shrink-0 h-9 w-9 lg:h-10 lg:w-10', isRecording && 'animate-pulse')}
+              className={cn('flex-shrink-0 h-11 w-11 rounded-xl', isRecording && 'animate-pulse')}
             >
-              {isRecording ? <Square className="w-3.5 h-3.5 lg:w-4 lg:h-4" /> : <Mic className="w-3.5 h-3.5 lg:w-4 lg:h-4" />}
+              {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </Button>
             <Button
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isRecording || !isConfigured}
-              className="flex-shrink-0 h-9 lg:h-10 px-3 lg:px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
+              className="flex-shrink-0 h-11 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500"
             >
-              {isLoading ? <Loader2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 animate-spin" /> : <Send className="w-3.5 h-3.5 lg:w-4 lg:h-4" />}
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             </Button>
           </div>
         </CardContent>

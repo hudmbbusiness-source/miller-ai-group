@@ -233,17 +233,24 @@ export async function POST(request: NextRequest) {
     const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || ''
     const askingAboutCurrent = needsCurrentInfo(lastUserMessage)
 
-    // Perform web search if asking about current info
+    // Determine if we should perform web search:
+    // 1. If web search is explicitly enabled (toggle is on), always search
+    // 2. If asking about current info and web search is not explicitly disabled
+    const shouldSearch = context?.enableWebSearch === true ||
+                         (askingAboutCurrent && context?.enableWebSearch !== false)
+
+    // Perform web search
     let webSearchContext = ''
     let searchPerformed = false
     let searchError = ''
 
-    if (askingAboutCurrent && context?.enableWebSearch !== false) {
+    if (shouldSearch) {
+      console.log(`Web search triggered for: "${lastUserMessage.slice(0, 50)}..."`)
       const searchResult = await searchWeb(lastUserMessage)
       searchPerformed = searchResult.searchPerformed
 
       if (searchResult.results.length > 0) {
-        webSearchContext = '\n\n=== LIVE WEB SEARCH RESULTS ===\n'
+        webSearchContext = '\n\n=== LIVE WEB SEARCH RESULTS (Real-time data) ===\n'
         searchResult.results.forEach((result, i) => {
           webSearchContext += `\n[${i + 1}] ${result.title}`
           if (result.siteName) webSearchContext += ` (${result.siteName})`
@@ -253,8 +260,10 @@ export async function POST(request: NextRequest) {
           webSearchContext += '\n'
         })
         webSearchContext += '\n=== END SEARCH RESULTS ===\n'
+        webSearchContext += '\nIMPORTANT: Use the above real-time web search results to answer. This is current data, not from your training.\n'
       } else if (searchResult.error) {
         searchError = searchResult.error
+        console.error(`Web search failed: ${searchError}`)
       }
     }
 
@@ -267,30 +276,28 @@ export async function POST(request: NextRequest) {
     })
 
     let knowledgeNote = ''
-    if (askingAboutCurrent) {
-      if (searchPerformed && webSearchContext) {
-        knowledgeNote = ' I have current web search results - use them to provide accurate, up-to-date information and cite sources.'
-      } else if (searchError) {
-        knowledgeNote = ` Web search unavailable (${searchError}). My training data may not include the most recent information.`
-      } else {
-        knowledgeNote = ' My training data has a cutoff date. For current information, please verify with official sources.'
-      }
+    if (searchPerformed && webSearchContext) {
+      knowledgeNote = '\n\nCRITICAL: You have LIVE web search results above. You MUST use this real-time data to answer. Do NOT use outdated training data. Cite sources with URLs.'
+    } else if (searchError) {
+      knowledgeNote = `\n\nNote: Web search failed (${searchError}). Using training data which may be outdated.`
+    } else if (askingAboutCurrent) {
+      knowledgeNote = '\n\nNote: No web search was performed. My training data may not include the most recent information.'
     }
 
     const systemMessage: AIMessage = {
       role: 'system',
       content: `You are BrainBox, the AI assistant for ${userName}'s personal productivity hub.
 
+Today's date is ${currentDate}. You have access to real-time web search.
+
 You help with:
 - Career planning and tech industry insights
 - Goal setting and productivity advice
 - Technical questions about software engineering, AI/ML, and entrepreneurship
 - Research and brainstorming
-${userContext}${webSearchContext}
+${userContext}${webSearchContext}${knowledgeNote}
 
-Today's date is ${currentDate}.${knowledgeNote}
-
-Be concise, practical, and helpful. When you have web search results, synthesize the information and cite your sources with URLs.`,
+Be concise, practical, and helpful. When answering questions about current events, news, or real-time data, ALWAYS use the web search results provided above and cite your sources.`,
     }
 
     // Call Groq API

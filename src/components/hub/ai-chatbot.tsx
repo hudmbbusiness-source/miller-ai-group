@@ -21,6 +21,7 @@ import {
   Trash2,
   Plus,
   ChevronLeft,
+  Globe,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import { cn } from '@/lib/utils'
@@ -43,6 +44,7 @@ interface Conversation {
 interface ChatContext {
   includeGoals?: boolean
   includeNotes?: boolean
+  enableWebSearch?: boolean
 }
 
 export function AIChatbot() {
@@ -58,7 +60,10 @@ export function AIChatbot() {
   const [context, setContext] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
+    enableWebSearch: true,
   })
+  const [webSearchAvailable, setWebSearchAvailable] = useState(false)
+  const [lastSearchUsed, setLastSearchUsed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -101,9 +106,11 @@ export function AIChatbot() {
       .then(res => res.json())
       .then(data => {
         setIsConfigured(data.configured === true)
+        setWebSearchAvailable(data.webSearchEnabled === true)
       })
       .catch(() => {
         setIsConfigured(false)
+        setWebSearchAvailable(false)
       })
   }, [])
 
@@ -221,6 +228,9 @@ export function AIChatbot() {
       if (!response.ok || data.error) {
         throw new Error(data.error || 'Failed to get response')
       }
+
+      // Track if web search was used
+      setLastSearchUsed(data.webSearchUsed === true)
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -348,6 +358,21 @@ export function AIChatbot() {
               {isSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground flex-shrink-0" />}
             </div>
             <div className="flex items-center gap-0.5 lg:gap-1 flex-shrink-0">
+              {webSearchAvailable && (
+                <Button
+                  variant={context.enableWebSearch ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className={cn(
+                    "h-6 lg:h-7 text-[10px] lg:text-xs px-1.5 lg:px-2",
+                    context.enableWebSearch && "bg-green-500/20 hover:bg-green-500/30 text-green-600"
+                  )}
+                  onClick={() => setContext(prev => ({ ...prev, enableWebSearch: !prev.enableWebSearch }))}
+                  title="Web search for current information"
+                >
+                  <Globe className="w-3 h-3" />
+                  <span className="hidden lg:inline ml-1">Web</span>
+                </Button>
+              )}
               <Button
                 variant={context.includeGoals ? 'secondary' : 'ghost'}
                 size="sm"
@@ -399,8 +424,14 @@ export function AIChatbot() {
               </div>
               <h3 className="font-semibold text-sm lg:text-base mb-1 lg:mb-2">Hi! I&apos;m BrainBox</h3>
               <p className="text-xs lg:text-sm text-muted-foreground max-w-sm mb-3 lg:mb-4">
-                Your AI assistant with web search for current data.
+                Your AI assistant{webSearchAvailable ? ' with live web search' : ''}.
               </p>
+              {webSearchAvailable && (
+                <div className="flex items-center gap-1.5 text-xs text-green-600 mb-3">
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Web search enabled</span>
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5 lg:gap-2 justify-center">
                 {['Interview tips', 'Project ideas', 'Skills to learn'].map((s) => (
                   <Button
@@ -456,9 +487,21 @@ export function AIChatbot() {
                   <div className="flex-shrink-0 w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-amber-500/20 to-purple-500/20 flex items-center justify-center">
                     <Brain className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-amber-500" />
                   </div>
-                  <div className="bg-muted rounded-2xl px-2.5 py-1.5 lg:px-3 lg:py-2">
+                  <div className="bg-muted rounded-2xl px-2.5 py-1.5 lg:px-3 lg:py-2 flex items-center gap-2">
                     <Loader2 className="w-3 h-3 lg:w-4 lg:h-4 animate-spin text-amber-500" />
+                    {context.enableWebSearch && webSearchAvailable && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Globe className="w-2.5 h-2.5" />
+                        Searching...
+                      </span>
+                    )}
                   </div>
+                </div>
+              )}
+              {lastSearchUsed && messages.length > 0 && !isLoading && (
+                <div className="flex items-center gap-1.5 text-[10px] text-green-600 ml-9">
+                  <Globe className="w-2.5 h-2.5" />
+                  <span>Response used live web data</span>
                 </div>
               )}
               <div ref={messagesEndRef} />

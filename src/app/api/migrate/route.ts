@@ -1,51 +1,64 @@
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config({ path: '.env.production.local' });
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-// Clean env values (remove trailing \n)
-const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n|\n/g, '').trim();
-const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n|\n/g, '').trim();
+// This is a one-time migration endpoint - DELETE after running
+export async function POST(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const key = searchParams.get('key')
 
-console.log('Supabase URL:', supabaseUrl);
-console.log('Service Role Key length:', serviceRoleKey.length);
+  // Simple security check
+  if (key !== process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(-10)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
-if (!supabaseUrl || !serviceRoleKey) {
-  console.error('Missing required environment variables');
-  process.exit(1);
-}
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      db: { schema: 'public' },
+      auth: { persistSession: false }
+    }
+  )
 
-const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const results: { table: string; status: string; error?: string }[] = []
 
-async function runMigration() {
-  console.log('\n=== Running Launch Pad Migration ===\n');
-
-  // Check if tables already exist
-  const tables = ['courses', 'certificates', 'job_applications', 'career_profiles'];
-  const existingTables = [];
-  const missingTables = [];
+  // Check which tables exist
+  const tables = ['courses', 'certificates', 'job_applications', 'career_profiles']
 
   for (const table of tables) {
-    const { error } = await supabase.from(table).select('*').limit(0);
-    if (error && error.code === '42P01') {
-      missingTables.push(table);
+    const { error } = await supabase.from(table).select('id').limit(0)
+    if (error?.code === 'PGRST205' || error?.code === '42P01') {
+      results.push({ table, status: 'missing' })
     } else if (!error) {
-      existingTables.push(table);
+      results.push({ table, status: 'exists' })
+    } else {
+      results.push({ table, status: 'error', error: error.message })
     }
   }
 
-  console.log('Existing tables:', existingTables.join(', ') || 'none');
-  console.log('Missing tables:', missingTables.join(', ') || 'none');
+  // If tables are missing, provide SQL to run
+  const missingTables = results.filter(r => r.status === 'missing').map(r => r.table)
 
-  if (missingTables.length === 0) {
-    console.log('\nAll tables already exist! Migration complete.');
-    return;
+  if (missingTables.length > 0) {
+    return NextResponse.json({
+      message: 'Tables need to be created. Run the following SQL in Supabase Dashboard > SQL Editor',
+      missingTables,
+      allResults: results,
+      sqlUrl: 'https://supabase.com/dashboard/project/mrmynzeymwgzevxyxnln/sql/new',
+      sql: getMigrationSQL()
+    })
   }
 
-  console.log('\n--- Migration SQL ---');
-  console.log('Please run the following SQL in Supabase SQL Editor:');
-  console.log('Dashboard: https://supabase.com/dashboard/project/mrmynzeymwgzevxyxnln/sql/new\n');
+  return NextResponse.json({
+    message: 'All tables exist!',
+    results
+  })
+}
 
-  console.log(`
--- Run this SQL in Supabase Dashboard > SQL Editor
+function getMigrationSQL() {
+  return `
+-- Launch Pad Tables Migration
+-- Run this in Supabase Dashboard > SQL Editor
 
 -- Courses table
 CREATE TABLE IF NOT EXISTS courses (
@@ -147,6 +160,12 @@ CREATE TABLE IF NOT EXISTS career_profiles (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_courses_user_id ON courses(user_id);
+CREATE INDEX IF NOT EXISTS idx_certificates_user_id ON certificates(user_id);
+CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON job_applications(user_id);
+CREATE INDEX IF NOT EXISTS idx_career_profiles_user_id ON career_profiles(user_id);
+
 -- Enable RLS
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
@@ -154,29 +173,46 @@ ALTER TABLE job_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE career_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Courses policies
+DROP POLICY IF EXISTS "Users can view own courses" ON courses;
+DROP POLICY IF EXISTS "Users can insert own courses" ON courses;
+DROP POLICY IF EXISTS "Users can update own courses" ON courses;
+DROP POLICY IF EXISTS "Users can delete own courses" ON courses;
 CREATE POLICY "Users can view own courses" ON courses FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own courses" ON courses FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own courses" ON courses FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own courses" ON courses FOR DELETE USING (auth.uid() = user_id);
 
 -- Certificates policies
+DROP POLICY IF EXISTS "Users can view own certificates" ON certificates;
+DROP POLICY IF EXISTS "Users can insert own certificates" ON certificates;
+DROP POLICY IF EXISTS "Users can update own certificates" ON certificates;
+DROP POLICY IF EXISTS "Users can delete own certificates" ON certificates;
 CREATE POLICY "Users can view own certificates" ON certificates FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own certificates" ON certificates FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own certificates" ON certificates FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own certificates" ON certificates FOR DELETE USING (auth.uid() = user_id);
 
 -- Job applications policies
+DROP POLICY IF EXISTS "Users can view own applications" ON job_applications;
+DROP POLICY IF EXISTS "Users can insert own applications" ON job_applications;
+DROP POLICY IF EXISTS "Users can update own applications" ON job_applications;
+DROP POLICY IF EXISTS "Users can delete own applications" ON job_applications;
 CREATE POLICY "Users can view own applications" ON job_applications FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own applications" ON job_applications FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own applications" ON job_applications FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own applications" ON job_applications FOR DELETE USING (auth.uid() = user_id);
 
 -- Career profiles policies
+DROP POLICY IF EXISTS "Users can view own profile" ON career_profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON career_profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON career_profiles;
+DROP POLICY IF EXISTS "Users can delete own profile" ON career_profiles;
 CREATE POLICY "Users can view own profile" ON career_profiles FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own profile" ON career_profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own profile" ON career_profiles FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own profile" ON career_profiles FOR DELETE USING (auth.uid() = user_id);
-`);
-}
 
-runMigration().catch(console.error);
+-- Success message
+SELECT 'Migration complete! All Launch Pad tables created.' as result;
+`
+}

@@ -16,7 +16,7 @@ export default function UnlockPage() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/app'
+  const redirect = searchParams.get('redirect') || '/app/launch-pad'
 
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault()

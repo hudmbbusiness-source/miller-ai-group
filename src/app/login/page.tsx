@@ -52,7 +52,7 @@ function LoginContent() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/app`,
+          redirectTo: `${window.location.origin}/auth/callback?next=/app/launch-pad`,
           skipBrowserRedirect: true, // Get URL to redirect manually
         },
       })

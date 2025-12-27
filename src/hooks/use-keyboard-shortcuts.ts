@@ -16,13 +16,14 @@ export interface Shortcut {
 
 const defaultShortcuts: Omit<Shortcut, 'action'>[] = [
   // Navigation
-  { key: 'g', description: 'Go to Dashboard', category: 'navigation', shift: true },
+  { key: 'g', description: 'Go to Launch Pad', category: 'navigation', shift: true },
   { key: 'n', description: 'Go to Notes', category: 'navigation', shift: true },
   { key: 'b', description: 'Go to Boards', category: 'navigation', shift: true },
   { key: 'l', description: 'Go to Links', category: 'navigation', shift: true },
   { key: 'f', description: 'Go to Files', category: 'navigation', shift: true },
   { key: 't', description: 'Go to Goals', category: 'navigation', shift: true },
   { key: 's', description: 'Go to Settings', category: 'navigation', shift: true },
+  { key: 'd', description: 'Go to Dashboard', category: 'navigation', shift: true },
 
   // Actions
   { key: 'k', ctrl: true, description: 'Open Search', category: 'actions' },
@@ -44,13 +45,14 @@ export function useKeyboardShortcuts(
 
   // Define navigation actions
   const navigationActions: Record<string, () => void> = {
-    'Shift+g': () => router.push('/app'),
+    'Shift+g': () => router.push('/app/launch-pad'),
     'Shift+n': () => router.push('/app/notes'),
     'Shift+b': () => router.push('/app/boards'),
     'Shift+l': () => router.push('/app/links'),
     'Shift+f': () => router.push('/app/files'),
     'Shift+t': () => router.push('/app/goals'),
     'Shift+s': () => router.push('/app/settings'),
+    'Shift+d': () => router.push('/app'),
   }
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {

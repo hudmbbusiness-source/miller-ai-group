@@ -54,9 +54,9 @@ export function ImageUpload({
         return
       }
 
-      // Create unique filename
+      // Create unique filename - user_id must be first folder for storage policy
       const fileExt = file.name.split('.').pop()
-      const fileName = `${folder}/${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+      const fileName = `${user.id}/${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
 
       // Upload to Supabase Storage
       const { data, error: uploadError } = await supabase.storage

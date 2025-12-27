@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 
 export const metadata = {
-  title: 'Privacy Policy | Miller AI Group',
-  description: 'Privacy Policy for Miller AI Group and its services.',
+  title: 'Privacy Policy | Kachow AI',
+  description: 'Privacy Policy for Kachow AI by Miller AI Group.',
 }
 
 export default function PrivacyPage() {
@@ -16,13 +16,13 @@ export default function PrivacyPage() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
             <Image
-              src="/logos/miller-ai-group.svg"
-              alt="Miller AI Group"
+              src="/logos/kachow.png"
+              alt="Kachow AI"
               width={36}
               height={36}
               className="w-9 h-9"
             />
-            <span className="font-bold text-lg">Miller AI Group</span>
+            <span className="font-bold text-lg">Kachow AI</span>
           </Link>
           <Button asChild variant="ghost" size="sm">
             <Link href="/">

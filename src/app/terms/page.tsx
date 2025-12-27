@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 
 export const metadata = {
-  title: 'Terms of Service | Miller AI Group',
-  description: 'Terms of Service for Miller AI Group and its services.',
+  title: 'Terms of Service | Kachow AI',
+  description: 'Terms of Service for Kachow AI by Miller AI Group.',
 }
 
 export default function TermsPage() {
@@ -16,13 +16,13 @@ export default function TermsPage() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
             <Image
-              src="/logos/miller-ai-group.svg"
-              alt="Miller AI Group"
+              src="/logos/kachow.png"
+              alt="Kachow AI"
               width={36}
               height={36}
               className="w-9 h-9"
             />
-            <span className="font-bold text-lg">Miller AI Group</span>
+            <span className="font-bold text-lg">Kachow AI</span>
           </Link>
           <Button asChild variant="ghost" size="sm">
             <Link href="/">

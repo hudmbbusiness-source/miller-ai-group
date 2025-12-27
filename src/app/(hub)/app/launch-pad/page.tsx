@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import {
   Rocket,
@@ -478,14 +479,24 @@ export default function LaunchPadPage() {
               <Card key={company.name} className="overflow-hidden">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-xl flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-amber-500" />
-                        {company.name}
-                      </CardTitle>
-                      <CardDescription className="mt-1">
-                        {company.description}
-                      </CardDescription>
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                        <Image
+                          src={company.logo}
+                          alt={`${company.name} logo`}
+                          width={48}
+                          height={48}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl">
+                          {company.name}
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          {company.description}
+                        </CardDescription>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <a href={company.applyUrl} target="_blank" rel="noopener noreferrer">

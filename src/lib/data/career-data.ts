@@ -40,7 +40,7 @@ export interface InternshipData {
 export const AI_COMPANIES: CompanyData[] = [
   {
     name: 'OpenAI',
-    logo: '/company-logos/openai.png',
+    logo: '/company-logos/openai.svg',
     description: 'AI research company building safe AGI. Creators of GPT-4, ChatGPT, and DALL-E.',
     headquarters: 'San Francisco, CA',
     founded: 2015,
@@ -136,7 +136,7 @@ export const AI_COMPANIES: CompanyData[] = [
   },
   {
     name: 'Anthropic',
-    logo: '/company-logos/anthropic.png',
+    logo: '/company-logos/anthropic.svg',
     description: 'AI safety company building reliable, interpretable AI systems. Creators of Claude.',
     headquarters: 'San Francisco, CA',
     founded: 2021,
@@ -225,7 +225,7 @@ export const AI_COMPANIES: CompanyData[] = [
   },
   {
     name: 'Google DeepMind',
-    logo: '/company-logos/deepmind.png',
+    logo: '/company-logos/deepmind.svg',
     description: 'World-leading AI research lab. Created AlphaGo, AlphaFold, Gemini.',
     headquarters: 'London, UK / Mountain View, CA',
     founded: 2010,
@@ -314,7 +314,7 @@ export const AI_COMPANIES: CompanyData[] = [
   },
   {
     name: 'NVIDIA',
-    logo: '/company-logos/nvidia.png',
+    logo: '/company-logos/nvidia.svg',
     description: 'Leading AI computing company. Makes GPUs powering all major AI systems.',
     headquarters: 'Santa Clara, CA',
     founded: 1993,
@@ -402,7 +402,7 @@ export const AI_COMPANIES: CompanyData[] = [
   },
   {
     name: 'Meta AI',
-    logo: '/company-logos/meta.png',
+    logo: '/company-logos/meta.svg',
     description: 'AI research division of Meta. Created LLaMA, PyTorch, and leading open-source AI.',
     headquarters: 'Menlo Park, CA',
     founded: 2013,
@@ -481,7 +481,7 @@ export const AI_COMPANIES: CompanyData[] = [
   },
   {
     name: 'Databricks',
-    logo: '/company-logos/databricks.png',
+    logo: '/company-logos/databricks.svg',
     description: 'Data and AI platform company. Created Apache Spark, Delta Lake, MLflow.',
     headquarters: 'San Francisco, CA',
     founded: 2013,
@@ -559,7 +559,7 @@ export const AI_COMPANIES: CompanyData[] = [
   },
   {
     name: 'Scale AI',
-    logo: '/company-logos/scale.png',
+    logo: '/company-logos/scale.svg',
     description: 'AI data infrastructure company. Powers training data for major AI labs.',
     headquarters: 'San Francisco, CA',
     founded: 2016,

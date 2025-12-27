@@ -175,7 +175,26 @@ export async function POST(request: NextRequest) {
     let userContext = ''
     const userName = user.user_metadata?.full_name || user.user_metadata?.name || 'User'
 
-    // Fetch recent conversation summaries for memory
+    // Fetch persistent user memories (like ChatGPT's memory feature)
+    try {
+      const { data: memories } = await (supabase
+        .from('user_memories') as SupabaseAny)
+        .select('content, category')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (memories && memories.length > 0) {
+        const memoryList = memories
+          .map((m: { content: string; category: string }) => `- ${m.content}`)
+          .join('\n')
+        userContext += `\n\n=== USER MEMORY (Persistent facts about ${userName}) ===\n${memoryList}\n=== END MEMORY ===`
+      }
+    } catch (e) {
+      console.error('Failed to fetch user memories:', e)
+    }
+
+    // Fetch recent conversation summaries for context
     try {
       const { data: recentConversations } = await (supabase
         .from('conversations') as SupabaseAny)
@@ -194,7 +213,7 @@ export async function POST(request: NextRequest) {
             return `"${c.title}": ${summary}`
           })
           .join('\n')
-        userContext += `\n\nRecent conversation memory:\n${memoryContext}`
+        userContext += `\n\nRecent conversation topics:\n${memoryContext}`
       }
     } catch (e) {
       console.error('Failed to fetch conversation memory:', e)
@@ -296,7 +315,7 @@ export async function POST(request: NextRequest) {
       role: 'system',
       content: `You are BrainBox, the AI assistant for ${userName}'s personal productivity hub.
 
-Today's date is ${currentDate}. You have access to real-time web search.
+Today's date is ${currentDate}. You have access to real-time web search and persistent memory.
 
 You help with:
 - Career planning and tech industry insights
@@ -305,7 +324,12 @@ You help with:
 - Research and brainstorming
 ${userContext}${webSearchContext}${knowledgeNote}
 
-Be concise, practical, and helpful. When answering questions about current events, news, or real-time data, ALWAYS use the web search results provided above and cite your sources.`,
+MEMORY INSTRUCTIONS:
+- The USER MEMORY section above contains persistent facts about ${userName}. ALWAYS use this context to personalize your responses.
+- If the user shares important personal information (name, goals, preferences, background, interests), acknowledge it and use it naturally in conversation.
+- Remember: You have memory of past conversations and stored facts about this user.
+
+Be concise, practical, and helpful. When answering questions about current events, news, or real-time data, use the web search results provided and cite your sources.`,
     }
 
     // Call Groq API

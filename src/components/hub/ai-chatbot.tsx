@@ -3,6 +3,21 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Brain,
   Send,
@@ -17,6 +32,14 @@ import {
   MessageSquare,
   PanelLeftClose,
   PanelLeft,
+  FolderPlus,
+  Folder,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
+  Sparkles,
+  X,
+  Settings,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import { cn } from '@/lib/utils'
@@ -32,8 +55,24 @@ interface Conversation {
   id: string
   title: string
   messages: Message[]
+  project_id?: string | null
   created_at: string
   updated_at: string
+}
+
+interface Project {
+  id: string
+  name: string
+  color: string
+  icon: string
+  created_at: string
+}
+
+interface Memory {
+  id: string
+  content: string
+  category: string
+  created_at: string
 }
 
 interface ChatContext {
@@ -44,7 +83,10 @@ interface ChatContext {
 
 export function AIChatbot() {
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [memories, setMemories] = useState<Memory[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -52,6 +94,11 @@ export function AIChatbot() {
   const [error, setError] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(['none']))
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [showMemories, setShowMemories] = useState(false)
+  const [newMemory, setNewMemory] = useState('')
   const [context] = useState<ChatContext>({
     includeGoals: true,
     includeNotes: false,
@@ -77,7 +124,7 @@ export function AIChatbot() {
     },
   })
 
-  // Load conversations from Supabase
+  // Load data from APIs
   const loadConversations = useCallback(async () => {
     try {
       const res = await fetch('/api/conversations')
@@ -90,9 +137,35 @@ export function AIChatbot() {
     }
   }, [])
 
+  const loadProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects')
+      const data = await res.json()
+      if (data.projects) {
+        setProjects(data.projects)
+      }
+    } catch (e) {
+      console.error('Failed to load projects:', e)
+    }
+  }, [])
+
+  const loadMemories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/memories')
+      const data = await res.json()
+      if (data.memories) {
+        setMemories(data.memories)
+      }
+    } catch (e) {
+      console.error('Failed to load memories:', e)
+    }
+  }, [])
+
   useEffect(() => {
     loadConversations()
-  }, [loadConversations])
+    loadProjects()
+    loadMemories()
+  }, [loadConversations, loadProjects, loadMemories])
 
   // Check if AI is configured
   useEffect(() => {
@@ -127,6 +200,7 @@ export function AIChatbot() {
       const conv = conversations.find(c => c.id === currentConversationId)
       if (conv) {
         setMessages(conv.messages || [])
+        setCurrentProjectId(conv.project_id || null)
       }
     }
   }, [currentConversationId, conversations])
@@ -150,6 +224,81 @@ export function AIChatbot() {
     }
   }
 
+  const moveToProject = async (convId: string, projectId: string | null) => {
+    try {
+      await fetch('/api/conversations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: convId, project_id: projectId }),
+      })
+      setConversations(prev =>
+        prev.map(c => c.id === convId ? { ...c, project_id: projectId } : c)
+      )
+    } catch (e) {
+      console.error('Failed to move conversation:', e)
+    }
+  }
+
+  const createProject = async () => {
+    if (!newProjectName.trim()) return
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newProjectName.trim() }),
+      })
+      const data = await res.json()
+      if (data.project) {
+        setProjects(prev => [data.project, ...prev])
+        setExpandedProjects(prev => new Set([...prev, data.project.id]))
+      }
+      setNewProjectName('')
+      setShowNewProject(false)
+    } catch (e) {
+      console.error('Failed to create project:', e)
+    }
+  }
+
+  const deleteProject = async (id: string) => {
+    try {
+      await fetch(`/api/projects?id=${id}`, { method: 'DELETE' })
+      setProjects(prev => prev.filter(p => p.id !== id))
+      // Conversations in this project will have project_id set to null by DB cascade
+      setConversations(prev =>
+        prev.map(c => c.project_id === id ? { ...c, project_id: null } : c)
+      )
+    } catch (e) {
+      console.error('Failed to delete project:', e)
+    }
+  }
+
+  const addMemory = async () => {
+    if (!newMemory.trim()) return
+    try {
+      const res = await fetch('/api/memories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newMemory.trim() }),
+      })
+      const data = await res.json()
+      if (data.memory) {
+        setMemories(prev => [data.memory, ...prev])
+      }
+      setNewMemory('')
+    } catch (e) {
+      console.error('Failed to add memory:', e)
+    }
+  }
+
+  const deleteMemory = async (id: string) => {
+    try {
+      await fetch(`/api/memories?id=${id}`, { method: 'DELETE' })
+      setMemories(prev => prev.filter(m => m.id !== id))
+    } catch (e) {
+      console.error('Failed to delete memory:', e)
+    }
+  }
+
   const saveConversation = async (msgs: Message[], title: string) => {
     setIsSaving(true)
     try {
@@ -169,7 +318,7 @@ export function AIChatbot() {
         const res = await fetch('/api/conversations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, messages: msgs }),
+          body: JSON.stringify({ title, messages: msgs, project_id: currentProjectId }),
         })
         const data = await res.json()
         if (data.conversation) {
@@ -250,6 +399,25 @@ export function AIChatbot() {
     }
   }
 
+  const toggleProject = (projectId: string) => {
+    setExpandedProjects(prev => {
+      const next = new Set(prev)
+      if (next.has(projectId)) {
+        next.delete(projectId)
+      } else {
+        next.add(projectId)
+      }
+      return next
+    })
+  }
+
+  // Group conversations by project
+  const ungroupedConversations = conversations.filter(c => !c.project_id)
+  const conversationsByProject = projects.map(project => ({
+    project,
+    conversations: conversations.filter(c => c.project_id === project.id),
+  }))
+
   if (isConfigured === null) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -260,7 +428,7 @@ export function AIChatbot() {
 
   return (
     <div className="flex h-full w-full bg-background">
-      {/* Left Sidebar - Conversations */}
+      {/* Left Sidebar - Conversations & Projects */}
       <div
         className={cn(
           'flex-shrink-0 border-r bg-muted/30 flex flex-col transition-all duration-300',
@@ -268,66 +436,189 @@ export function AIChatbot() {
         )}
       >
         {/* Sidebar Header */}
-        <div className="p-3 border-b flex items-center justify-between">
+        <div className="p-3 border-b space-y-2">
           <Button
             onClick={createNewConversation}
-            className="flex-1 bg-amber-500 hover:bg-amber-600 text-black"
+            className="w-full bg-amber-500 hover:bg-amber-600 text-black"
             size="sm"
           >
             <Plus className="w-4 h-4 mr-2" />
             New Chat
           </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => setShowNewProject(true)}
+            >
+              <FolderPlus className="w-4 h-4 mr-1" />
+              Project
+            </Button>
+            <Dialog open={showMemories} onOpenChange={setShowMemories}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-1">
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  Memory
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-500" />
+                    BrainBox Memory
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Add facts about yourself that BrainBox will remember across all conversations.
+                </p>
+                <div className="flex gap-2 mb-4">
+                  <Input
+                    value={newMemory}
+                    onChange={(e) => setNewMemory(e.target.value)}
+                    placeholder="e.g., I'm a CS student at UNC Charlotte"
+                    onKeyDown={(e) => e.key === 'Enter' && addMemory()}
+                  />
+                  <Button onClick={addMemory} size="sm">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto space-y-2">
+                  {memories.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No memories yet. Add some facts about yourself!
+                    </p>
+                  ) : (
+                    memories.map((memory) => (
+                      <div
+                        key={memory.id}
+                        className="flex items-start gap-2 p-2 rounded-lg bg-muted/50 group"
+                      >
+                        <p className="flex-1 text-sm">{memory.content}</p>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-50 group-hover:opacity-100"
+                          onClick={() => deleteMemory(memory.id)}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
+
+        {/* New Project Input */}
+        {showNewProject && (
+          <div className="p-3 border-b bg-muted/50">
+            <div className="flex gap-2">
+              <Input
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name..."
+                onKeyDown={(e) => e.key === 'Enter' && createProject()}
+                autoFocus
+              />
+              <Button size="sm" onClick={createProject}>
+                <Plus className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowNewProject(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto p-2">
-          {conversations.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8 px-4">
-              No conversations yet
-            </p>
-          ) : (
-            <div className="space-y-1">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={cn(
-                    'group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
-                    currentConversationId === conv.id
-                      ? 'bg-amber-500/10 border border-amber-500/20'
-                      : 'hover:bg-muted'
-                  )}
-                  onClick={() => setCurrentConversationId(conv.id)}
+          {/* Ungrouped Conversations */}
+          <div className="mb-2">
+            <button
+              onClick={() => toggleProject('none')}
+              className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              {expandedProjects.has('none') ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+              Recent Chats
+              <span className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                {ungroupedConversations.length}
+              </span>
+            </button>
+            {expandedProjects.has('none') && (
+              <div className="mt-1 space-y-0.5">
+                {ungroupedConversations.map((conv) => (
+                  <ConversationItem
+                    key={conv.id}
+                    conversation={conv}
+                    isActive={currentConversationId === conv.id}
+                    projects={projects}
+                    onSelect={() => setCurrentConversationId(conv.id)}
+                    onDelete={() => deleteConversation(conv.id)}
+                    onMove={(projectId) => moveToProject(conv.id, projectId)}
+                  />
+                ))}
+                {ungroupedConversations.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-3 py-2">No chats yet</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Project Groups */}
+          {conversationsByProject.map(({ project, conversations: projectConvs }) => (
+            <div key={project.id} className="mb-2">
+              <div className="flex items-center group">
+                <button
+                  onClick={() => toggleProject(project.id)}
+                  className="flex items-center gap-2 flex-1 px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
                 >
-                  <MessageSquare className={cn(
-                    'w-4 h-4 flex-shrink-0',
-                    currentConversationId === conv.id ? 'text-amber-500' : 'text-muted-foreground'
-                  )} />
-                  <div className="flex-1 min-w-0">
-                    <p className={cn(
-                      'text-sm truncate',
-                      currentConversationId === conv.id ? 'font-medium' : ''
-                    )}>
-                      {conv.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(conv.updated_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteConversation(conv.id)
-                    }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                  </Button>
+                  {expandedProjects.has(project.id) ? (
+                    <ChevronDown className="w-3 h-3" />
+                  ) : (
+                    <ChevronRight className="w-3 h-3" />
+                  )}
+                  <Folder className="w-3 h-3" style={{ color: project.color }} />
+                  <span className="truncate">{project.name}</span>
+                  <span className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                    {projectConvs.length}
+                  </span>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                  onClick={() => deleteProject(project.id)}
+                >
+                  <Trash2 className="w-3 h-3 text-destructive" />
+                </Button>
+              </div>
+              {expandedProjects.has(project.id) && (
+                <div className="mt-1 space-y-0.5 ml-2">
+                  {projectConvs.map((conv) => (
+                    <ConversationItem
+                      key={conv.id}
+                      conversation={conv}
+                      isActive={currentConversationId === conv.id}
+                      projects={projects}
+                      onSelect={() => setCurrentConversationId(conv.id)}
+                      onDelete={() => deleteConversation(conv.id)}
+                      onMove={(projectId) => moveToProject(conv.id, projectId)}
+                    />
+                  ))}
+                  {projectConvs.length === 0 && (
+                    <p className="text-xs text-muted-foreground px-3 py-2">No chats in project</p>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
-          )}
+          ))}
         </div>
       </div>
 
@@ -353,12 +644,20 @@ export function AIChatbot() {
             </div>
             <div>
               <h1 className="font-bold text-lg">BrainBox</h1>
-              {webSearchAvailable && (
-                <div className="flex items-center gap-1 text-xs text-green-600">
-                  <Globe className="w-3 h-3" />
-                  <span>Web search enabled</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-xs">
+                {webSearchAvailable && (
+                  <span className="flex items-center gap-1 text-green-600">
+                    <Globe className="w-3 h-3" />
+                    Web
+                  </span>
+                )}
+                {memories.length > 0 && (
+                  <span className="flex items-center gap-1 text-purple-500">
+                    <Sparkles className="w-3 h-3" />
+                    {memories.length} memories
+                  </span>
+                )}
+              </div>
             </div>
             {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           </div>
@@ -380,7 +679,9 @@ export function AIChatbot() {
                 </div>
                 <h2 className="text-2xl font-bold mb-2">How can I help?</h2>
                 <p className="text-muted-foreground mb-6 max-w-md">
-                  Ask me anything. I can search the web for current information.
+                  {memories.length > 0
+                    ? `I remember ${memories.length} things about you. Ask me anything!`
+                    : 'Ask me anything. I can search the web for current information.'}
                 </p>
                 <div className="flex flex-wrap gap-3 justify-center">
                   {['Help me plan my career', 'What should I learn next?', 'Give me project ideas'].map((s) => (
@@ -510,6 +811,96 @@ export function AIChatbot() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Conversation Item Component
+function ConversationItem({
+  conversation,
+  isActive,
+  projects,
+  onSelect,
+  onDelete,
+  onMove,
+}: {
+  conversation: Conversation
+  isActive: boolean
+  projects: Project[]
+  onSelect: () => void
+  onDelete: () => void
+  onMove: (projectId: string | null) => void
+}) {
+  return (
+    <div
+      className={cn(
+        'group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors',
+        isActive
+          ? 'bg-amber-500/10 border border-amber-500/20'
+          : 'hover:bg-muted'
+      )}
+      onClick={onSelect}
+    >
+      <MessageSquare className={cn(
+        'w-4 h-4 flex-shrink-0',
+        isActive ? 'text-amber-500' : 'text-muted-foreground'
+      )} />
+      <div className="flex-1 min-w-0">
+        <p className={cn(
+          'text-sm truncate',
+          isActive ? 'font-medium' : ''
+        )}>
+          {conversation.title}
+        </p>
+      </div>
+
+      {/* Always visible action buttons */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 opacity-50 group-hover:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation()
+              onMove(null)
+            }}
+          >
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Move to Recent
+          </DropdownMenuItem>
+          {projects.map((project) => (
+            <DropdownMenuItem
+              key={project.id}
+              onClick={(e) => {
+                e.stopPropagation()
+                onMove(project.id)
+              }}
+            >
+              <Folder className="w-4 h-4 mr-2" style={{ color: project.color }} />
+              Move to {project.name}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

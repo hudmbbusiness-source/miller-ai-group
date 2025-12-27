@@ -43,22 +43,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, messages } = body
+    const { title, messages, project_id } = body
 
     if (!title || !messages) {
       return NextResponse.json({ error: 'Title and messages required' }, { status: 400 })
     }
 
     // Create new conversation
+    const insertData: Record<string, unknown> = {
+      user_id: user.id,
+      title,
+      messages,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    if (project_id) insertData.project_id = project_id
+
     const { data: conversation, error } = await (supabase
       .from('conversations') as SupabaseAny)
-      .insert({
-        user_id: user.id,
-        title,
-        messages,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .insert(insertData)
       .select()
       .single()
 
@@ -84,19 +87,24 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, messages } = body
+    const { id, messages, project_id, title } = body
 
-    if (!id || !messages) {
-      return NextResponse.json({ error: 'ID and messages required' }, { status: 400 })
+    if (!id) {
+      return NextResponse.json({ error: 'ID required' }, { status: 400 })
     }
+
+    // Build update object
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    }
+    if (messages !== undefined) updateData.messages = messages
+    if (project_id !== undefined) updateData.project_id = project_id
+    if (title !== undefined) updateData.title = title
 
     // Update conversation
     const { data: conversation, error } = await (supabase
       .from('conversations') as SupabaseAny)
-      .update({
-        messages,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', id)
       .eq('user_id', user.id)
       .select()

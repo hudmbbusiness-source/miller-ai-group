@@ -21,7 +21,7 @@ import {
   Brain,
   LineChart,
   X,
-  Play,
+  Clock,
 } from 'lucide-react'
 
 function KachowLandingContent() {
@@ -33,6 +33,7 @@ function KachowLandingContent() {
   const [errorMessage, setErrorMessage] = useState('')
   const [showSignup, setShowSignup] = useState(false)
   const [isProcessingAuth, setIsProcessingAuth] = useState(false)
+  const [countdown, setCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -121,6 +122,8 @@ function KachowLandingContent() {
       description: 'Every edit decision is guided by real algorithm data, not subjective preferences.',
     },
   ]
+
+  const formatTime = (num: number) => num.toString().padStart(2, '0')
 
   if (isProcessingAuth) {
     return (
@@ -331,10 +334,35 @@ function KachowLandingContent() {
           <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-4">
             Get free lifetime access
           </h2>
-          <p className="text-neutral-400 mb-8">
+          <p className="text-neutral-400 mb-6">
             Early supporters will receive free access when we launch.
             Standard pricing will be $23.99/month.
           </p>
+
+          {/* Countdown Timer */}
+          <div className="mb-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-red-500/30 bg-red-500/10 mb-3">
+              <Clock className="w-4 h-4 text-red-400" />
+              <span className="text-sm font-medium text-red-400">Limited Time Offer</span>
+            </div>
+            <div className="flex items-center justify-center gap-3">
+              <div className="bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 min-w-[70px]">
+                <div className="text-2xl font-bold text-white font-mono">{formatTime(countdown.hours)}</div>
+                <div className="text-xs text-neutral-500 uppercase">Hours</div>
+              </div>
+              <span className="text-2xl text-neutral-600 font-bold">:</span>
+              <div className="bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 min-w-[70px]">
+                <div className="text-2xl font-bold text-white font-mono">{formatTime(countdown.minutes)}</div>
+                <div className="text-xs text-neutral-500 uppercase">Minutes</div>
+              </div>
+              <span className="text-2xl text-neutral-600 font-bold">:</span>
+              <div className="bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 min-w-[70px]">
+                <div className="text-2xl font-bold text-white font-mono">{formatTime(countdown.seconds)}</div>
+                <div className="text-xs text-neutral-500 uppercase">Seconds</div>
+              </div>
+            </div>
+            <p className="text-xs text-neutral-500 mt-3">Offer resets daily at midnight</p>
+          </div>
 
           <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-8">
             <div className="flex items-baseline justify-center gap-2 mb-2">
@@ -414,7 +442,7 @@ function KachowLandingContent() {
               className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
             >
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Image
                       src="/logos/kachow.png"
@@ -434,6 +462,14 @@ function KachowLandingContent() {
                   >
                     <X className="w-4 h-4 text-neutral-400" />
                   </button>
+                </div>
+
+                {/* Countdown in modal */}
+                <div className="flex items-center justify-center gap-2 mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <Clock className="w-4 h-4 text-red-400" />
+                  <span className="text-sm text-red-400">
+                    Offer expires in {formatTime(countdown.hours)}:{formatTime(countdown.minutes)}:{formatTime(countdown.seconds)}
+                  </span>
                 </div>
 
                 {submitStatus === 'success' ? (

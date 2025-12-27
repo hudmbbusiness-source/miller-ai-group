@@ -580,6 +580,9 @@ function KachowLandingContent() {
               <Link href="/miller" className="hover:text-white transition-colors">
                 About
               </Link>
+              <Link href="/login" className="hover:text-white transition-colors">
+                Launch Pad
+              </Link>
             </div>
 
             <p className="text-sm text-zinc-500">

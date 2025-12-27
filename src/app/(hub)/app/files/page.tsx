@@ -97,7 +97,7 @@ export default function FilesPage() {
     }
 
     let successCount = 0
-    let errorMessages: string[] = []
+    const errorMessages: string[] = []
 
     for (const file of Array.from(selectedFiles)) {
       // Check file size (max 50MB)

@@ -3,6 +3,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+// Type helper for tables not in generated database types
+// These tables are created via migration but not in the auto-generated types
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>
+type UntypedTable = ReturnType<SupabaseClient['from']>
+
+// Helper to access tables not in generated types
+function fromTable(supabase: SupabaseClient, table: string): UntypedTable {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (supabase as any).from(table)
+}
+
 // Types
 export interface Course {
   id: string
@@ -107,8 +118,7 @@ export async function getCourses(): Promise<Course[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data, error } = await (supabase as any)
-    .from('courses')
+  const { data, error } = await fromTable(supabase, 'courses')
     .select('*')
     .eq('user_id', user.id)
     .order('order_index', { ascending: true })
@@ -126,8 +136,7 @@ export async function createCourse(course: Partial<Course>): Promise<Course | nu
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('courses')
+  const { data, error } = await fromTable(supabase, 'courses')
     .insert({ ...course, user_id: user.id })
     .select()
     .single()
@@ -146,8 +155,7 @@ export async function updateCourse(id: string, updates: Partial<Course>): Promis
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('courses')
+  const { data, error } = await fromTable(supabase, 'courses')
     .update(updates)
     .eq('id', id)
     .eq('user_id', user.id)
@@ -168,8 +176,7 @@ export async function deleteCourse(id: string): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 
-  const { error } = await (supabase as any)
-    .from('courses')
+  const { error } = await fromTable(supabase, 'courses')
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
@@ -190,8 +197,7 @@ export async function getCertificates(): Promise<Certificate[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data, error } = await (supabase as any)
-    .from('certificates')
+  const { data, error } = await fromTable(supabase, 'certificates')
     .select('*')
     .eq('user_id', user.id)
     .order('order_index', { ascending: true })
@@ -209,8 +215,7 @@ export async function createCertificate(cert: Partial<Certificate>): Promise<Cer
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('certificates')
+  const { data, error } = await fromTable(supabase, 'certificates')
     .insert({ ...cert, user_id: user.id })
     .select()
     .single()
@@ -229,8 +234,7 @@ export async function updateCertificate(id: string, updates: Partial<Certificate
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('certificates')
+  const { data, error } = await fromTable(supabase, 'certificates')
     .update(updates)
     .eq('id', id)
     .eq('user_id', user.id)
@@ -251,8 +255,7 @@ export async function deleteCertificate(id: string): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 
-  const { error } = await (supabase as any)
-    .from('certificates')
+  const { error } = await fromTable(supabase, 'certificates')
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
@@ -273,8 +276,7 @@ export async function getJobApplications(): Promise<JobApplication[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data, error } = await (supabase as any)
-    .from('job_applications')
+  const { data, error } = await fromTable(supabase, 'job_applications')
     .select('*')
     .eq('user_id', user.id)
     .order('priority', { ascending: false })
@@ -293,8 +295,7 @@ export async function createJobApplication(app: Partial<JobApplication>): Promis
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('job_applications')
+  const { data, error } = await fromTable(supabase, 'job_applications')
     .insert({ ...app, user_id: user.id })
     .select()
     .single()
@@ -313,8 +314,7 @@ export async function updateJobApplication(id: string, updates: Partial<JobAppli
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('job_applications')
+  const { data, error } = await fromTable(supabase, 'job_applications')
     .update(updates)
     .eq('id', id)
     .eq('user_id', user.id)
@@ -335,8 +335,7 @@ export async function deleteJobApplication(id: string): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 
-  const { error } = await (supabase as any)
-    .from('job_applications')
+  const { error } = await fromTable(supabase, 'job_applications')
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
@@ -357,8 +356,7 @@ export async function getCareerProfile(): Promise<CareerProfile | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('career_profiles')
+  const { data, error } = await fromTable(supabase, 'career_profiles')
     .select('*')
     .eq('user_id', user.id)
     .single()
@@ -376,8 +374,7 @@ export async function upsertCareerProfile(profile: Partial<CareerProfile>): Prom
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await (supabase as any)
-    .from('career_profiles')
+  const { data, error } = await fromTable(supabase, 'career_profiles')
     .upsert({ ...profile, user_id: user.id }, { onConflict: 'user_id' })
     .select()
     .single()
@@ -398,11 +395,10 @@ export async function getLaunchPadStats() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const sb = supabase as any
   const [courses, certificates, applications] = await Promise.all([
-    sb.from('courses').select('status').eq('user_id', user.id),
-    sb.from('certificates').select('status').eq('user_id', user.id),
-    sb.from('job_applications').select('status, is_dream_job, salary_min, salary_max').eq('user_id', user.id),
+    fromTable(supabase, 'courses').select('status').eq('user_id', user.id),
+    fromTable(supabase, 'certificates').select('status').eq('user_id', user.id),
+    fromTable(supabase, 'job_applications').select('status, is_dream_job, salary_min, salary_max').eq('user_id', user.id),
   ])
 
   const courseData: { status: string }[] = courses.data || []

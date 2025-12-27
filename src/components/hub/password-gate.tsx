@@ -23,12 +23,10 @@ export function PasswordGate({ children }: PasswordGateProps) {
 
   useEffect(() => {
     // Check if user has already verified
+    // This must run client-side after mount (localStorage not available in SSR)
     const verified = localStorage.getItem(STORAGE_KEY)
-    if (verified === 'true') {
-      setIsVerified(true)
-    } else {
-      setIsVerified(false)
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsVerified(verified === 'true')
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     const repos = await reposRes.json()
 
     // Fetch contribution data using GraphQL API (if token available)
-    let contributions = {
+    const contributions = {
       total: 0,
       lastWeek: 0,
       commits: 0,

@@ -280,7 +280,7 @@ function NotesContent() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    let query = supabase
+    const query = supabase
       .from('notes')
       .select('*')
       .eq('user_id', user.id)

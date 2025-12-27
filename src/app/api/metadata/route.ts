@@ -93,7 +93,7 @@ function parseMetadata(html: string, url: URL): {
   image: string | null
 } {
   // Extract title - check meta tags first, then <title>
-  let title = extractMetaContent(html, 'og:title') ||
+  const title = extractMetaContent(html, 'og:title') ||
               extractMetaContent(html, 'twitter:title') ||
               extractTitle(html)
 

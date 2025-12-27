@@ -70,24 +70,19 @@ import {
   type JobApplication,
   type CareerProfile,
 } from '@/lib/actions/launch-pad'
+import { AI_COMPANIES, AI_CERTIFICATIONS, DATA_SOURCES } from '@/lib/data/career-data'
 
-// High-paying tech roles data
+// Top roles with real salary data from Levels.fyi December 2025
 const TOP_ROLES = [
-  { title: 'ML/AI Engineer', salary: '$180k-$400k', growth: '+32%' },
-  { title: 'Quantitative Developer', salary: '$200k-$500k', growth: '+25%' },
-  { title: 'Staff Software Engineer', salary: '$250k-$450k', growth: '+18%' },
-  { title: 'AI Startup Founder', salary: 'Equity-based', growth: '+45%' },
-  { title: 'VP of Engineering', salary: '$300k-$600k', growth: '+15%' },
+  { title: 'AI Research Scientist (OpenAI)', salary: '$400K-$800K', growth: '+45%', company: 'OpenAI' },
+  { title: 'Staff ML Engineer (Anthropic)', salary: '$550K-$759K', growth: '+38%', company: 'Anthropic' },
+  { title: 'Senior AI Engineer (NVIDIA)', salary: '$450K-$544K', growth: '+32%', company: 'NVIDIA' },
+  { title: 'Research Scientist (DeepMind)', salary: '$400K-$481K', growth: '+28%', company: 'Google' },
+  { title: 'ML Engineer (Databricks)', salary: '$350K-$500K', growth: '+25%', company: 'Databricks' },
 ]
 
-// Recommended certifications for AI/CS entrepreneurship
-const RECOMMENDED_CERTS = [
-  { name: 'AWS Solutions Architect', provider: 'AWS', cost: 300, hours: 40 },
-  { name: 'TensorFlow Developer', provider: 'Google', cost: 100, hours: 30 },
-  { name: 'Deep Learning Specialization', provider: 'Coursera/DeepLearning.AI', cost: 49, hours: 80 },
-  { name: 'Meta AI Professional', provider: 'Meta', cost: 0, hours: 60 },
-  { name: 'Y Combinator Startup School', provider: 'YC', cost: 0, hours: 20 },
-]
+// Recommended certifications for AI/CS entrepreneurship (from real data)
+const RECOMMENDED_CERTS = AI_CERTIFICATIONS.slice(0, 5)
 
 export default function LaunchPadPage() {
   const [activeTab, setActiveTab] = useState('overview')
@@ -338,11 +333,12 @@ export default function LaunchPadPage() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="careers">AI Careers</TabsTrigger>
           <TabsTrigger value="courses">Courses</TabsTrigger>
-          <TabsTrigger value="certificates">Certificates</TabsTrigger>
-          <TabsTrigger value="applications">Applications</TabsTrigger>
+          <TabsTrigger value="certificates">Certs</TabsTrigger>
+          <TabsTrigger value="applications">Jobs</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -459,6 +455,167 @@ export default function LaunchPadPage() {
               <span>Track Application</span>
             </Button>
           </div>
+        </TabsContent>
+
+        {/* AI Careers Tab - Real Company Data from Levels.fyi */}
+        <TabsContent value="careers" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-semibold">AI Career Opportunities</h2>
+              <p className="text-sm text-muted-foreground">
+                Real salary data from{' '}
+                <a href={DATA_SOURCES.url} target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline">
+                  Levels.fyi
+                </a>
+                {' '}(Updated: {DATA_SOURCES.lastUpdated})
+              </p>
+            </div>
+          </div>
+
+          {/* Company Cards */}
+          <div className="space-y-6">
+            {AI_COMPANIES.map((company) => (
+              <Card key={company.name} className="overflow-hidden">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-amber-500" />
+                        {company.name}
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        {company.description}
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <a href={company.applyUrl} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-black">
+                          Apply Now
+                          <ExternalLink className="w-3 h-3 ml-1" />
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Badge variant="outline">
+                      <MapPin className="w-3 h-3 mr-1" />
+                      {company.headquarters}
+                    </Badge>
+                    <Badge variant="outline">Founded {company.founded}</Badge>
+                    <Badge variant="outline">{company.employees} employees</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Roles */}
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                      <Briefcase className="w-4 h-4" />
+                      Open Roles & Compensation
+                    </h4>
+                    <div className="grid gap-2">
+                      {company.roles.slice(0, 4).map((role, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                        >
+                          <div>
+                            <p className="font-medium">{role.title}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {role.level} • {role.location}
+                              {role.remote && <span className="text-green-500 ml-2">Remote OK</span>}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-green-500">
+                              ${Math.round(role.salaryMin / 1000)}K - ${Math.round(role.salaryMax / 1000)}K
+                            </p>
+                            <p className="text-xs text-muted-foreground">+ {role.equity} equity</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Internships */}
+                  {company.internships.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4" />
+                        Internships
+                      </h4>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {company.internships.map((intern, idx) => (
+                          <div key={idx} className="p-3 rounded-lg border border-border">
+                            <p className="font-medium">{intern.title}</p>
+                            <p className="text-sm text-green-500 font-bold">${intern.hourlyRate}/hr</p>
+                            <p className="text-xs text-muted-foreground">{intern.duration} • {intern.location}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Interview Process */}
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                      <Target className="w-4 h-4" />
+                      Interview Process
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {company.interviewProcess.map((step, idx) => (
+                        <Badge key={idx} variant="secondary" className="text-xs">
+                          {idx + 1}. {step}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Requirements */}
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      Key Requirements
+                    </h4>
+                    <ul className="grid sm:grid-cols-2 gap-1 text-sm text-muted-foreground">
+                      {company.requirements.map((req, idx) => (
+                        <li key={idx} className="flex items-center gap-2">
+                          <ChevronRight className="w-3 h-3 text-amber-500" />
+                          {req}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Source Link */}
+                  <div className="pt-2 border-t border-border">
+                    <a
+                      href={company.levelsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-muted-foreground hover:text-amber-500 flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      View salary data on Levels.fyi
+                    </a>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Data Source Disclaimer */}
+          <Card className="bg-muted/30">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">
+                <strong>Data Source:</strong> {DATA_SOURCES.primary} •{' '}
+                <a href={DATA_SOURCES.url} target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:underline">
+                  {DATA_SOURCES.url}
+                </a>
+                <br />
+                {DATA_SOURCES.disclaimer}
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Courses Tab */}

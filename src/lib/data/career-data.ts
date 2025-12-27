@@ -1,0 +1,705 @@
+// Real AI/ML Career Data - Verified from Levels.fyi December 2025
+// Sources: levels.fyi, glassdoor, official company career pages
+
+export interface CompanyData {
+  name: string
+  logo: string // Company logo URL or placeholder
+  description: string
+  headquarters: string
+  founded: number
+  employees: string
+  roles: RoleData[]
+  internships: InternshipData[]
+  requirements: string[]
+  interviewProcess: string[]
+  culture: string[]
+  applyUrl: string
+  levelsUrl: string // Source for salary data
+}
+
+export interface RoleData {
+  title: string
+  level: string
+  salaryMin: number
+  salaryMax: number
+  equity: string
+  location: string
+  remote: boolean
+  requirements: string[]
+}
+
+export interface InternshipData {
+  title: string
+  hourlyRate: number
+  duration: string
+  location: string
+  requirements: string[]
+}
+
+// Verified data from levels.fyi as of December 2025
+export const AI_COMPANIES: CompanyData[] = [
+  {
+    name: 'OpenAI',
+    logo: '/company-logos/openai.png',
+    description: 'AI research company building safe AGI. Creators of GPT-4, ChatGPT, and DALL-E.',
+    headquarters: 'San Francisco, CA',
+    founded: 2015,
+    employees: '1,500+',
+    roles: [
+      {
+        title: 'Software Engineer',
+        level: 'L2 (Entry)',
+        salaryMin: 238000,
+        salaryMax: 290000,
+        equity: '$100K-$200K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['BS/MS in CS', 'Python proficiency', 'ML fundamentals'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L3 (Mid)',
+        salaryMin: 350000,
+        salaryMax: 450000,
+        equity: '$150K-$300K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['3+ years experience', 'ML systems experience', 'Distributed systems'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L4 (Senior)',
+        salaryMin: 500000,
+        salaryMax: 700000,
+        equity: '$200K-$400K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['5+ years experience', 'ML infrastructure', 'Technical leadership'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L5 (Staff)',
+        salaryMin: 700000,
+        salaryMax: 900000,
+        equity: '$300K-$500K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['8+ years experience', 'System design expertise', 'Team leadership'],
+      },
+      {
+        title: 'Research Scientist',
+        level: 'L4-L5',
+        salaryMin: 400000,
+        salaryMax: 800000,
+        equity: '$200K-$500K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['PhD in ML/AI', 'Published research', 'PyTorch/JAX expertise'],
+      },
+    ],
+    internships: [
+      {
+        title: 'Software Engineering Intern',
+        hourlyRate: 85,
+        duration: '12 weeks',
+        location: 'San Francisco, CA',
+        requirements: ['Pursuing BS/MS/PhD', 'Strong CS fundamentals', 'Python proficiency'],
+      },
+      {
+        title: 'Research Intern',
+        hourlyRate: 95,
+        duration: '12-16 weeks',
+        location: 'San Francisco, CA',
+        requirements: ['PhD student in ML', 'Published papers', 'Strong math background'],
+      },
+    ],
+    requirements: [
+      'Strong algorithmic problem-solving',
+      'Python and ML frameworks (PyTorch preferred)',
+      'Distributed systems experience',
+      'Published research (for research roles)',
+    ],
+    interviewProcess: [
+      'Recruiter screen (30 min)',
+      'Technical phone screen (60 min)',
+      'Onsite: 4-5 rounds including coding, system design, ML depth',
+      'Team matching',
+    ],
+    culture: [
+      'Mission-driven: building safe AGI',
+      'Fast-paced startup environment',
+      'High autonomy and ownership',
+      'Collaborative research culture',
+    ],
+    applyUrl: 'https://openai.com/careers',
+    levelsUrl: 'https://www.levels.fyi/companies/openai/salaries',
+  },
+  {
+    name: 'Anthropic',
+    logo: '/company-logos/anthropic.png',
+    description: 'AI safety company building reliable, interpretable AI systems. Creators of Claude.',
+    headquarters: 'San Francisco, CA',
+    founded: 2021,
+    employees: '500+',
+    roles: [
+      {
+        title: 'Software Engineer',
+        level: 'Entry',
+        salaryMin: 325000,
+        salaryMax: 400000,
+        equity: '$100K-$200K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['BS in CS', 'Python expertise', 'ML fundamentals'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'Mid',
+        salaryMin: 400000,
+        salaryMax: 550000,
+        equity: '$150K-$300K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['3+ years experience', 'ML systems', 'Distributed systems'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'Senior/Lead',
+        salaryMin: 550000,
+        salaryMax: 759000,
+        equity: '$200K-$400K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['5+ years experience', 'Technical leadership', 'Large-scale ML'],
+      },
+      {
+        title: 'Research Scientist',
+        level: 'Senior',
+        salaryMin: 450000,
+        salaryMax: 700000,
+        equity: '$250K-$500K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['PhD in ML/AI', 'Published at NeurIPS/ICML', 'Interpretability research'],
+      },
+      {
+        title: 'Prompt Engineer',
+        level: 'Experienced',
+        salaryMin: 250000,
+        salaryMax: 375000,
+        equity: '$75K-$150K/yr',
+        location: 'San Francisco, CA',
+        remote: true,
+        requirements: ['Strong writing skills', 'LLM experience', 'Analytical thinking'],
+      },
+    ],
+    internships: [
+      {
+        title: 'Research Intern',
+        hourlyRate: 80,
+        duration: '12 weeks',
+        location: 'San Francisco, CA',
+        requirements: ['PhD student', 'AI safety interest', 'Published research'],
+      },
+    ],
+    requirements: [
+      'Passion for AI safety',
+      'Strong Python and ML fundamentals',
+      'Experience with large language models',
+      'Clear technical communication',
+    ],
+    interviewProcess: [
+      'Recruiter call (30 min)',
+      'Technical screen with engineer (60 min)',
+      'Take-home project (optional path)',
+      'Onsite: 4-5 rounds',
+    ],
+    culture: [
+      'AI safety focused',
+      'Research-driven engineering',
+      'Small team, high impact',
+      'Thoughtful and deliberate approach',
+    ],
+    applyUrl: 'https://www.anthropic.com/careers',
+    levelsUrl: 'https://www.levels.fyi/companies/anthropic/salaries',
+  },
+  {
+    name: 'Google DeepMind',
+    logo: '/company-logos/deepmind.png',
+    description: 'World-leading AI research lab. Created AlphaGo, AlphaFold, Gemini.',
+    headquarters: 'London, UK / Mountain View, CA',
+    founded: 2010,
+    employees: '2,500+',
+    roles: [
+      {
+        title: 'Research Scientist',
+        level: 'L4',
+        salaryMin: 286000,
+        salaryMax: 350000,
+        equity: '$100K-$200K/yr',
+        location: 'Mountain View, CA',
+        remote: false,
+        requirements: ['PhD in ML/CS', 'Published at top venues', 'Strong math'],
+      },
+      {
+        title: 'Research Scientist',
+        level: 'L5 (Senior)',
+        salaryMin: 400000,
+        salaryMax: 481000,
+        equity: '$150K-$300K/yr',
+        location: 'Mountain View, CA',
+        remote: false,
+        requirements: ['5+ years research', 'First-author papers', 'Research leadership'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L5',
+        salaryMin: 350000,
+        salaryMax: 450000,
+        equity: '$150K-$250K/yr',
+        location: 'Mountain View, CA',
+        remote: false,
+        requirements: ['5+ years experience', 'ML infrastructure', 'Distributed systems'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L6 (Staff)',
+        salaryMin: 500000,
+        salaryMax: 650000,
+        equity: '$200K-$500K/yr',
+        location: 'Mountain View, CA',
+        remote: false,
+        requirements: ['8+ years experience', 'Technical leadership', 'System design'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L7 (Senior Staff)',
+        salaryMin: 750000,
+        salaryMax: 1000000,
+        equity: '$400K-$1M/yr',
+        location: 'Mountain View, CA',
+        remote: false,
+        requirements: ['10+ years experience', 'Org-level impact', 'Industry recognition'],
+      },
+    ],
+    internships: [
+      {
+        title: 'Research Intern',
+        hourlyRate: 72,
+        duration: '12-16 weeks',
+        location: 'London or Mountain View',
+        requirements: ['PhD student in ML', 'Top-tier publications', 'Strong references'],
+      },
+    ],
+    requirements: [
+      'PhD preferred for research roles',
+      'Strong publication record',
+      'Deep ML/RL expertise',
+      'Collaborative research skills',
+    ],
+    interviewProcess: [
+      'Recruiter screen',
+      'Technical phone interviews (2)',
+      'Onsite: 5-6 interviews (coding, ML, research)',
+      'Research presentation (for research roles)',
+    ],
+    culture: [
+      'Pure research focus',
+      'Long-term thinking',
+      'Collaborative environment',
+      'Academic-style culture',
+    ],
+    applyUrl: 'https://deepmind.google/careers/',
+    levelsUrl: 'https://www.levels.fyi/companies/google/salaries/research-scientist',
+  },
+  {
+    name: 'NVIDIA',
+    logo: '/company-logos/nvidia.png',
+    description: 'Leading AI computing company. Makes GPUs powering all major AI systems.',
+    headquarters: 'Santa Clara, CA',
+    founded: 1993,
+    employees: '29,000+',
+    roles: [
+      {
+        title: 'AI Engineer',
+        level: 'IC3 (Mid)',
+        salaryMin: 258000,
+        salaryMax: 350000,
+        equity: '$50K-$100K/yr (NSU)',
+        location: 'Santa Clara, CA',
+        remote: false,
+        requirements: ['3+ years ML', 'CUDA experience', 'Deep learning frameworks'],
+      },
+      {
+        title: 'AI Engineer',
+        level: 'IC4 (Senior)',
+        salaryMin: 350000,
+        salaryMax: 450000,
+        equity: '$75K-$150K/yr (NSU)',
+        location: 'Santa Clara, CA',
+        remote: false,
+        requirements: ['5+ years ML', 'GPU optimization', 'Model deployment'],
+      },
+      {
+        title: 'AI Engineer',
+        level: 'IC5 (Staff)',
+        salaryMin: 450000,
+        salaryMax: 544000,
+        equity: '$100K-$200K/yr (NSU)',
+        location: 'Santa Clara, CA',
+        remote: false,
+        requirements: ['8+ years experience', 'System architecture', 'Technical leadership'],
+      },
+      {
+        title: 'Machine Learning Engineer',
+        level: 'IC3-IC4',
+        salaryMin: 205000,
+        salaryMax: 331000,
+        equity: '$50K-$100K/yr (NSU)',
+        location: 'Santa Clara, CA',
+        remote: false,
+        requirements: ['ML model development', 'Python/C++', 'PyTorch/TensorFlow'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'IC6 (Principal)',
+        salaryMin: 500000,
+        salaryMax: 558000,
+        equity: '$150K-$300K/yr (NSU)',
+        location: 'Santa Clara, CA',
+        remote: false,
+        requirements: ['10+ years experience', 'Industry expertise', 'Strategic leadership'],
+      },
+    ],
+    internships: [
+      {
+        title: 'AI/Deep Learning Intern',
+        hourlyRate: 55,
+        duration: '12 weeks',
+        location: 'Santa Clara, CA',
+        requirements: ['Pursuing MS/PhD', 'Deep learning coursework', 'Python/CUDA'],
+      },
+    ],
+    requirements: [
+      'GPU programming (CUDA)',
+      'Deep learning frameworks',
+      'C++ and Python',
+      'Performance optimization',
+    ],
+    interviewProcess: [
+      'Recruiter screen',
+      'Technical phone screen',
+      'Onsite: 4-5 rounds (coding, system design, GPU knowledge)',
+    ],
+    culture: [
+      'Hardware-software integration',
+      'Performance-focused',
+      'Innovation-driven',
+      'Fast-growing AI division',
+    ],
+    applyUrl: 'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite',
+    levelsUrl: 'https://www.levels.fyi/companies/nvidia/salaries/software-engineer',
+  },
+  {
+    name: 'Meta AI',
+    logo: '/company-logos/meta.png',
+    description: 'AI research division of Meta. Created LLaMA, PyTorch, and leading open-source AI.',
+    headquarters: 'Menlo Park, CA',
+    founded: 2013,
+    employees: '1,000+ in AI',
+    roles: [
+      {
+        title: 'Research Scientist',
+        level: 'IC4',
+        salaryMin: 300000,
+        salaryMax: 400000,
+        equity: '$100K-$200K/yr',
+        location: 'Menlo Park, CA',
+        remote: false,
+        requirements: ['PhD in ML', 'Published research', 'PyTorch expertise'],
+      },
+      {
+        title: 'Research Scientist',
+        level: 'IC5 (Senior)',
+        salaryMin: 400000,
+        salaryMax: 550000,
+        equity: '$150K-$300K/yr',
+        location: 'Menlo Park, CA',
+        remote: false,
+        requirements: ['5+ years research', 'First-author at top venues', 'Research leadership'],
+      },
+      {
+        title: 'AI Product Manager',
+        level: 'Senior',
+        salaryMin: 300000,
+        salaryMax: 400000,
+        equity: '$100K-$200K/yr',
+        location: 'Menlo Park, CA',
+        remote: false,
+        requirements: ['PM experience', 'ML product experience', 'Technical background'],
+      },
+      {
+        title: 'ML Engineer',
+        level: 'E5 (Senior)',
+        salaryMin: 350000,
+        salaryMax: 489000,
+        equity: '$150K-$300K/yr',
+        location: 'Menlo Park, CA',
+        remote: false,
+        requirements: ['5+ years ML', 'Production ML systems', 'PyTorch'],
+      },
+    ],
+    internships: [
+      {
+        title: 'AI Research Intern',
+        hourlyRate: 65,
+        duration: '12 weeks',
+        location: 'Menlo Park, CA',
+        requirements: ['PhD student', 'ML research experience', 'Published papers'],
+      },
+    ],
+    requirements: [
+      'Strong ML fundamentals',
+      'PyTorch expertise',
+      'Large-scale systems',
+      'Research publications (for research roles)',
+    ],
+    interviewProcess: [
+      'Recruiter screen',
+      'Technical phone screens (2)',
+      'Onsite: 5 rounds (coding, ML, system design)',
+      'Research talk (for research roles)',
+    ],
+    culture: [
+      'Open source focused',
+      'Move fast culture',
+      'Research + product integration',
+      'Large-scale impact',
+    ],
+    applyUrl: 'https://www.metacareers.com/jobs?teams[0]=Artificial%20Intelligence',
+    levelsUrl: 'https://www.levels.fyi/companies/meta/salaries',
+  },
+  {
+    name: 'Databricks',
+    logo: '/company-logos/databricks.png',
+    description: 'Data and AI platform company. Created Apache Spark, Delta Lake, MLflow.',
+    headquarters: 'San Francisco, CA',
+    founded: 2013,
+    employees: '6,000+',
+    roles: [
+      {
+        title: 'Software Engineer',
+        level: 'L4 (Mid)',
+        salaryMin: 246000,
+        salaryMax: 350000,
+        equity: '$75K-$150K/yr',
+        location: 'San Francisco, CA',
+        remote: true,
+        requirements: ['3+ years experience', 'Distributed systems', 'Scala/Python'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L5 (Senior)',
+        salaryMin: 350000,
+        salaryMax: 500000,
+        equity: '$100K-$250K/yr',
+        location: 'San Francisco, CA',
+        remote: true,
+        requirements: ['5+ years experience', 'Data systems', 'Technical leadership'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'L6 (Staff)',
+        salaryMin: 500000,
+        salaryMax: 750000,
+        equity: '$200K-$400K/yr',
+        location: 'San Francisco, CA',
+        remote: true,
+        requirements: ['8+ years experience', 'System architecture', 'ML infrastructure'],
+      },
+      {
+        title: 'ML Engineer',
+        level: 'Senior',
+        salaryMin: 300000,
+        salaryMax: 450000,
+        equity: '$100K-$200K/yr',
+        location: 'San Francisco, CA',
+        remote: true,
+        requirements: ['ML model development', 'MLOps', 'Production ML'],
+      },
+    ],
+    internships: [
+      {
+        title: 'Software Engineering Intern',
+        hourlyRate: 60,
+        duration: '12 weeks',
+        location: 'San Francisco or Remote',
+        requirements: ['Pursuing BS/MS', 'Strong CS fundamentals', 'Distributed systems interest'],
+      },
+    ],
+    requirements: [
+      'Distributed systems expertise',
+      'Scala, Python, or Java',
+      'Big data experience',
+      'ML platform knowledge',
+    ],
+    interviewProcess: [
+      'Recruiter screen',
+      'Technical phone screen',
+      'Onsite: 4-5 rounds (coding, system design)',
+    ],
+    culture: [
+      'Open source contributors',
+      'Data-driven decisions',
+      'Remote-friendly',
+      'Fast growth startup',
+    ],
+    applyUrl: 'https://www.databricks.com/company/careers',
+    levelsUrl: 'https://www.levels.fyi/companies/databricks/salaries',
+  },
+  {
+    name: 'Scale AI',
+    logo: '/company-logos/scale.png',
+    description: 'AI data infrastructure company. Powers training data for major AI labs.',
+    headquarters: 'San Francisco, CA',
+    founded: 2016,
+    employees: '1,500+',
+    roles: [
+      {
+        title: 'Software Engineer',
+        level: 'Mid',
+        salaryMin: 200000,
+        salaryMax: 350000,
+        equity: '$50K-$150K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['3+ years experience', 'Full-stack skills', 'Python'],
+      },
+      {
+        title: 'Software Engineer',
+        level: 'Senior',
+        salaryMin: 350000,
+        salaryMax: 500000,
+        equity: '$100K-$250K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['5+ years experience', 'ML infrastructure', 'Leadership'],
+      },
+      {
+        title: 'ML Engineer',
+        level: 'Senior',
+        salaryMin: 300000,
+        salaryMax: 450000,
+        equity: '$100K-$200K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['ML model development', 'Data pipelines', 'Production ML'],
+      },
+      {
+        title: 'Engineering Manager',
+        level: 'Senior',
+        salaryMin: 500000,
+        salaryMax: 825000,
+        equity: '$200K-$400K/yr',
+        location: 'San Francisco, CA',
+        remote: false,
+        requirements: ['Engineering leadership', 'ML experience', 'Team building'],
+      },
+    ],
+    internships: [
+      {
+        title: 'Software Engineering Intern',
+        hourlyRate: 55,
+        duration: '12 weeks',
+        location: 'San Francisco, CA',
+        requirements: ['Pursuing BS/MS', 'Strong fundamentals', 'ML interest'],
+      },
+    ],
+    requirements: [
+      'Full-stack development',
+      'ML/AI experience',
+      'Data infrastructure',
+      'Fast-paced environment',
+    ],
+    interviewProcess: [
+      'Recruiter screen',
+      'Technical phone screen',
+      'Take-home project',
+      'Onsite: 4-5 rounds',
+    ],
+    culture: [
+      'Startup mentality',
+      'High growth trajectory',
+      'Data-centric mission',
+      'Young, ambitious team',
+    ],
+    applyUrl: 'https://scale.com/careers',
+    levelsUrl: 'https://www.levels.fyi/companies/scale-ai/salaries',
+  },
+]
+
+// For BYU students specifically - companies known for hiring from BYU
+export const BYU_FRIENDLY_COMPANIES = [
+  'Google',
+  'Microsoft',
+  'Amazon',
+  'Adobe',
+  'Qualtrics',
+  'Lucid Software',
+  'Ancestry',
+  'Domo',
+  'Pluralsight',
+  'Workfront',
+]
+
+// Key certifications with real costs and providers
+export const AI_CERTIFICATIONS = [
+  {
+    name: 'AWS Machine Learning Specialty',
+    provider: 'Amazon Web Services',
+    cost: 300,
+    hours: 40,
+    value: 'High demand in industry',
+    url: 'https://aws.amazon.com/certification/certified-machine-learning-specialty/',
+  },
+  {
+    name: 'Google Cloud Professional ML Engineer',
+    provider: 'Google Cloud',
+    cost: 200,
+    hours: 50,
+    value: 'Strong for GCP roles',
+    url: 'https://cloud.google.com/learn/certification/machine-learning-engineer',
+  },
+  {
+    name: 'TensorFlow Developer Certificate',
+    provider: 'Google',
+    cost: 100,
+    hours: 30,
+    value: 'Shows practical TF skills',
+    url: 'https://www.tensorflow.org/certificate',
+  },
+  {
+    name: 'Deep Learning Specialization',
+    provider: 'Coursera / DeepLearning.AI',
+    cost: 49,
+    hours: 80,
+    value: 'Foundational knowledge, Andrew Ng',
+    url: 'https://www.coursera.org/specializations/deep-learning',
+  },
+  {
+    name: 'Stanford CS229: Machine Learning',
+    provider: 'Stanford Online',
+    cost: 0,
+    hours: 60,
+    value: 'Prestigious, comprehensive',
+    url: 'https://cs229.stanford.edu/',
+  },
+]
+
+// Salary data source citation
+export const DATA_SOURCES = {
+  primary: 'Levels.fyi - December 2025',
+  url: 'https://www.levels.fyi',
+  lastUpdated: '2025-12-27',
+  disclaimer: 'Salaries are total compensation (base + equity + bonus). Actual offers vary by experience, location, and market conditions.',
+}

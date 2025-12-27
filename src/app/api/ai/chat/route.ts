@@ -45,6 +45,17 @@ function needsCurrentInfo(message: string): boolean {
   return currentInfoPatterns.some(pattern => pattern.test(message))
 }
 
+// Check if query is asking about past conversations
+function isAskingAboutPastConversations(message: string): boolean {
+  const pastConvoPatterns = [
+    /\b(remember|recall|earlier|before|previous|last time|we talked|we discussed|you said|i said|i told you|i mentioned)\b/i,
+    /\b(what did (i|we|you)|did (i|we) (talk|discuss|mention))\b/i,
+    /\b(in (our|a previous|another) (conversation|chat|discussion))\b/i,
+    /\b(look (at|into|through) (my|our) (conversations|chats|history))\b/i,
+  ]
+  return pastConvoPatterns.some(pattern => pattern.test(message))
+}
+
 // LangSearch Web Search API
 // Docs: https://docs.langsearch.com/api/web-search-api
 async function searchWeb(query: string): Promise<{
@@ -194,26 +205,48 @@ export async function POST(request: NextRequest) {
       console.error('Failed to fetch user memories:', e)
     }
 
-    // Fetch recent conversation summaries for context
+    // Check if user is asking about past conversations
+    const lastUserMessage = limitedMessages.filter(m => m.role === 'user').pop()?.content || ''
+    const wantsConversationHistory = isAskingAboutPastConversations(lastUserMessage)
+
+    // Fetch conversation history - more extensive if user is asking about past convos
     try {
-      const { data: recentConversations } = await (supabase
+      const conversationLimit = wantsConversationHistory ? 20 : 5
+      const { data: allConversations } = await (supabase
         .from('conversations') as SupabaseAny)
-        .select('title, messages')
+        .select('title, messages, updated_at')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
-        .limit(3)
+        .limit(conversationLimit)
 
-      if (recentConversations && recentConversations.length > 0) {
-        const memoryContext = recentConversations
-          .map((c: { title: string; messages: Array<{ role: string; content: string }> }) => {
-            const lastMessages = c.messages?.slice(-2) || []
-            const summary = lastMessages
-              .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 100)}...`)
-              .join(' | ')
-            return `"${c.title}": ${summary}`
+      if (allConversations && allConversations.length > 0) {
+        if (wantsConversationHistory) {
+          // Full conversation search mode - include more detail
+          userContext += `\n\n=== CONVERSATION HISTORY (${allConversations.length} recent conversations) ===`
+          allConversations.forEach((c: { title: string; messages: Array<{ role: string; content: string }>; updated_at: string }, i: number) => {
+            const date = new Date(c.updated_at).toLocaleDateString()
+            userContext += `\n\n[${i + 1}] "${c.title}" (${date}):`
+            // Include last 4 messages from each conversation
+            const recentMsgs = c.messages?.slice(-4) || []
+            recentMsgs.forEach((m: { role: string; content: string }) => {
+              const snippet = m.content.length > 200 ? m.content.slice(0, 200) + '...' : m.content
+              userContext += `\n  ${m.role}: ${snippet}`
+            })
           })
-          .join('\n')
-        userContext += `\n\nRecent conversation topics:\n${memoryContext}`
+          userContext += '\n=== END CONVERSATION HISTORY ===\n'
+        } else {
+          // Normal mode - just recent topics
+          const memoryContext = allConversations.slice(0, 3)
+            .map((c: { title: string; messages: Array<{ role: string; content: string }> }) => {
+              const lastMessages = c.messages?.slice(-2) || []
+              const summary = lastMessages
+                .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 100)}...`)
+                .join(' | ')
+              return `"${c.title}": ${summary}`
+            })
+            .join('\n')
+          userContext += `\n\nRecent conversation topics:\n${memoryContext}`
+        }
       }
     } catch (e) {
       console.error('Failed to fetch conversation memory:', e)
@@ -256,7 +289,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is asking about current/real-time information
-    const lastUserMessage = limitedMessages.filter(m => m.role === 'user').pop()?.content || ''
     const askingAboutCurrent = needsCurrentInfo(lastUserMessage)
 
     // Only perform web search when user asks about current/real-time info
@@ -327,6 +359,8 @@ ${userContext}${webSearchContext}${knowledgeNote}
 MEMORY INSTRUCTIONS:
 - The USER MEMORY section above contains persistent facts about ${userName}. ALWAYS use this context to personalize your responses.
 - If the user shares important personal information (name, goals, preferences, background, interests), acknowledge it and use it naturally in conversation.
+- You have access to CONVERSATION HISTORY - when the user asks about past discussions, refer to the conversation history provided above.
+- If the user says "remember when..." or "what did we talk about...", look through the conversation history to find relevant information.
 - Remember: You have memory of past conversations and stored facts about this user.
 
 Be concise, practical, and helpful. When answering questions about current events, news, or real-time data, use the web search results provided and cite your sources.`,

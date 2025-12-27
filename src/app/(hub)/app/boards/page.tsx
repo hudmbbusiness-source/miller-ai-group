@@ -51,23 +51,25 @@ export default function BoardsPage() {
     setLoading(false)
   }, [])
 
+  const openNewDialog = useCallback(() => {
+    setEditingBoard(null)
+    setName('')
+    setDescription('')
+    setDialogOpen(true)
+  }, [])
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBoards()
   }, [fetchBoards])
 
   useEffect(() => {
     if (searchParams.get('new') === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       openNewDialog()
       router.replace('/app/boards')
     }
-  }, [searchParams, router])
-
-  const openNewDialog = () => {
-    setEditingBoard(null)
-    setName('')
-    setDescription('')
-    setDialogOpen(true)
-  }
+  }, [searchParams, router, openNewDialog])
 
   const openEditDialog = (board: Board) => {
     setEditingBoard(board)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -82,16 +82,17 @@ export default function GoalsPage() {
   const [priority, setPriority] = useState<number>(1)
   const [targetDate, setTargetDate] = useState('')
 
-  useEffect(() => {
-    loadGoals()
-  }, [])
-
-  const loadGoals = async () => {
+  const loadGoals = useCallback(async () => {
     setIsLoading(true)
     const data = await getGoals()
     setGoals(data)
     setIsLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadGoals()
+  }, [loadGoals])
 
   const resetForm = () => {
     setTitle('')

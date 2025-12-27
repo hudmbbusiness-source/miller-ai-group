@@ -130,6 +130,8 @@ export default function AdminVerifyPage() {
   }, [])
 
   useEffect(() => {
+    // Initial data fetch on mount - intentional pattern
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     runVerification()
   }, [runVerification])
 

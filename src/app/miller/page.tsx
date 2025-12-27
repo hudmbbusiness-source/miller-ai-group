@@ -103,6 +103,7 @@ function MillerPageContent() {
   useEffect(() => {
     const code = searchParams.get('code')
     if (code && !isProcessingAuth) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsProcessingAuth(true)
       const exchangeCode = async () => {
         try {

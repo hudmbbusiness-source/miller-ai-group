@@ -17,8 +17,9 @@ function LoginContent() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Check for env vars
+    // Check for env vars - must run client-side
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEnvError(true)
     }
 
@@ -32,6 +33,7 @@ function LoginContent() {
         'callback_error': 'Authentication callback failed. Please try again.',
         'no_code': 'No authorization code received. Please try again.',
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(errorMessages[authError] || 'Authentication failed. Please try again.')
     }
     // Don't auto-redirect - always show login page

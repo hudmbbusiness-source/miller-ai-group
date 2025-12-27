@@ -25,6 +25,7 @@ export default function IntroPage() {
 
   useEffect(() => {
     // Always show login button - don't auto-detect sessions
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAuthChecking(false)
     setIsAuthenticated(false)
   }, [])

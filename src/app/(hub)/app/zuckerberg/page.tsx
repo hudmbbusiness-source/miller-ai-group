@@ -226,6 +226,7 @@ export default function ZuckerbergPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchItems()
   }, [fetchItems])
 

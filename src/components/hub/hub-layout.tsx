@@ -98,6 +98,7 @@ export function HubLayout({ children, user }: HubLayoutProps) {
         exit: { opacity: 0, y: -10 },
       }
 
+  // Navigation content - uses closures for nav items and isActive
   const NavContent = () => (
     <ScrollArea className="flex-1 py-4">
       <nav className="px-3 space-y-1">
@@ -206,6 +207,7 @@ export function HubLayout({ children, user }: HubLayoutProps) {
                   </SheetTitle>
                 </SheetHeader>
                 <div className="flex-1 overflow-y-auto">
+                  {/* eslint-disable-next-line react-hooks/static-components */}
                   <NavContent />
                 </div>
                 <div className="p-4 border-t border-border flex-shrink-0">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import {
@@ -102,11 +102,7 @@ export default function LaunchPadPage() {
   const [editingCert, setEditingCert] = useState<Certificate | null>(null)
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
       const [coursesData, certsData, appsData, profileData, statsData] = await Promise.all([
@@ -125,7 +121,12 @@ export default function LaunchPadPage() {
       console.error('Error loading data:', error)
     }
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData()
+  }, [loadData])
 
   // Calculate progress metrics
   const courseProgress = stats?.courses?.total

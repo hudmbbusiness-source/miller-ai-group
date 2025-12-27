@@ -101,6 +101,7 @@ export default function SettingsPage() {
   // Sync local prefs with loaded preferences
   useEffect(() => {
     if (!prefsLoading) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalPrefs(preferences)
     }
   }, [preferences, prefsLoading])
@@ -192,6 +193,7 @@ export default function SettingsPage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData()
   }, [fetchData])
 

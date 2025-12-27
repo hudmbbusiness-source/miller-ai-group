@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-// Allowed domains for image proxying (security: prevent SSRF)
-const ALLOWED_DOMAINS = [
-  'avatars.githubusercontent.com',
-  'github.com',
-  'raw.githubusercontent.com',
-  'images.unsplash.com',
-  'lh3.googleusercontent.com',
-  'pbs.twimg.com',
-  'cdn.discordapp.com',
-  'media.licdn.com',
+// Blocked domains (security: prevent internal network access)
+const BLOCKED_PATTERNS = [
+  /^localhost$/i,
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+  /\.local$/i,
+  /\.internal$/i,
 ]
 
 export async function GET(request: NextRequest) {
@@ -28,7 +27,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Missing URL parameter', { status: 400 })
   }
 
-  // Validate URL and check against allowed domains
+  // Validate URL
   let parsedUrl: URL
   try {
     parsedUrl = new URL(url)
@@ -41,9 +40,9 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Only HTTPS URLs are allowed', { status: 400 })
   }
 
-  // Security: Check against allowed domains
-  const isAllowed = ALLOWED_DOMAINS.some(domain => parsedUrl.hostname === domain || parsedUrl.hostname.endsWith('.' + domain))
-  if (!isAllowed) {
+  // Security: Block internal/private network access
+  const isBlocked = BLOCKED_PATTERNS.some(pattern => pattern.test(parsedUrl.hostname))
+  if (isBlocked) {
     return new NextResponse('Domain not allowed', { status: 403 })
   }
 

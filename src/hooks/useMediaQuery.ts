@@ -1,34 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useSyncExternalStore } from 'react'
 
 /**
  * Hook to detect media query matches
- * Includes SSR safety and prefers-reduced-motion support
+ * Uses useSyncExternalStore for proper SSR handling
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false)
-
-  useEffect(() => {
+  const subscribe = (callback: () => void) => {
     const media = window.matchMedia(query)
+    media.addEventListener('change', callback)
+    return () => media.removeEventListener('change', callback)
+  }
 
-    // Set initial value
-    setMatches(media.matches)
+  const getSnapshot = () => window.matchMedia(query).matches
 
-    // Create listener
-    const listener = (event: MediaQueryListEvent) => {
-      setMatches(event.matches)
-    }
+  const getServerSnapshot = () => false
 
-    // Add listener
-    media.addEventListener('change', listener)
-
-    return () => {
-      media.removeEventListener('change', listener)
-    }
-  }, [query])
-
-  return matches
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
 /**

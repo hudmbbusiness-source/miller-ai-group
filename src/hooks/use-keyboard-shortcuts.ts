@@ -34,6 +34,18 @@ const defaultShortcuts: Omit<Shortcut, 'action'>[] = [
   { key: 'Escape', description: 'Close modal/dialog', category: 'system' },
 ]
 
+// Navigation routes - defined outside to avoid recreation
+const NAVIGATION_ROUTES: Record<string, string> = {
+  'Shift+g': '/app/launch-pad',
+  'Shift+n': '/app/notes',
+  'Shift+b': '/app/boards',
+  'Shift+l': '/app/links',
+  'Shift+f': '/app/files',
+  'Shift+t': '/app/goals',
+  'Shift+s': '/app/settings',
+  'Shift+d': '/app',
+}
+
 export function useKeyboardShortcuts(
   customShortcuts: Shortcut[] = [],
   options: { enabled?: boolean } = {}
@@ -42,18 +54,6 @@ export function useKeyboardShortcuts(
   const router = useRouter()
   const lastKeyTime = useRef<number>(0)
   const lastKey = useRef<string>('')
-
-  // Define navigation actions
-  const navigationActions: Record<string, () => void> = {
-    'Shift+g': () => router.push('/app/launch-pad'),
-    'Shift+n': () => router.push('/app/notes'),
-    'Shift+b': () => router.push('/app/boards'),
-    'Shift+l': () => router.push('/app/links'),
-    'Shift+f': () => router.push('/app/files'),
-    'Shift+t': () => router.push('/app/goals'),
-    'Shift+s': () => router.push('/app/settings'),
-    'Shift+d': () => router.push('/app'),
-  }
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     if (!enabled) return
@@ -79,9 +79,10 @@ export function useKeyboardShortcuts(
     const shortcutKey = parts.join('+')
 
     // Check navigation shortcuts
-    if (navigationActions[shortcutKey]) {
+    const route = NAVIGATION_ROUTES[shortcutKey]
+    if (route) {
       event.preventDefault()
-      navigationActions[shortcutKey]()
+      router.push(route)
       return
     }
 

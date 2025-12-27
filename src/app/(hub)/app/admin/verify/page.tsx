@@ -1,11 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2, CheckCircle, XCircle, Database, User, Shield, HardDrive, RefreshCw } from 'lucide-react'
+
+// Moved outside component to avoid recreation on each render
+function StatusBadge({ status }: { status: boolean }) {
+  return (
+    <Badge variant={status ? 'default' : 'destructive'} className="gap-1">
+      {status ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+      {status ? 'OK' : 'Error'}
+    </Badge>
+  )
+}
 
 interface VerificationResult {
   auth: {
@@ -35,7 +45,7 @@ export default function AdminVerifyPage() {
   const [loading, setLoading] = useState(true)
   const [result, setResult] = useState<VerificationResult | null>(null)
 
-  const runVerification = async () => {
+  const runVerification = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
 
@@ -117,11 +127,11 @@ export default function AdminVerifyPage() {
     })
 
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
     runVerification()
-  }, [])
+  }, [runVerification])
 
   if (loading) {
     return (
@@ -138,13 +148,6 @@ export default function AdminVerifyPage() {
       </div>
     )
   }
-
-  const StatusBadge = ({ status }: { status: boolean }) => (
-    <Badge variant={status ? 'default' : 'destructive'} className="gap-1">
-      {status ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-      {status ? 'OK' : 'Error'}
-    </Badge>
-  )
 
   return (
     <div className="space-y-6">

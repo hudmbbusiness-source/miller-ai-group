@@ -36,6 +36,25 @@ function KachowLandingContent() {
   const [countdown, setCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 })
   const router = useRouter()
   const searchParams = useSearchParams()
+  // 24-hour countdown that resets at midnight
+  useEffect(() => {
+    const calculateTimeToMidnight = () => {
+      const now = new Date()
+      const midnight = new Date()
+      midnight.setHours(24, 0, 0, 0)
+      const diff = midnight.getTime() - now.getTime()
+
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+      setCountdown({ hours, minutes, seconds })
+    }
+
+    calculateTimeToMidnight()
+    const interval = setInterval(calculateTimeToMidnight, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     const code = searchParams.get('code')

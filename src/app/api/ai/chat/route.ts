@@ -549,18 +549,18 @@ MEMORY INSTRUCTIONS:
 Be concise, practical, and helpful. When answering questions about current events, news, or real-time data, use the web search results provided and cite your sources.`,
     }
 
-    // Call LLM with fallback chain (Groq → Cerebras → Gemini)
-    const llmResult = await callLLMWithFallback(limitedMessages, systemMessage)
+    // Call Groq (primary LLM - fast and accurate)
+    const llmResult = await callGroq(limitedMessages, systemMessage)
 
     if (!llmResult.success) {
-      console.error('All LLM providers failed:', llmResult.error)
+      console.error('Groq failed:', llmResult.error)
       return NextResponse.json({
-        error: llmResult.error || 'All AI providers failed'
+        error: llmResult.error || 'AI service error'
       }, { status: 503 })
     }
 
     const duration = Date.now() - startTime
-    console.log(`AI Chat completed in ${duration}ms using ${llmResult.provider} (web search: ${searchPerformed})`)
+    console.log(`AI Chat completed in ${duration}ms (web search: ${searchPerformed})`)
 
     return NextResponse.json({
       success: true,

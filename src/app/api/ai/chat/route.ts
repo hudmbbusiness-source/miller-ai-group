@@ -33,6 +33,180 @@ interface LangSearchResponse {
   }
 }
 
+interface LLMResponse {
+  success: boolean
+  content?: string
+  provider: string
+  model: string
+  error?: string
+}
+
+// LLM Provider: Groq (Primary - Fastest)
+async function callGroq(messages: AIMessage[], systemMessage: AIMessage): Promise<LLMResponse> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) return { success: false, provider: 'groq', model: '', error: 'Not configured' }
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [systemMessage, ...messages].map(m => ({ role: m.role, content: m.content })),
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Groq] API error:', response.status, errorText)
+      return { success: false, provider: 'groq', model: 'llama-3.3-70b', error: `Status ${response.status}` }
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content
+    if (!content) return { success: false, provider: 'groq', model: 'llama-3.3-70b', error: 'No content' }
+
+    return { success: true, content, provider: 'groq', model: 'llama-3.3-70b-versatile' }
+  } catch (error) {
+    console.error('[Groq] Error:', error)
+    return { success: false, provider: 'groq', model: '', error: String(error) }
+  }
+}
+
+// LLM Provider: Cerebras (Fallback 1 - Extremely Fast)
+async function callCerebras(messages: AIMessage[], systemMessage: AIMessage): Promise<LLMResponse> {
+  const apiKey = process.env.CEREBRAS_API_KEY
+  if (!apiKey) return { success: false, provider: 'cerebras', model: '', error: 'Not configured' }
+
+  try {
+    const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [systemMessage, ...messages].map(m => ({ role: m.role, content: m.content })),
+        model: 'llama-3.3-70b',
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Cerebras] API error:', response.status, errorText)
+      return { success: false, provider: 'cerebras', model: 'llama-3.3-70b', error: `Status ${response.status}` }
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content
+    if (!content) return { success: false, provider: 'cerebras', model: 'llama-3.3-70b', error: 'No content' }
+
+    return { success: true, content, provider: 'cerebras', model: 'llama-3.3-70b' }
+  } catch (error) {
+    console.error('[Cerebras] Error:', error)
+    return { success: false, provider: 'cerebras', model: '', error: String(error) }
+  }
+}
+
+// LLM Provider: Google Gemini (Fallback 2)
+async function callGemini(messages: AIMessage[], systemMessage: AIMessage): Promise<LLMResponse> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY
+  if (!apiKey) return { success: false, provider: 'gemini', model: '', error: 'Not configured' }
+
+  try {
+    // Gemini uses a different format - combine system + messages
+    const contents = []
+
+    // Add system message as first user message with context
+    const systemContent = systemMessage.content
+
+    // Convert messages to Gemini format
+    for (const msg of messages) {
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.role === 'user' && contents.length === 0
+          ? `${systemContent}\n\n---\n\nUser: ${msg.content}`
+          : msg.content }]
+      })
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+          },
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Gemini] API error:', response.status, errorText)
+      return { success: false, provider: 'gemini', model: 'gemini-1.5-flash', error: `Status ${response.status}` }
+    }
+
+    const data = await response.json()
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!content) return { success: false, provider: 'gemini', model: 'gemini-1.5-flash', error: 'No content' }
+
+    return { success: true, content, provider: 'gemini', model: 'gemini-1.5-flash' }
+  } catch (error) {
+    console.error('[Gemini] Error:', error)
+    return { success: false, provider: 'gemini', model: '', error: String(error) }
+  }
+}
+
+// Multi-LLM Fallback Chain
+async function callLLMWithFallback(messages: AIMessage[], systemMessage: AIMessage): Promise<LLMResponse> {
+  // Try Groq first (fastest, primary)
+  console.log('[AI] Trying Groq...')
+  let result = await callGroq(messages, systemMessage)
+  if (result.success) {
+    console.log('[AI] Groq succeeded')
+    return result
+  }
+  console.log('[AI] Groq failed:', result.error)
+
+  // Fallback to Cerebras
+  console.log('[AI] Trying Cerebras...')
+  result = await callCerebras(messages, systemMessage)
+  if (result.success) {
+    console.log('[AI] Cerebras succeeded')
+    return result
+  }
+  console.log('[AI] Cerebras failed:', result.error)
+
+  // Fallback to Gemini
+  console.log('[AI] Trying Gemini...')
+  result = await callGemini(messages, systemMessage)
+  if (result.success) {
+    console.log('[AI] Gemini succeeded')
+    return result
+  }
+  console.log('[AI] Gemini failed:', result.error)
+
+  // All providers failed
+  return {
+    success: false,
+    provider: 'none',
+    model: '',
+    error: 'All AI providers failed. Please check API keys.'
+  }
+}
+
 // Check if query needs current information
 function needsCurrentInfo(message: string): boolean {
   const currentInfoPatterns = [
@@ -135,12 +309,21 @@ async function searchWeb(query: string): Promise<{
 
 export async function GET() {
   const hasGroq = !!process.env.GROQ_API_KEY
+  const hasCerebras = !!process.env.CEREBRAS_API_KEY
+  const hasGemini = !!process.env.GOOGLE_AI_API_KEY
   const hasLangSearch = !!process.env.LANGSEARCH_API_KEY
 
+  const providers = []
+  if (hasGroq) providers.push('groq')
+  if (hasCerebras) providers.push('cerebras')
+  if (hasGemini) providers.push('gemini')
+
   return NextResponse.json({
-    configured: hasGroq,
-    provider: hasGroq ? 'groq' : null,
+    configured: providers.length > 0,
+    providers,
+    primaryProvider: providers[0] || null,
     webSearchEnabled: hasLangSearch,
+    multiLLM: providers.length > 1,
   })
 }
 
@@ -174,11 +357,11 @@ export async function POST(request: NextRequest) {
       content: m.content.length > 4000 ? m.content.slice(0, 4000) + '...' : m.content
     }))
 
-    // Check Groq API key
-    const groqKey = process.env.GROQ_API_KEY
-    if (!groqKey) {
+    // Check if any LLM provider is configured
+    const hasAnyProvider = process.env.GROQ_API_KEY || process.env.CEREBRAS_API_KEY || process.env.GOOGLE_AI_API_KEY
+    if (!hasAnyProvider) {
       return NextResponse.json({
-        error: 'GROQ_API_KEY not configured',
+        error: 'No AI providers configured. Add GROQ_API_KEY, CEREBRAS_API_KEY, or GOOGLE_AI_API_KEY.',
       }, { status: 503 })
     }
 
@@ -366,76 +549,24 @@ MEMORY INSTRUCTIONS:
 Be concise, practical, and helpful. When answering questions about current events, news, or real-time data, use the web search results provided and cite your sources.`,
     }
 
-    // Call Groq API
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    // Call LLM with fallback chain (Groq → Cerebras → Gemini)
+    const llmResult = await callLLMWithFallback(limitedMessages, systemMessage)
 
-    let groqResponse: Response
-    try {
-      groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [systemMessage, ...limitedMessages].map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
-          model: 'llama-3.3-70b-versatile',
-          temperature: 0.7,
-          max_tokens: 2048,
-        }),
-        signal: controller.signal,
-      })
-    } catch (fetchError) {
-      clearTimeout(timeoutId)
-      console.error('Groq fetch error:', fetchError)
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        return NextResponse.json({ error: 'Request timed out' }, { status: 504 })
-      }
-      return NextResponse.json({ error: 'Failed to connect to AI service' }, { status: 503 })
-    }
-    clearTimeout(timeoutId)
-
-    if (!groqResponse.ok) {
-      const errorText = await groqResponse.text()
-      console.error('Groq API error:', groqResponse.status, errorText)
-
-      if (groqResponse.status === 401) {
-        return NextResponse.json({ error: 'Invalid Groq API key' }, { status: 401 })
-      }
-      if (groqResponse.status === 429) {
-        return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
-      }
-
+    if (!llmResult.success) {
+      console.error('All LLM providers failed:', llmResult.error)
       return NextResponse.json({
-        error: `AI service error (${groqResponse.status})`
-      }, { status: 500 })
-    }
-
-    let data
-    try {
-      data = await groqResponse.json()
-    } catch {
-      return NextResponse.json({ error: 'Invalid response from AI' }, { status: 500 })
-    }
-
-    const responseContent = data.choices?.[0]?.message?.content
-
-    if (!responseContent) {
-      return NextResponse.json({ error: 'No response from AI' }, { status: 500 })
+        error: llmResult.error || 'All AI providers failed'
+      }, { status: 503 })
     }
 
     const duration = Date.now() - startTime
-    console.log(`AI Chat completed in ${duration}ms (web search: ${searchPerformed})`)
+    console.log(`AI Chat completed in ${duration}ms using ${llmResult.provider} (web search: ${searchPerformed})`)
 
     return NextResponse.json({
       success: true,
-      response: responseContent,
-      provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      response: llmResult.content,
+      provider: llmResult.provider,
+      model: llmResult.model,
       webSearchUsed: searchPerformed,
     })
 

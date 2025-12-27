@@ -106,8 +106,6 @@ export function AIChatbot() {
   })
   const [webSearchAvailable, setWebSearchAvailable] = useState(false)
   const [lastSearchUsed, setLastSearchUsed] = useState(false)
-  const [providers, setProviders] = useState<string[]>([])
-  const [lastProvider, setLastProvider] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -176,12 +174,10 @@ export function AIChatbot() {
       .then(data => {
         setIsConfigured(data.configured === true)
         setWebSearchAvailable(data.webSearchEnabled === true)
-        setProviders(data.providers || [])
       })
       .catch(() => {
         setIsConfigured(false)
         setWebSearchAvailable(false)
-        setProviders([])
       })
   }, [])
 
@@ -373,7 +369,6 @@ export function AIChatbot() {
       }
 
       setLastSearchUsed(data.webSearchUsed === true)
-      setLastProvider(data.provider || null)
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -648,18 +643,12 @@ export function AIChatbot() {
               <Brain className="w-5 h-5 text-amber-500" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">BrainBox</h1>
+              <h1 className="font-bold text-lg">BrainBox <span className="text-xs font-normal text-muted-foreground">v1.0</span></h1>
               <div className="flex items-center gap-2 text-xs flex-wrap">
-                {providers.length > 1 && (
-                  <span className="flex items-center gap-1 text-blue-500">
-                    <Brain className="w-3 h-3" />
-                    {providers.length} LLMs
-                  </span>
-                )}
                 {webSearchAvailable && (
                   <span className="flex items-center gap-1 text-green-600">
                     <Globe className="w-3 h-3" />
-                    Web
+                    Web Search
                   </span>
                 )}
                 {memories.length > 0 && (
@@ -756,20 +745,10 @@ export function AIChatbot() {
                     </div>
                   </div>
                 )}
-                {messages.length > 0 && !isLoading && (lastSearchUsed || lastProvider) && (
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground ml-13">
-                    {lastProvider && (
-                      <span className="flex items-center gap-1">
-                        <Brain className="w-3 h-3" />
-                        via {lastProvider}
-                      </span>
-                    )}
-                    {lastSearchUsed && (
-                      <span className="flex items-center gap-1 text-green-600">
-                        <Globe className="w-3 h-3" />
-                        + web data
-                      </span>
-                    )}
+                {messages.length > 0 && !isLoading && lastSearchUsed && (
+                  <div className="flex items-center gap-2 text-xs text-green-600 ml-13">
+                    <Globe className="w-3 h-3" />
+                    <span>Used live web data</span>
                   </div>
                 )}
                 <div ref={messagesEndRef} />

@@ -38,11 +38,13 @@ import {
   Brain,
   Target,
   ShoppingBag,
+  Rocket,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import { cn } from '@/lib/utils'
 const navItems = [
   { href: '/app', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket },
   { href: '/app/goals', label: 'Goals', icon: Target },
   { href: '/app/assets', label: 'Assets', icon: ShoppingBag },
   { href: '/app/notes', label: 'Notes', icon: FileText },

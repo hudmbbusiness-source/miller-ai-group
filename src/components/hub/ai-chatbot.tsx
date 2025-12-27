@@ -439,17 +439,23 @@ export function AIChatbot() {
 
       {/* History Sheet */}
       <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-        <SheetContent side="left" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle className="flex items-center justify-between">
-              <span>Conversation History</span>
-              <Button variant="outline" size="sm" onClick={createNewConversation}>
+        <SheetContent side="left" className="w-full sm:max-w-md p-0">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between p-4 border-b">
+              <SheetHeader className="flex-1">
+                <SheetTitle>Conversations</SheetTitle>
+              </SheetHeader>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={createNewConversation}
+                className="bg-amber-500 hover:bg-amber-600 text-black ml-4"
+              >
                 <Plus className="w-4 h-4 mr-1" />
                 New Chat
               </Button>
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-6 space-y-2">
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {conversations.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No conversations yet. Start chatting!
@@ -488,6 +494,7 @@ export function AIChatbot() {
                 </div>
               ))
             )}
+            </div>
           </div>
         </SheetContent>
       </Sheet>

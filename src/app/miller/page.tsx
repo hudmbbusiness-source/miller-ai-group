@@ -15,7 +15,7 @@ import {
   Linkedin,
   ArrowRight,
   Zap,
-  TrendingUp,
+  BarChart3,
   Brain,
   Shirt,
   Film,
@@ -33,7 +33,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 
 const ventureIcons: Record<string, typeof Zap> = {
   'kachow': Zap,
-  'stuntman': TrendingUp,
+  'stuntman': BarChart3,
   'brainbox': Brain,
   'arcene': Shirt,
   'cozyfilmz': Film,
@@ -44,6 +44,18 @@ const ventureLogos = [
   { name: 'Miller AI Group', logo: '/logos/miller-ai-group.svg' },
   { name: 'Arcene', logo: '/logos/arcene.png' },
   { name: 'CozyFilmz', logo: '/logos/cozyfilmz.png' },
+]
+
+// Target AI companies for credibility
+const targetCompanies = [
+  { name: 'OpenAI', logo: '/company-logos/openai.svg' },
+  { name: 'Anthropic', logo: '/company-logos/anthropic.svg' },
+  { name: 'xAI', logo: '/company-logos/xai.svg' },
+  { name: 'Google DeepMind', logo: '/company-logos/deepmind.svg' },
+  { name: 'Perplexity', logo: '/company-logos/perplexity.svg' },
+  { name: 'NVIDIA', logo: '/company-logos/nvidia.svg' },
+  { name: 'Meta AI', logo: '/company-logos/meta.svg' },
+  { name: 'Cohere', logo: '/company-logos/cohere.svg' },
 ]
 
 function LogoCarousel() {
@@ -458,6 +470,58 @@ function MillerPageContent() {
                 </div>
               </div>
             </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Target AI Companies Section */}
+      <section className="py-16 md:py-24">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <p className="text-sm text-amber-500 font-medium tracking-wide uppercase mb-2">
+              Building Towards
+            </p>
+            <h2 className="text-2xl md:text-3xl font-bold mb-3">Target Companies</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Developing skills and building projects aligned with the frontier of AI development.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
+            className="flex flex-wrap justify-center items-center gap-8 md:gap-12 max-w-4xl mx-auto"
+          >
+            {targetCompanies.map((company, index) => (
+              <motion.div
+                key={company.name}
+                initial={{ opacity: 0, scale: 0.8 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.05 }}
+                className="group flex flex-col items-center"
+              >
+                <div className="w-14 h-14 md:w-16 md:h-16 rounded-xl bg-muted/50 border border-border/50 flex items-center justify-center p-3 group-hover:border-amber-500/50 group-hover:bg-amber-500/5 transition-all duration-300">
+                  <Image
+                    src={company.logo}
+                    alt={company.name}
+                    width={48}
+                    height={48}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 group-hover:text-amber-500 transition-colors">
+                  {company.name}
+                </p>
+              </motion.div>
+            ))}
           </motion.div>
         </div>
       </section>

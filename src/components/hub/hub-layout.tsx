@@ -34,7 +34,7 @@ import {
   Menu,
   Shield,
   Zap,
-  Video,
+  BarChart3,
   Brain,
   Target,
   ShoppingBag,
@@ -55,7 +55,7 @@ const navItems = [
 
 const toolItems = [
   { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },
-  { href: '/app/tools/stuntman', label: 'Stuntman AI', icon: Video },
+  { href: '/app/tools/stuntman', label: 'Stuntman AI', icon: BarChart3 },
   { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain },
 ]
 

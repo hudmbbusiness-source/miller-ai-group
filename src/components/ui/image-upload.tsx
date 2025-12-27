@@ -67,7 +67,9 @@ export function ImageUpload({
         })
 
       if (uploadError) {
-        throw uploadError
+        console.error('Supabase upload error:', uploadError)
+        setError(`Upload failed: ${uploadError.message}`)
+        return
       }
 
       // Get public URL
@@ -75,10 +77,12 @@ export function ImageUpload({
         .from(bucket)
         .getPublicUrl(data.path)
 
+      console.log('Image uploaded successfully:', publicUrl)
       onChange(publicUrl)
     } catch (err) {
       console.error('Upload error:', err)
-      setError('Failed to upload image. Please try again.')
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      setError(`Failed to upload: ${errorMessage}`)
     } finally {
       setUploading(false)
       if (fileInputRef.current) {

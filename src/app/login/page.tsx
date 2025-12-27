@@ -13,7 +13,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [envError, setEnvError] = useState(false)
-  const router = useRouter()
+  const _router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -33,7 +33,6 @@ function LoginContent() {
         'callback_error': 'Authentication callback failed. Please try again.',
         'no_code': 'No authorization code received. Please try again.',
       }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(errorMessages[authError] || 'Authentication failed. Please try again.')
     }
     // Don't auto-redirect - always show login page

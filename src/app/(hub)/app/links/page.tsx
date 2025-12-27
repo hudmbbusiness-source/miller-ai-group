@@ -142,14 +142,7 @@ function LinksContent() {
     fetchLinks()
   }, [fetchLinks])
 
-  useEffect(() => {
-    if (searchParams.get('new') === 'true') {
-      openNewDialog()
-      router.replace('/app/links')
-    }
-  }, [searchParams, router])
-
-  const openNewDialog = () => {
+  const openNewDialog = useCallback(() => {
     setEditingLink(null)
     setLastFetchedUrl('')
     form.reset({
@@ -161,7 +154,14 @@ function LinksContent() {
       favicon: '',
     })
     setDialogOpen(true)
-  }
+  }, [form])
+
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      openNewDialog()
+      router.replace('/app/links')
+    }
+  }, [searchParams, router, openNewDialog])
 
   const openEditDialog = (link: SavedLink) => {
     setEditingLink(link)

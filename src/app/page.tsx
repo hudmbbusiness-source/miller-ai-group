@@ -12,8 +12,6 @@ import {
   Check,
   Loader2,
   ChevronDown,
-  DollarSign,
-  BarChart3,
   Scissors,
   Volume2,
   Type,

@@ -129,7 +129,8 @@ const COURSES = {
 // Career stage likelihood data based on: company hiring reports, LinkedIn data, Glassdoor, levels.fyi, industry surveys
 // Personalized for: BYU CS + Business student targeting leadership/management roles
 
-interface CareerStage {
+// Type definition kept for documentation purposes
+interface _CareerStage {
   likelihood: string // Percentage or qualitative
   salary: string
   requirements: string[]
@@ -984,7 +985,6 @@ function calculateMatchScore(
   const gaps: string[] = []
 
   // Check for relevant skills
-  const jobSkillKeywords = ['product', 'management', 'strategy', 'operations', 'sales', 'consulting', 'finance', 'technical', 'engineering', 'ml', 'ai', 'data']
   const userSkillsLower = profile.skillsList.map((s: string) => s.toLowerCase())
 
   if (job.category === 'Product Management') {

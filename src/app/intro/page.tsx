@@ -48,7 +48,8 @@ export default function IntroPage() {
     setVideoEnded(true)
   }, [])
 
-  const handleEnter = () => {
+  // handleEnter kept for potential future use
+  const _handleEnter = () => {
     if (isAuthenticated) {
       router.push('/app')
     } else {

@@ -23,7 +23,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Plus, Search, Pin, PinOff, Edit2, Trash2, Loader2, Sparkles, Lightbulb, Building2, CheckCircle2, BookOpen, X, Mic, Square, Globe, ExternalLink, PlusCircle, Paperclip, Link2, FileText, Download } from 'lucide-react'
+import { Plus, Search, Pin, PinOff, Edit2, Trash2, Loader2, Sparkles, Lightbulb, Building2, CheckCircle2, BookOpen, X, Mic, Square, Globe, ExternalLink, PlusCircle, Paperclip, Link2 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import type { Tables } from '@/types/database'
 

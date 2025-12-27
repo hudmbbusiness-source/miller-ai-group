@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,10 +19,8 @@ import {
   Clock,
   Lock,
   Settings,
-  Play,
   Loader2,
   RefreshCw,
-  AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
@@ -54,7 +52,7 @@ const features = [
 ]
 
 // Owner-only dashboard component
-function OwnerDashboard({ user }: { user: User }) {
+function OwnerDashboard({ user: _user }: { user: User }) {
   const [earlyAccessStats, setEarlyAccessStats] = useState<{
     total: number
     signups: Array<{
@@ -67,7 +65,7 @@ function OwnerDashboard({ user }: { user: User }) {
   } | null>(null)
   const [loadingStats, setLoadingStats] = useState(false)
 
-  const loadEarlyAccessStats = async () => {
+  const loadEarlyAccessStats = useCallback(async () => {
     setLoadingStats(true)
     try {
       const supabase = createClient()
@@ -87,11 +85,11 @@ function OwnerDashboard({ user }: { user: User }) {
     } finally {
       setLoadingStats(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadEarlyAccessStats()
-  }, [])
+  }, [loadEarlyAccessStats])
 
   return (
     <div className="space-y-6">

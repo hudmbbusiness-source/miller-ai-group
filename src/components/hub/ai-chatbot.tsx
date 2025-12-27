@@ -39,7 +39,6 @@ import {
   MoreHorizontal,
   Sparkles,
   X,
-  Settings,
 } from 'lucide-react'
 import { useVoiceRecording } from '@/hooks/use-voice-recording'
 import { cn } from '@/lib/utils'

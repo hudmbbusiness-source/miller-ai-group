@@ -103,6 +103,12 @@ export function GlobalSearch() {
     return () => clearTimeout(timer)
   }, [query])
 
+  const navigateToResult = useCallback((result: SearchResult) => {
+    setOpen(false)
+    setQuery('')
+    router.push(result.url)
+  }, [router])
+
   // Keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -117,13 +123,7 @@ export function GlobalSearch() {
     } else if (e.key === 'Escape') {
       setOpen(false)
     }
-  }, [results, selectedIndex])
-
-  const navigateToResult = (result: SearchResult) => {
-    setOpen(false)
-    setQuery('')
-    router.push(result.url)
-  }
+  }, [results, selectedIndex, navigateToResult])
 
   const highlightMatch = (text: string, searchQuery: string) => {
     if (!text || !searchQuery) return text

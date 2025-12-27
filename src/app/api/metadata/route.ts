@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         success: true,
         metadata,
       })
-    } catch (fetchError) {
+    } catch (_fetchError) {
       clearTimeout(timeout)
       // Return basic info from URL if fetch fails
       return NextResponse.json({

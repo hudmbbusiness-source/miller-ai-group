@@ -164,7 +164,7 @@ export default function FilesPage() {
 
   const handleDownload = async (file: FileIndex) => {
     const supabase = createClient()
-    const { data, error } = await supabase.storage
+    const { data, error: _downloadError } = await supabase.storage
       .from('hudson-files')
       .download(file.storage_path)
 

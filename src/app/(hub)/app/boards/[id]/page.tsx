@@ -39,12 +39,12 @@ import type { Tables, InsertTables, UpdateTables } from '@/types/database'
 
 type Board = Tables<'boards'>
 type Pin = Tables<'pins'>
-type PinInsert = InsertTables<'pins'>
-type PinUpdate = UpdateTables<'pins'>
+type _PinInsert = InsertTables<'pins'>
+type _PinUpdate = UpdateTables<'pins'>
 
 export default function BoardDetailPage() {
   const params = useParams()
-  const router = useRouter()
+  const _router = useRouter()
   const boardId = params.id as string
   const fileInputRef = useRef<HTMLInputElement>(null)
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -42,7 +42,6 @@ import {
   Search,
   Loader2,
   Globe,
-  PlusCircle,
 } from 'lucide-react'
 import { ImageUpload } from '@/components/ui/image-upload'
 import {

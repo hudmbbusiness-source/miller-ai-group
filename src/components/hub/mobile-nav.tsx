@@ -11,8 +11,6 @@ import {
   Target,
   Brain,
   Grid3X3,
-  Link2,
-  FolderOpen,
   Settings,
   ChevronUp,
   X,

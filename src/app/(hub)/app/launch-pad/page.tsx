@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
-import { motion } from 'framer-motion'
+// motion removed - unused
 import {
   Rocket,
   GraduationCap,
@@ -13,7 +13,6 @@ import {
   Plus,
   Check,
   Clock,
-  AlertCircle,
   DollarSign,
   Building2,
   MapPin,
@@ -23,8 +22,6 @@ import {
   ChevronRight,
   Sparkles,
   BookOpen,
-  Code,
-  Brain,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -37,7 +34,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -64,7 +60,6 @@ import {
   updateJobApplication,
   deleteJobApplication,
   getCareerProfile,
-  upsertCareerProfile,
   getLaunchPadStats,
   type Course,
   type Certificate,
@@ -90,7 +85,7 @@ export default function LaunchPadPage() {
   const [courses, setCourses] = useState<Course[]>([])
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [applications, setApplications] = useState<JobApplication[]>([])
-  const [profile, setProfile] = useState<CareerProfile | null>(null)
+  const [_profile, setProfile] = useState<CareerProfile | null>(null)
   const [stats, setStats] = useState<Awaited<ReturnType<typeof getLaunchPadStats>>>(null)
   const [loading, setLoading] = useState(true)
 

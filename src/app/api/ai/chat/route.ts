@@ -169,8 +169,8 @@ async function callGemini(messages: AIMessage[], systemMessage: AIMessage): Prom
   }
 }
 
-// Multi-LLM Fallback Chain
-async function callLLMWithFallback(messages: AIMessage[], systemMessage: AIMessage): Promise<LLMResponse> {
+// Multi-LLM Fallback Chain (kept for future use with multi-provider support)
+async function _callLLMWithFallback(messages: AIMessage[], systemMessage: AIMessage): Promise<LLMResponse> {
   // Try Groq first (fastest, primary)
   console.log('[AI] Trying Groq...')
   let result = await callGroq(messages, systemMessage)

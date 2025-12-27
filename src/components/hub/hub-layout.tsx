@@ -24,8 +24,6 @@ import {
   LayoutDashboard,
   FileText,
   Grid3X3,
-  Link2,
-  FolderOpen,
   FileCheck,
   Settings,
   LogOut,

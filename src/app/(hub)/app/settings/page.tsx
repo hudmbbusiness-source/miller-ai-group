@@ -107,7 +107,7 @@ export default function SettingsPage() {
   }, [preferences, prefsLoading])
 
   // Resume summary
-  const [resumeSummary, setResumeSummary] = useState<ResumeSummary | null>(null)
+  const [_resumeSummary, setResumeSummary] = useState<ResumeSummary | null>(null)
   const [headline, setHeadline] = useState('')
   const [location, setLocation] = useState('')
   const [email, setEmail] = useState('')

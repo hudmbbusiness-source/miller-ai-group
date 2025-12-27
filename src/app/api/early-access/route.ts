@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
       total: signups?.length || 0,
       signups: signups || [],
     })
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

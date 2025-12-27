@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,11 +25,6 @@ import {
   Flame,
   Award,
   BarChart3,
-  MapPin,
-  Building2,
-  Twitter,
-  Globe,
-  Lock,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -178,7 +173,7 @@ export function GitHubDashboard() {
     setSaving(false)
   }
 
-  const fetchGitHubStats = async () => {
+  const fetchGitHubStats = useCallback(async () => {
     if (!username) return
 
     setLoading(true)
@@ -197,13 +192,13 @@ export function GitHubDashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [username])
 
   useEffect(() => {
     if (username) {
       fetchGitHubStats()
     }
-  }, [username])
+  }, [username, fetchGitHubStats])
 
   const getLanguageColor = (language: string): string => {
     const colors: Record<string, string> = {

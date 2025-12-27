@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   ArrowRight,
   Calendar,
-  AlertCircle,
   Github,
 } from 'lucide-react'
 import { GitHubDashboard } from '@/components/hub/github-dashboard'

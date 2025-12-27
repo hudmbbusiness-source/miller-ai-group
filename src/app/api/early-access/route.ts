@@ -4,6 +4,7 @@ import { Resend } from 'resend'
 
 // Valid early access codes - these are the codes you share with users
 const VALID_ACCESS_CODES = [
+  'KACHOWAI.2026',
   'KACHOW2024',
   'EARLYBIRD',
   'INSTAGRAM',

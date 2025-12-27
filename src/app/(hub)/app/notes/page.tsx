@@ -43,9 +43,11 @@ interface NoteInsights {
 }
 
 interface Fact {
-  text: string
+  keyPoints: string[]
+  summary: string
   source: string
   url: string
+  title: string
 }
 
 function NotesContent() {
@@ -171,8 +173,23 @@ function NotesContent() {
     }
   }
 
-  const addFactToNote = (fact: Fact) => {
-    const citation = `\n\n${fact.text}\n— Source: ${fact.source} (${fact.url})`
+  const addFactToNote = (fact: Fact, addType: 'summary' | 'keyPoints' | 'all') => {
+    let citation = '\n\n---\n'
+    citation += `📚 **${fact.title}**\n\n`
+
+    if (addType === 'summary' || addType === 'all') {
+      citation += `${fact.summary}\n\n`
+    }
+
+    if (addType === 'keyPoints' || addType === 'all') {
+      citation += `**Key Points:**\n`
+      fact.keyPoints.forEach(point => {
+        citation += `• ${point}\n`
+      })
+      citation += '\n'
+    }
+
+    citation += `*Source: [${fact.source}](${fact.url})*\n---`
     setContent(prev => prev + citation)
   }
 
@@ -796,21 +813,22 @@ function NotesContent() {
 
       {/* Fact Search Sheet */}
       <Sheet open={factSearchOpen} onOpenChange={setFactSearchOpen}>
-        <SheetContent className="w-full sm:max-w-lg overflow-hidden flex flex-col">
+        <SheetContent className="w-full sm:max-w-xl overflow-hidden flex flex-col">
           <SheetHeader className="flex-shrink-0">
             <SheetTitle className="flex items-center gap-2">
               <Globe className="w-5 h-5 text-blue-500" />
-              Search Facts
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              AI Fact Search
             </SheetTitle>
             <p className="text-sm text-muted-foreground">
-              Search the web for facts to add to your note with citations.
+              Search the web and get AI-extracted key facts with sources.
             </p>
           </SheetHeader>
 
           {/* Search Input */}
           <div className="flex gap-2 mt-4">
             <Input
-              placeholder="e.g., Roth IRA contribution limits"
+              placeholder="e.g., Roth IRA contribution limits 2025"
               value={factSearchQuery}
               onChange={(e) => setFactSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && searchFacts()}
@@ -829,7 +847,8 @@ function NotesContent() {
             {factSearchLoading ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
-                <p className="text-sm text-muted-foreground">Searching the web...</p>
+                <p className="text-sm text-muted-foreground">Searching & analyzing...</p>
+                <p className="text-xs text-muted-foreground mt-1">AI is extracting key facts</p>
               </div>
             ) : factSearchError && facts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -841,33 +860,78 @@ function NotesContent() {
                 </p>
               </div>
             ) : facts.length > 0 ? (
-              <div className="space-y-3 py-2">
+              <div className="space-y-4 py-2">
                 {facts.map((fact, i) => (
                   <div
                     key={i}
-                    className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                    className="p-4 rounded-lg border bg-card"
                   >
-                    <p className="text-sm leading-relaxed mb-3">
-                      {fact.text}
+                    {/* Source Header */}
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-medium truncate">{fact.title}</h4>
+                        <a
+                          href={fact.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-muted-foreground hover:text-blue-500 flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                          {fact.source}
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Summary */}
+                    <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+                      {fact.summary}
                     </p>
-                    <div className="flex items-center justify-between gap-2">
-                      <a
-                        href={fact.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 truncate max-w-[60%]"
-                      >
-                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                        {fact.source}
-                      </a>
+
+                    {/* Key Points */}
+                    {fact.keyPoints.length > 0 && (
+                      <div className="mb-3 bg-muted/50 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                          <Lightbulb className="w-3 h-3" />
+                          Key Facts
+                        </p>
+                        <ul className="space-y-1.5">
+                          {fact.keyPoints.map((point, j) => (
+                            <li key={j} className="text-sm flex items-start gap-2">
+                              <span className="text-amber-500 mt-0.5">•</span>
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Add to Note Buttons */}
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => addFactToNote(fact)}
-                        className="gap-1 flex-shrink-0"
+                        onClick={() => addFactToNote(fact, 'summary')}
+                        className="gap-1 text-xs"
                       >
                         <PlusCircle className="w-3 h-3" />
-                        Add to Note
+                        Add Summary
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addFactToNote(fact, 'keyPoints')}
+                        className="gap-1 text-xs"
+                      >
+                        <PlusCircle className="w-3 h-3" />
+                        Add Key Points
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1 text-xs bg-amber-500 hover:bg-amber-600 text-black"
+                        onClick={() => addFactToNote(fact, 'all')}
+                      >
+                        <PlusCircle className="w-3 h-3" />
+                        Add All
                       </Button>
                     </div>
                   </div>
@@ -875,12 +939,15 @@ function NotesContent() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Globe className="w-12 h-12 text-muted-foreground/20 mb-4" />
+                <div className="relative mb-4">
+                  <Globe className="w-12 h-12 text-muted-foreground/20" />
+                  <Sparkles className="w-5 h-5 text-amber-500/50 absolute -top-1 -right-1" />
+                </div>
                 <p className="text-sm text-muted-foreground">
                   Search for facts about any topic
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Results will include source citations
+                  AI extracts key points with source citations
                 </p>
               </div>
             )}

@@ -19,10 +19,12 @@ interface LangSearchResponse {
   }
 }
 
-interface Fact {
-  text: string
+interface ProcessedFact {
+  keyPoints: string[]
+  summary: string
   source: string
   url: string
+  title: string
 }
 
 export async function POST(request: NextRequest) {
@@ -42,8 +44,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Query too short' }, { status: 400 })
     }
 
-    const apiKey = process.env.LANGSEARCH_API_KEY
-    if (!apiKey) {
+    const langSearchKey = process.env.LANGSEARCH_API_KEY
+    const groqKey = process.env.GROQ_API_KEY
+
+    if (!langSearchKey) {
       return NextResponse.json({
         error: 'Search not configured',
         facts: []
@@ -51,50 +55,154 @@ export async function POST(request: NextRequest) {
     }
 
     // Search using LangSearch API
-    const response = await fetch('https://api.langsearch.com/v1/web-search', {
+    const searchResponse = await fetch('https://api.langsearch.com/v1/web-search', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${langSearchKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         query: query,
-        freshness: 'noLimit', // Get comprehensive results for facts
-        summary: true, // Include detailed summaries
-        count: 8, // Get more results for fact extraction
+        freshness: 'noLimit',
+        summary: true,
+        count: 6,
       }),
     })
 
-    if (!response.ok) {
-      console.error('LangSearch API error:', response.status)
+    if (!searchResponse.ok) {
+      console.error('LangSearch API error:', searchResponse.status)
       return NextResponse.json({
         error: 'Search failed',
         facts: []
       }, { status: 500 })
     }
 
-    const data: LangSearchResponse = await response.json()
+    const searchData: LangSearchResponse = await searchResponse.json()
 
-    if (data.code !== 200 || !data.data?.webPages?.value) {
+    if (searchData.code !== 200 || !searchData.data?.webPages?.value) {
       return NextResponse.json({
-        error: data.msg || 'No results found',
+        error: searchData.msg || 'No results found',
         facts: []
       })
     }
 
-    // Extract facts from search results
-    const facts: Fact[] = data.data.webPages.value.map(result => ({
-      text: result.summary || result.snippet,
-      source: result.siteName || result.title,
-      url: result.url,
-    })).filter(fact => fact.text && fact.text.length > 20)
+    const webResults = searchData.data.webPages.value
 
-    console.log(`[FactSearch] Found ${facts.length} facts for: "${query}"`)
+    // If no Groq key, return raw results (fallback)
+    if (!groqKey) {
+      const basicFacts: ProcessedFact[] = webResults.map(result => ({
+        keyPoints: [result.summary || result.snippet],
+        summary: result.summary || result.snippet,
+        source: result.siteName || new URL(result.url).hostname,
+        url: result.url,
+        title: result.title,
+      }))
+
+      return NextResponse.json({
+        success: true,
+        facts: basicFacts,
+        query,
+        aiProcessed: false,
+      })
+    }
+
+    // Use Groq AI to extract and format key facts from each source
+    const processedFacts: ProcessedFact[] = []
+
+    for (const result of webResults.slice(0, 5)) {
+      const rawContent = result.summary || result.snippet
+      if (!rawContent || rawContent.length < 30) continue
+
+      try {
+        const aiResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${groqKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.3,
+            max_tokens: 500,
+            messages: [
+              {
+                role: 'system',
+                content: `You are a fact extraction assistant. Extract key facts from the provided text about "${query}".
+
+Return a JSON object with this exact structure:
+{
+  "keyPoints": ["fact 1", "fact 2", "fact 3"],
+  "summary": "A 1-2 sentence summary of the most important information"
+}
+
+Rules:
+- Extract 2-4 specific, factual key points
+- Each key point should be a complete, standalone fact (not a fragment)
+- Focus on numbers, dates, statistics, definitions, or concrete information
+- Summary should be concise and informative
+- If the text doesn't contain useful facts, return minimal points
+- Return ONLY valid JSON, no markdown or explanation`
+              },
+              {
+                role: 'user',
+                content: `Source: ${result.title}\n\nContent:\n${rawContent}`
+              }
+            ],
+          }),
+        })
+
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json()
+          const aiContent = aiData.choices?.[0]?.message?.content
+
+          if (aiContent) {
+            try {
+              // Clean up potential markdown formatting
+              const cleanJson = aiContent.replace(/```json\n?|\n?```/g, '').trim()
+              const parsed = JSON.parse(cleanJson)
+
+              if (parsed.keyPoints && Array.isArray(parsed.keyPoints)) {
+                processedFacts.push({
+                  keyPoints: parsed.keyPoints.slice(0, 4),
+                  summary: parsed.summary || parsed.keyPoints[0],
+                  source: result.siteName || new URL(result.url).hostname,
+                  url: result.url,
+                  title: result.title,
+                })
+              }
+            } catch (parseError) {
+              // If AI response isn't valid JSON, use raw content
+              console.error('Failed to parse AI response:', parseError)
+              processedFacts.push({
+                keyPoints: [rawContent.slice(0, 200)],
+                summary: rawContent.slice(0, 200),
+                source: result.siteName || new URL(result.url).hostname,
+                url: result.url,
+                title: result.title,
+              })
+            }
+          }
+        }
+      } catch (aiError) {
+        console.error('AI processing error:', aiError)
+        // Fallback to raw content
+        processedFacts.push({
+          keyPoints: [rawContent.slice(0, 200)],
+          summary: rawContent.slice(0, 200),
+          source: result.siteName || new URL(result.url).hostname,
+          url: result.url,
+          title: result.title,
+        })
+      }
+    }
+
+    console.log(`[FactSearch] Processed ${processedFacts.length} facts for: "${query}"`)
 
     return NextResponse.json({
       success: true,
-      facts,
+      facts: processedFacts,
       query,
+      aiProcessed: true,
     })
 
   } catch (error) {
@@ -108,7 +216,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   const hasLangSearch = !!process.env.LANGSEARCH_API_KEY
+  const hasGroq = !!process.env.GROQ_API_KEY
   return NextResponse.json({
     configured: hasLangSearch,
+    aiEnabled: hasGroq,
   })
 }

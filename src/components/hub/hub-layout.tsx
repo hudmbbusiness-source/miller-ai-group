@@ -4,15 +4,6 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
 import { SOCIAL_LINKS } from '@/types'
 import { GlobalSearch } from './global-search'
 import { KeyboardShortcutsProvider, KeyboardShortcutsButton } from './keyboard-shortcuts'
@@ -29,8 +20,6 @@ import {
   FileText,
   Settings,
   LogOut,
-  Instagram,
-  Linkedin,
   Menu,
   Shield,
   Zap,
@@ -40,61 +29,39 @@ import {
   Code2,
   Volume2,
   VolumeX,
-  Terminal,
-  Skull,
+  X,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
-import { cn } from '@/lib/utils'
+import { useState } from 'react'
 
-// Dark, minimal background - Kali Linux style
-function DarkBackground() {
+// CRT scanline effect
+function CRTEffect() {
   return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* Subtle grid */}
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px',
-        }}
-      />
-      {/* Vignette */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(circle at center, transparent 20%, rgba(0,0,0,0.5) 100%)'
-        }}
-      />
-      {/* Noise */}
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`
-        }}
-      />
-    </div>
+    <div
+      className="fixed inset-0 pointer-events-none z-50"
+      style={{
+        background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px)',
+      }}
+    />
   )
 }
 
 const navItems = [
-  { href: '/app', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket },
-  { href: '/app/workspace', label: 'Workspace', icon: FileText },
-  { href: '/app/settings', label: 'Settings', icon: Settings },
+  { href: '/app', label: 'dashboard', icon: LayoutDashboard, cmd: 'cd /dashboard' },
+  { href: '/app/launch-pad', label: 'launch-pad', icon: Rocket, cmd: 'cd /launch-pad' },
+  { href: '/app/workspace', label: 'workspace', icon: FileText, cmd: 'cd /workspace' },
+  { href: '/app/settings', label: 'settings', icon: Settings, cmd: 'cd /settings' },
 ]
 
 const toolItems = [
-  { href: '/app/tools/playground', label: 'Code Playground', icon: Code2 },
-  { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },
-  { href: '/app/tools/stuntman', label: 'Stuntman AI', icon: BarChart3 },
-  { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain },
+  { href: '/app/tools/playground', label: 'code-playground', icon: Code2 },
+  { href: '/app/tools/kachow', label: 'kachow-ai', icon: Zap },
+  { href: '/app/tools/stuntman', label: 'stuntman-ai', icon: BarChart3 },
+  { href: '/app/tools/brainbox', label: 'brainbox', icon: Brain },
 ]
 
 const adminItems = [
-  { href: '/app/admin/verify', label: 'System Verify', icon: Shield },
+  { href: '/app/admin/verify', label: 'sys-verify', icon: Shield },
 ]
 
 // Audio control component
@@ -114,19 +81,12 @@ function AudioControl() {
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
+    <button
       onClick={handleClick}
-      className={cn(
-        "min-w-[44px] min-h-[44px] transition-all duration-200",
-        isMuted
-          ? "text-gray-600 hover:text-gray-400"
-          : "text-green-500 hover:text-green-400"
-      )}
+      className={`px-2 py-1 text-xs font-mono ${isMuted ? 'text-green-800' : 'text-green-500'} hover:text-green-400`}
     >
-      {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-    </Button>
+      [{isMuted ? 'MUTED' : 'AUDIO'}]
+    </button>
   )
 }
 
@@ -139,6 +99,7 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
   const pathname = usePathname()
   const router = useRouter()
   const prefersReducedMotion = usePrefersReducedMotion()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useKeyboardShortcuts()
 
@@ -163,213 +124,197 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
 
   const handleNavClick = () => {
     audioEngine?.playEffect('button_click')
+    setMenuOpen(false)
   }
 
   const pageTransition = prefersReducedMotion
     ? { duration: 0 }
-    : { duration: 0.3, ease: 'easeOut' as const }
+    : { duration: 0.15 }
 
   const pageVariants = prefersReducedMotion
     ? { initial: {}, animate: {}, exit: {} }
     : {
-        initial: { opacity: 0, y: 12 },
-        animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: -12 },
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
       }
 
-  // Navigation content - Dark, utilitarian
-  const NavContent = () => (
-    <ScrollArea className="flex-1 py-4">
-      <nav className="px-3 space-y-1">
-        {navItems.map((item) => {
-          const active = isActive(item.href)
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={handleNavClick}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono uppercase tracking-wider',
-                'transition-all duration-150 relative min-h-[44px]',
-                active
-                  ? 'bg-white/10 text-white border border-white/20'
-                  : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
-              )}
-            >
-              {active && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-white" />
-              )}
-              <item.icon className={cn("w-5 h-5 flex-shrink-0", active && "text-white")} />
-              <span className="text-xs">{item.label}</span>
-            </Link>
-          )
-        })}
-
-        <div className="pt-4 mt-4 border-t border-white/10">
-          <p className="px-3 mb-2 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
-            {'>'} Tools
-          </p>
-          {toolItems.map((item) => {
-            const active = isActive(item.href)
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavClick}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono uppercase tracking-wider',
-                  'transition-all duration-150 relative min-h-[44px]',
-                  active
-                    ? 'bg-white/10 text-white border border-white/20'
-                    : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
-                )}
-              >
-                {active && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-white" />
-                )}
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                <span className="text-xs">{item.label}</span>
-              </Link>
-            )
-          })}
-        </div>
-
-        <div className="pt-4 mt-4 border-t border-white/10">
-          <p className="px-3 mb-2 text-[10px] font-mono text-red-500/60 uppercase tracking-widest">
-            {'>'} Admin
-          </p>
-          {adminItems.map((item) => {
-            const active = isActive(item.href)
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavClick}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono uppercase tracking-wider',
-                  'transition-all duration-150 relative min-h-[44px]',
-                  active
-                    ? 'bg-red-500/10 text-red-500 border border-red-500/30'
-                    : 'text-gray-500 hover:bg-red-500/5 hover:text-red-400 border border-transparent'
-                )}
-              >
-                {active && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-red-500" />
-                )}
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                <span className="text-xs">{item.label}</span>
-              </Link>
-            )
-          })}
-        </div>
-      </nav>
-    </ScrollArea>
-  )
+  const userName = user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'user'
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      <DarkBackground />
+    <div className="min-h-screen bg-black text-green-500 font-mono">
+      <CRTEffect />
+
+      {/* Mobile menu overlay */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 bg-black/95 p-4 overflow-y-auto">
+          <div className="flex justify-between items-center mb-6">
+            <span className="text-green-500 text-sm">root@miller-ai:~#</span>
+            <button onClick={() => setMenuOpen(false)} className="text-green-500 hover:text-green-400">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="space-y-1 text-sm">
+            <p className="text-green-700 mb-2"># Navigation</p>
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={handleNavClick}
+                className={`block py-2 ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400'}`}
+              >
+                $ {item.cmd} {isActive(item.href) && '<-- current'}
+              </Link>
+            ))}
+
+            <p className="text-green-700 mt-6 mb-2"># Tools</p>
+            {toolItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={handleNavClick}
+                className={`block py-2 ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400'}`}
+              >
+                $ ./tools/{item.label} {isActive(item.href) && '<-- current'}
+              </Link>
+            ))}
+
+            <p className="text-red-700 mt-6 mb-2"># Admin (root only)</p>
+            {adminItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={handleNavClick}
+                className={`block py-2 ${isActive(item.href) ? 'text-red-400' : 'text-red-600 hover:text-red-400'}`}
+              >
+                # ./admin/{item.label} {isActive(item.href) && '<-- current'}
+              </Link>
+            ))}
+
+            <div className="mt-8 pt-4 border-t border-green-900">
+              <button
+                onClick={handleLogout}
+                className="text-red-500 hover:text-red-400"
+              >
+                $ logout --force
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="relative flex flex-col min-h-screen z-10">
-        {/* Header - Dark, minimal */}
-        <header className="h-14 sm:h-16 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-sm flex items-center justify-between px-3 sm:px-4 lg:px-6 sticky top-0 z-30">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="min-w-[44px] min-h-[44px] text-gray-500 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/20"
-                  onClick={handleNavClick}
-                >
-                  <Menu className="w-5 h-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0 flex flex-col bg-[#0a0a0a]/98 border-r border-white/10">
-                <SheetHeader className="p-6 border-b border-white/10 flex-shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded bg-white/5 border border-white/10">
-                      <Skull className="w-5 h-5 text-white" />
-                    </div>
-                    <SheetTitle className="text-lg font-mono font-bold text-left text-white uppercase tracking-wider">
-                      MILLER AI
-                    </SheetTitle>
-                  </div>
-                </SheetHeader>
-                <div className="flex-1 overflow-y-auto">
-                  <NavContent />
-                </div>
-                <div className="p-4 border-t border-white/10 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-gray-500 hover:text-red-500 hover:bg-red-500/5 min-h-[44px] font-mono uppercase tracking-wider text-xs"
-                    onClick={handleLogout}
-                  >
-                    <LogOut className="w-5 h-5 mr-3" />
-                    Terminate Session
-                  </Button>
-                </div>
-              </SheetContent>
-            </Sheet>
-
-            <Link href="/app" className="hidden sm:flex items-center gap-3 group" onClick={handleNavClick}>
-              <div className="p-1.5 rounded bg-white/5 border border-white/10">
-                <Skull className="w-5 h-5 text-white" />
+        {/* Header - Terminal style */}
+        <header className="border-b border-green-900 bg-black sticky top-0 z-30">
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-4 py-2 text-xs border-b border-green-900/50">
+            <div className="flex items-center gap-4">
+              <div className="flex gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
               </div>
-              <span className="text-lg font-mono font-bold text-white uppercase tracking-wider">
-                MILLER AI GROUP
+              <span className="text-green-600 hidden sm:inline">root@miller-ai:~</span>
+            </div>
+            <div className="flex items-center gap-3 text-green-700">
+              <span className="hidden md:inline">{new Date().toLocaleTimeString()}</span>
+              <span className="text-green-500 flex items-center gap-1">
+                <span className="animate-pulse">●</span> LIVE
               </span>
-            </Link>
-
-            <div className="sm:hidden flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <h1 className="font-mono text-xs text-white uppercase tracking-wider">
-                {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'User'}
-              </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            {/* Status - Minimal */}
-            <div className="hidden md:flex items-center gap-4 mr-4 text-[10px] font-mono text-gray-600">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                <span className="text-green-500">ONLINE</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Terminal className="w-3 h-3" />
-                <span>v2.0</span>
-              </div>
+          {/* Main header */}
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-4">
+              {/* Menu button */}
+              <button
+                onClick={() => setMenuOpen(true)}
+                className="text-green-500 hover:text-green-400 p-1"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
+              {/* Logo/Title */}
+              <Link href="/app" className="text-green-500 hover:text-green-400" onClick={handleNavClick}>
+                <span className="text-sm font-bold">MILLER_AI</span>
+                <span className="text-green-700 text-xs ml-2 hidden sm:inline">v2.0.0</span>
+              </Link>
+
+              {/* Current path */}
+              <span className="text-green-700 text-xs hidden md:inline">
+                pwd: {pathname}
+              </span>
             </div>
 
-            <GlobalSearch />
-            <KeyboardShortcutsButton />
-            <AudioControl />
-            <a
-              href={SOCIAL_LINKS.instagram}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-white transition-colors hidden sm:flex"
-            >
-              <Instagram className="w-5 h-5" />
-            </a>
-            <a
-              href={SOCIAL_LINKS.linkedin}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-white transition-colors hidden sm:flex"
-            >
-              <Linkedin className="w-5 h-5" />
-            </a>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-1 sm:ml-2 hidden lg:flex min-h-[44px] text-gray-500 hover:text-red-500 hover:bg-red-500/5 font-mono uppercase tracking-wider text-xs"
-              onClick={handleLogout}
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Exit
-            </Button>
+            <div className="flex items-center gap-2 text-xs">
+              {/* User info */}
+              <span className="text-green-600 hidden sm:inline">
+                [{userName}@root]
+              </span>
+
+              <AudioControl />
+              <KeyboardShortcutsButton />
+
+              {/* Logout */}
+              <button
+                onClick={handleLogout}
+                className="px-2 py-1 text-red-500 hover:text-red-400 hidden sm:block"
+              >
+                [EXIT]
+              </button>
+            </div>
+          </div>
+
+          {/* Navigation bar */}
+          <div className="px-4 py-1 border-t border-green-900/50 overflow-x-auto hidden md:block">
+            <div className="flex items-center gap-4 text-xs">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={handleNavClick}
+                  className={`whitespace-nowrap py-1 ${
+                    isActive(item.href)
+                      ? 'text-green-400 border-b border-green-400'
+                      : 'text-green-700 hover:text-green-500'
+                  }`}
+                >
+                  /{item.label}
+                </Link>
+              ))}
+              <span className="text-green-900">|</span>
+              {toolItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={handleNavClick}
+                  className={`whitespace-nowrap py-1 ${
+                    isActive(item.href)
+                      ? 'text-green-400 border-b border-green-400'
+                      : 'text-green-700 hover:text-green-500'
+                  }`}
+                >
+                  /tools/{item.label}
+                </Link>
+              ))}
+              <span className="text-green-900">|</span>
+              {adminItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={handleNavClick}
+                  className={`whitespace-nowrap py-1 ${
+                    isActive(item.href)
+                      ? 'text-red-400 border-b border-red-400'
+                      : 'text-red-700 hover:text-red-500'
+                  }`}
+                >
+                  /admin/{item.label}
+                </Link>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -382,22 +327,33 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
               animate={pageVariants.animate}
               exit={pageVariants.exit}
               transition={pageTransition}
-              className="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto"
+              className="p-4 md:p-6 max-w-7xl mx-auto"
             >
+              {/* Page header showing current directory */}
+              <div className="mb-4 text-xs text-green-700">
+                <span className="text-green-600">root@miller-ai</span>
+                <span className="text-green-500">:</span>
+                <span className="text-blue-400">{pathname}</span>
+                <span className="text-green-500">$ </span>
+                <span className="animate-pulse">█</span>
+              </div>
+
               {children}
             </motion.div>
           </AnimatePresence>
         </main>
 
-        {/* Footer - Minimal */}
-        <footer className="h-8 border-t border-white/10 bg-[#0a0a0a]/90 flex items-center justify-between px-4 text-[10px] font-mono text-gray-600">
+        {/* Footer - Terminal status bar */}
+        <footer className="border-t border-green-900 bg-black px-4 py-1 flex items-center justify-between text-[10px] text-green-700">
           <div className="flex items-center gap-4">
-            <span className="text-gray-500">{'>'} SYSTEM v2.0</span>
-            <span className="hidden sm:inline">ENCRYPTED</span>
+            <span>PID: {Math.floor(Math.random() * 9000 + 1000)}</span>
+            <span className="hidden sm:inline">MEM: {Math.floor(Math.random() * 30 + 10)}%</span>
+            <span className="hidden sm:inline">CPU: {Math.floor(Math.random() * 20 + 5)}%</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-green-500">● CONNECTED</span>
             <span className="hidden sm:inline">SESSION: {user.id.slice(0, 8).toUpperCase()}</span>
+            <span className="hidden md:inline">TLS 1.3</span>
           </div>
         </footer>
       </div>

@@ -43,48 +43,62 @@ function LoginContent() {
     }
 
     // Check for auth errors in URL
-    const authError = searchParams.get('error')
-    if (authError) {
-      const errorMessages: Record<string, string> = {
-        'auth_error': 'Authentication failed. Please try again.',
-        'oauth_error': 'GitHub authentication was cancelled or failed.',
-        'session_error': 'Failed to create session. Please try again.',
-        'callback_error': 'Authentication callback failed. Please try again.',
-        'no_code': 'No authorization code received. Please try again.',
+    try {
+      const authError = searchParams.get('error')
+      if (authError) {
+        const errorMessages: Record<string, string> = {
+          'auth_error': 'Authentication failed. Please try again.',
+          'oauth_error': 'GitHub authentication was cancelled or failed.',
+          'session_error': 'Failed to create session. Please try again.',
+          'callback_error': 'Authentication callback failed. Please try again.',
+          'no_code': 'No authorization code received. Please try again.',
+        }
+        setError(errorMessages[authError] || 'Authentication failed. Please try again.')
       }
-      setError(errorMessages[authError] || 'Authentication failed. Please try again.')
-    }
 
-    // Check if coming back from successful auth - trigger takeover
-    const takeover = searchParams.get('takeover')
-    if (takeover === 'true') {
-      const checkAuthAndTakeover = async () => {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setIsAuthenticated(true)
-          setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
-          // Initialize and start intro song for the cinematic experience
-          await audioEngine?.initialize()
-          await audioEngine?.playIntroSong()
-          // Auto-trigger takeover after successful GitHub auth
-          setShowTakeover(true)
+      // Check if coming back from successful auth - trigger takeover
+      const takeover = searchParams.get('takeover')
+      if (takeover === 'true') {
+        const checkAuthAndTakeover = async () => {
+          try {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              setIsAuthenticated(true)
+              setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
+              // Initialize and start intro song for the cinematic experience
+              if (audioEngine) {
+                await audioEngine.initialize()
+                await audioEngine.playIntroSong()
+              }
+              // Auto-trigger takeover after successful GitHub auth
+              setShowTakeover(true)
+            }
+          } catch (err) {
+            console.error('Auth check failed:', err)
+          }
         }
-      }
-      checkAuthAndTakeover()
-    } else {
-      // Normal auth check
-      const checkAuth = async () => {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setIsAuthenticated(true)
-          setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
+        checkAuthAndTakeover()
+      } else {
+        // Normal auth check
+        const checkAuth = async () => {
+          try {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              setIsAuthenticated(true)
+              setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
+            }
+          } catch (err) {
+            console.error('Auth check failed:', err)
+          }
         }
+        checkAuth()
       }
-      checkAuth()
+    } catch (err) {
+      console.error('useEffect error:', err)
     }
-  }, [searchParams])
+  }, [searchParams, audioEngine])
 
   const handleGitHubLogin = async () => {
     setLoading(true)

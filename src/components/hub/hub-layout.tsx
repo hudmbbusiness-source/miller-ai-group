@@ -22,10 +22,13 @@ import { PasswordGate } from './password-gate'
 import { usePrefersReducedMotion } from '@/hooks/useMediaQuery'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import {
+  AudioEngineProvider,
+  useAudioEngine,
+  DataStreamBackground,
+} from '@/components/hacker-os'
+import {
   LayoutDashboard,
   FileText,
-  Grid3X3,
-  FileCheck,
   Settings,
   LogOut,
   Instagram,
@@ -35,84 +38,23 @@ import {
   Zap,
   BarChart3,
   Brain,
-  Target,
-  ShoppingBag,
   Rocket,
   Code2,
+  Volume2,
+  VolumeX,
+  Terminal,
+  Activity,
+  Cpu,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import { cn } from '@/lib/utils'
-
-// Animated mesh background for the hub
-function HubMesh() {
-  return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* Gradient orbs */}
-      <motion.div
-        className="absolute w-[600px] h-[600px] rounded-full opacity-20"
-        style={{
-          background: 'radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 60%)',
-          top: '-10%',
-          left: '-10%',
-          filter: 'blur(80px)',
-        }}
-        animate={{
-          x: [0, 50, 0],
-          y: [0, 30, 0],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute w-[500px] h-[500px] rounded-full opacity-15"
-        style={{
-          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 60%)',
-          bottom: '0%',
-          right: '-5%',
-          filter: 'blur(80px)',
-        }}
-        animate={{
-          x: [0, -40, 0],
-          y: [0, -30, 0],
-          scale: [1, 0.95, 1],
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 5 }}
-      />
-      <motion.div
-        className="absolute w-[400px] h-[400px] rounded-full opacity-10"
-        style={{
-          background: 'radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, transparent 60%)',
-          top: '40%',
-          left: '50%',
-          filter: 'blur(80px)',
-        }}
-        animate={{
-          x: [0, 30, -30, 0],
-          y: [0, -20, 20, 0],
-        }}
-        transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut', delay: 10 }}
-      />
-
-      {/* Subtle grid */}
-      <div
-        className="absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
-        }}
-      />
-    </div>
-  )
-}
+import { useState, useEffect } from 'react'
 
 const navItems = [
-  { href: '/app', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket },
-  { href: '/app/workspace', label: 'Workspace', icon: FileText },
-  { href: '/app/settings', label: 'Settings', icon: Settings },
+  { href: '/app', label: 'Dashboard', icon: LayoutDashboard, color: 'cyan' },
+  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket, color: 'purple' },
+  { href: '/app/workspace', label: 'Workspace', icon: FileText, color: 'green' },
+  { href: '/app/settings', label: 'Settings', icon: Settings, color: 'amber' },
 ]
 
 const toolItems = [
@@ -123,22 +65,151 @@ const toolItems = [
 ]
 
 const adminItems = [
-  { href: '/app/admin/verify', label: 'System Verify', icon: Shield },
+  { href: '/app/admin/verify', label: 'System Verify', icon: Shield, color: 'red' },
 ]
+
+const colorClasses: Record<string, { text: string; bg: string; border: string; glow: string }> = {
+  cyan: {
+    text: 'text-cyan-400',
+    bg: 'bg-cyan-500/10',
+    border: 'border-cyan-500/30',
+    glow: '0 0 20px rgba(0, 255, 255, 0.3)',
+  },
+  green: {
+    text: 'text-green-400',
+    bg: 'bg-green-500/10',
+    border: 'border-green-500/30',
+    glow: '0 0 20px rgba(0, 255, 65, 0.3)',
+  },
+  purple: {
+    text: 'text-purple-400',
+    bg: 'bg-purple-500/10',
+    border: 'border-purple-500/30',
+    glow: '0 0 20px rgba(191, 0, 255, 0.3)',
+  },
+  amber: {
+    text: 'text-amber-400',
+    bg: 'bg-amber-500/10',
+    border: 'border-amber-500/30',
+    glow: '0 0 20px rgba(255, 191, 0, 0.3)',
+  },
+  violet: {
+    text: 'text-violet-400',
+    bg: 'bg-violet-500/10',
+    border: 'border-violet-500/30',
+    glow: '0 0 20px rgba(139, 92, 246, 0.3)',
+  },
+  emerald: {
+    text: 'text-emerald-400',
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+    glow: '0 0 20px rgba(16, 185, 129, 0.3)',
+  },
+  blue: {
+    text: 'text-blue-400',
+    bg: 'bg-blue-500/10',
+    border: 'border-blue-500/30',
+    glow: '0 0 20px rgba(59, 130, 246, 0.3)',
+  },
+  red: {
+    text: 'text-red-400',
+    bg: 'bg-red-500/10',
+    border: 'border-red-500/30',
+    glow: '0 0 20px rgba(239, 68, 68, 0.3)',
+  },
+}
+
+// System status bar component
+function SystemStatusBar() {
+  const [time, setTime] = useState(new Date())
+  const [cpuLoad, setCpuLoad] = useState(23)
+  const [memoryUsage, setMemoryUsage] = useState(47)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTime(new Date())
+      // Simulate fluctuating system metrics
+      setCpuLoad(prev => Math.max(10, Math.min(90, prev + (Math.random() - 0.5) * 10)))
+      setMemoryUsage(prev => Math.max(30, Math.min(80, prev + (Math.random() - 0.5) * 5)))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="flex items-center gap-4 text-xs font-mono text-neutral-500">
+      <div className="flex items-center gap-1.5">
+        <Activity className="w-3 h-3 text-cyan-400" />
+        <span className="text-cyan-400">{cpuLoad.toFixed(0)}%</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Cpu className="w-3 h-3 text-green-400" />
+        <span className="text-green-400">{memoryUsage.toFixed(0)}%</span>
+      </div>
+      <div className="hidden sm:flex items-center gap-1.5">
+        <Terminal className="w-3 h-3 text-purple-400" />
+        <span className="text-purple-400">
+          {time.toLocaleTimeString('en-US', { hour12: false })}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// Audio control component
+function AudioControl() {
+  let audioEngine: ReturnType<typeof useAudioEngine> | null = null
+  try {
+    audioEngine = useAudioEngine()
+  } catch {
+    return null
+  }
+
+  const { isMuted, toggleMute, initialize } = audioEngine
+
+  const handleClick = async () => {
+    await initialize()
+    toggleMute()
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handleClick}
+      className={cn(
+        "min-w-[44px] min-h-[44px] transition-all duration-200",
+        isMuted
+          ? "text-neutral-500 hover:text-neutral-300"
+          : "text-cyan-400 hover:text-cyan-300"
+      )}
+    >
+      {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+    </Button>
+  )
+}
 
 interface HubLayoutProps {
   children: React.ReactNode
   user: User
 }
 
-export function HubLayout({ children, user }: HubLayoutProps) {
+function HubLayoutContent({ children, user }: HubLayoutProps) {
   const pathname = usePathname()
   const router = useRouter()
   const prefersReducedMotion = usePrefersReducedMotion()
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
 
   useKeyboardShortcuts()
 
+  let audioEngine: ReturnType<typeof useAudioEngine> | null = null
+  try {
+    audioEngine = useAudioEngine()
+  } catch {
+    // Audio engine not available
+  }
+
   const handleLogout = async () => {
+    audioEngine?.playEffect('button_click')
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/')
@@ -147,6 +218,14 @@ export function HubLayout({ children, user }: HubLayoutProps) {
   const isActive = (href: string) => {
     if (href === '/app') return pathname === '/app'
     return pathname.startsWith(href)
+  }
+
+  const handleNavClick = () => {
+    audioEngine?.playEffect('button_click')
+  }
+
+  const handleNavHover = () => {
+    audioEngine?.playEffect('button_hover')
   }
 
   const pageTransition = prefersReducedMotion
@@ -168,31 +247,46 @@ export function HubLayout({ children, user }: HubLayoutProps) {
         {/* Main nav items */}
         {navItems.map((item, index) => {
           const active = isActive(item.href)
+          const colors = colorClasses[item.color]
           return (
             <motion.div
               key={item.href}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
+              onMouseEnter={() => { setHoveredItem(item.href); handleNavHover() }}
+              onMouseLeave={() => setHoveredItem(null)}
             >
               <Link
                 href={item.href}
+                onClick={handleNavClick}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono',
                   'transition-all duration-200 relative min-h-[44px]',
+                  'border',
                   active
-                    ? 'bg-gradient-to-r from-violet-500/15 to-purple-500/10 text-violet-400 shadow-lg shadow-violet-500/5'
-                    : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+                    ? cn(colors.bg, colors.text, colors.border)
+                    : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-white hover:border-white/10'
                 )}
+                style={{
+                  boxShadow: active ? colors.glow : 'none',
+                }}
               >
                 {active && (
                   <motion.div
                     layoutId="nav-indicator"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-violet-500 to-purple-500 rounded-r-full"
+                    className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full", colors.text.replace('text-', 'bg-'))}
                   />
                 )}
-                <item.icon className={cn("w-5 h-5 flex-shrink-0", active && "text-violet-400")} />
-                {item.label}
+                <item.icon className={cn("w-5 h-5 flex-shrink-0", active && colors.text)} />
+                <span className="uppercase tracking-wider text-xs">{item.label}</span>
+                {active && (
+                  <motion.div
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className={cn("ml-auto w-2 h-2 rounded-full", colors.text.replace('text-', 'bg-'))}
+                  />
+                )}
               </Link>
             </motion.div>
           )
@@ -200,45 +294,41 @@ export function HubLayout({ children, user }: HubLayoutProps) {
 
         {/* Tools Section */}
         <div className="pt-4 mt-4 border-t border-white/5">
-          <p className="px-3 mb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-            Tools
+          <p className="px-3 mb-2 text-[10px] font-mono text-cyan-500/50 uppercase tracking-widest">
+            [ TOOLS ]
           </p>
           {toolItems.map((item, index) => {
             const active = isActive(item.href)
-            const colorClasses = {
-              amber: 'from-amber-500/15 to-orange-500/10 text-amber-400',
-              emerald: 'from-emerald-500/15 to-green-500/10 text-emerald-400',
-              violet: 'from-violet-500/15 to-purple-500/10 text-violet-400',
-              blue: 'from-blue-500/15 to-cyan-500/10 text-blue-400',
-            }
+            const colors = colorClasses[item.color]
             return (
               <motion.div
                 key={item.href}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: (navItems.length + index) * 0.05 }}
+                onMouseEnter={() => { setHoveredItem(item.href); handleNavHover() }}
+                onMouseLeave={() => setHoveredItem(null)}
               >
                 <Link
                   href={item.href}
+                  onClick={handleNavClick}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium',
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono',
                     'transition-all duration-200 relative min-h-[44px]',
+                    'border',
                     active
-                      ? cn('bg-gradient-to-r shadow-lg', colorClasses[item.color as keyof typeof colorClasses])
-                      : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+                      ? cn(colors.bg, colors.text, colors.border)
+                      : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-white hover:border-white/10'
                   )}
+                  style={{
+                    boxShadow: active ? colors.glow : 'none',
+                  }}
                 >
                   {active && (
-                    <div className={cn(
-                      "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full",
-                      item.color === 'amber' && "bg-gradient-to-b from-amber-500 to-orange-500",
-                      item.color === 'emerald' && "bg-gradient-to-b from-emerald-500 to-green-500",
-                      item.color === 'violet' && "bg-gradient-to-b from-violet-500 to-purple-500",
-                      item.color === 'blue' && "bg-gradient-to-b from-blue-500 to-cyan-500"
-                    )} />
+                    <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full", colors.text.replace('text-', 'bg-'))} />
                   )}
                   <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {item.label}
+                  <span className="uppercase tracking-wider text-xs">{item.label}</span>
                 </Link>
               </motion.div>
             )
@@ -247,28 +337,34 @@ export function HubLayout({ children, user }: HubLayoutProps) {
 
         {/* Admin Section */}
         <div className="pt-4 mt-4 border-t border-white/5">
-          <p className="px-3 mb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-            Admin
+          <p className="px-3 mb-2 text-[10px] font-mono text-red-500/50 uppercase tracking-widest">
+            [ ADMIN ]
           </p>
           {adminItems.map((item) => {
             const active = isActive(item.href)
+            const colors = colorClasses[item.color]
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={handleNavClick}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono',
                   'transition-all duration-200 relative min-h-[44px]',
+                  'border',
                   active
-                    ? 'bg-gradient-to-r from-red-500/15 to-rose-500/10 text-red-400 shadow-lg shadow-red-500/5'
-                    : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+                    ? cn(colors.bg, colors.text, colors.border)
+                    : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-white hover:border-white/10'
                 )}
+                style={{
+                  boxShadow: active ? colors.glow : 'none',
+                }}
               >
                 {active && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-red-500 to-rose-500 rounded-r-full" />
+                  <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full", colors.text.replace('text-', 'bg-'))} />
                 )}
                 <item.icon className="w-5 h-5 flex-shrink-0" />
-                {item.label}
+                <span className="uppercase tracking-wider text-xs">{item.label}</span>
               </Link>
             )
           })}
@@ -278,95 +374,109 @@ export function HubLayout({ children, user }: HubLayoutProps) {
   )
 
   return (
-    <PasswordGate>
-    <KeyboardShortcutsProvider>
     <div className="min-h-screen bg-black text-white">
-      <HubMesh />
+      {/* Hacker OS Background */}
+      <DataStreamBackground intensity="low" color="cyan" showPolygons={!prefersReducedMotion} />
+
+      {/* Scanlines overlay */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[1] opacity-[0.015]"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,255,0.03) 2px, rgba(0,255,255,0.03) 4px)',
+        }}
+      />
 
       <div className="relative flex flex-col min-h-screen z-10">
         {/* Header */}
-        <header className="h-14 sm:h-16 border-b border-white/5 bg-black/60 backdrop-blur-2xl flex items-center justify-between px-3 sm:px-4 lg:px-6 sticky top-0 z-30">
+        <header className="h-14 sm:h-16 border-b border-cyan-500/20 bg-black/80 backdrop-blur-2xl flex items-center justify-between px-3 sm:px-4 lg:px-6 sticky top-0 z-30">
           <div className="flex items-center gap-3 sm:gap-4">
             <Sheet>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="min-w-[44px] min-h-[44px] text-neutral-400 hover:text-white hover:bg-white/5"
+                  className="min-w-[44px] min-h-[44px] text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 border border-cyan-500/30"
+                  onClick={handleNavClick}
                 >
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0 flex flex-col bg-neutral-950 border-r border-white/5">
-                <SheetHeader className="p-6 border-b border-white/5 flex-shrink-0">
+              <SheetContent side="left" className="w-72 p-0 flex flex-col bg-black/95 border-r border-cyan-500/30">
+                <SheetHeader className="p-6 border-b border-cyan-500/20 flex-shrink-0">
                   <div className="flex items-center gap-3">
                     <motion.div
                       animate={{ y: [0, -2, 0] }}
                       transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                      className="relative"
                     >
+                      <div className="absolute inset-0 bg-cyan-500/30 rounded-lg blur-lg" />
                       <Image
                         src="/logos/miller-ai-group.png"
                         alt="Miller AI Group"
                         width={32}
                         height={32}
-                        className="rounded-lg"
+                        className="relative rounded-lg"
                       />
                     </motion.div>
-                    <SheetTitle className="text-lg font-bold text-left text-white">
-                      Miller AI Group
+                    <SheetTitle className="text-lg font-mono font-bold text-left text-cyan-400">
+                      MILLER AI GROUP
                     </SheetTitle>
                   </div>
                 </SheetHeader>
                 <div className="flex-1 overflow-y-auto">
-                  {/* eslint-disable-next-line react-hooks/static-components */}
                   <NavContent />
                 </div>
-                <div className="p-4 border-t border-white/5 flex-shrink-0">
+                <div className="p-4 border-t border-cyan-500/20 flex-shrink-0">
                   <Button
                     variant="ghost"
-                    className="w-full justify-start text-neutral-400 hover:text-red-400 hover:bg-red-500/10 min-h-[44px]"
+                    className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10 min-h-[44px] font-mono"
                     onClick={handleLogout}
                   >
                     <LogOut className="w-5 h-5 mr-3" />
-                    Logout
+                    LOGOUT
                   </Button>
                 </div>
               </SheetContent>
             </Sheet>
 
-            <Link href="/app" className="hidden sm:flex items-center gap-2 group">
+            <Link href="/app" className="hidden sm:flex items-center gap-2 group" onClick={handleNavClick}>
               <motion.div
                 animate={{ y: [0, -2, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                className="relative"
               >
+                <div className="absolute inset-0 bg-cyan-500/30 rounded-lg blur-lg" />
                 <Image
                   src="/logos/miller-ai-group.png"
                   alt="Miller AI Group"
                   width={28}
                   height={28}
-                  className="rounded-lg"
+                  className="relative rounded-lg"
                 />
               </motion.div>
-              <span className="text-lg font-bold text-white group-hover:text-violet-300 transition-colors">
-                Miller AI Group
+              <span className="text-lg font-mono font-bold text-cyan-400 group-hover:text-cyan-300 transition-colors tracking-wider">
+                MILLER AI
               </span>
             </Link>
 
             <div className="sm:hidden">
-              <h1 className="font-semibold text-sm text-neutral-200">
-                {user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User'}
+              <h1 className="font-mono font-semibold text-sm text-cyan-400">
+                {user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'OPERATOR'}
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
+            <SystemStatusBar />
+            <div className="w-px h-6 bg-cyan-500/20 mx-2 hidden sm:block" />
             <GlobalSearch />
             <KeyboardShortcutsButton />
+            <AudioControl />
             <a
               href={SOCIAL_LINKS.instagram}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-white transition-colors hidden sm:flex"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-cyan-400 transition-colors hidden sm:flex"
             >
               <Instagram className="w-5 h-5" />
             </a>
@@ -374,18 +484,18 @@ export function HubLayout({ children, user }: HubLayoutProps) {
               href={SOCIAL_LINKS.linkedin}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-white transition-colors hidden sm:flex"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-cyan-400 transition-colors hidden sm:flex"
             >
               <Linkedin className="w-5 h-5" />
             </a>
             <Button
               variant="ghost"
               size="sm"
-              className="ml-1 sm:ml-2 hidden lg:flex min-h-[44px] text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
+              className="ml-1 sm:ml-2 hidden lg:flex min-h-[44px] text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 font-mono"
               onClick={handleLogout}
             >
               <LogOut className="w-4 h-4 mr-2" />
-              Logout
+              LOGOUT
             </Button>
           </div>
         </header>
@@ -405,11 +515,33 @@ export function HubLayout({ children, user }: HubLayoutProps) {
             </motion.div>
           </AnimatePresence>
         </main>
+
+        {/* Footer status bar */}
+        <footer className="h-8 border-t border-cyan-500/20 bg-black/80 backdrop-blur-xl flex items-center justify-between px-4 text-[10px] font-mono text-neutral-500">
+          <div className="flex items-center gap-4">
+            <span className="text-cyan-400">[SYS]</span>
+            <span>MILLER AI GROUP OS v2.0</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-green-400">● ONLINE</span>
+            <span>SESSION: {Date.now().toString(16).slice(-8).toUpperCase()}</span>
+          </div>
+        </footer>
       </div>
 
       <OnboardingDialog />
     </div>
-    </KeyboardShortcutsProvider>
+  )
+}
+
+export function HubLayout({ children, user }: HubLayoutProps) {
+  return (
+    <PasswordGate>
+      <KeyboardShortcutsProvider>
+        <AudioEngineProvider>
+          <HubLayoutContent user={user}>{children}</HubLayoutContent>
+        </AudioEngineProvider>
+      </KeyboardShortcutsProvider>
     </PasswordGate>
   )
 }

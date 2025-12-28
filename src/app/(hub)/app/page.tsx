@@ -18,18 +18,26 @@ import {
   ArrowRight,
   Calendar,
   Github,
+  Sparkles,
 } from 'lucide-react'
 import { GitHubDashboard } from '@/components/hub/github-dashboard'
 import { ProductivityAnalytics } from '@/components/hub/productivity-analytics'
 import { ActivityFeed } from '@/components/hub/activity-feed'
+import {
+  AnimatedDashboardHeader,
+  AnimatedStatCards,
+  AnimatedSectionHeader,
+  AnimatedCard,
+  AnimatedQuickActions,
+} from '@/components/hub/dashboard-client'
 import type { Goal } from '@/lib/actions/goals'
 import type { Asset } from '@/lib/actions/assets'
 
 const statusColors: Record<string, string> = {
-  'active': 'bg-green-500/10 text-green-500 border-green-500/20',
-  'development': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  'coming-soon': 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  'past': 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+  'active': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
+  'development': 'bg-amber-500/10 text-amber-500 border-amber-500/30',
+  'coming-soon': 'bg-violet-500/10 text-violet-500 border-violet-500/30',
+  'past': 'bg-gray-500/10 text-gray-400 border-gray-500/30',
 }
 
 const statusLabels: Record<string, string> = {
@@ -40,9 +48,9 @@ const statusLabels: Record<string, string> = {
 }
 
 const priorityColors = {
-  0: 'bg-gray-500/10 text-gray-500',
-  1: 'bg-blue-500/10 text-blue-500',
-  2: 'bg-red-500/10 text-red-500',
+  0: 'bg-slate-500/10 text-slate-500 border-slate-500/30',
+  1: 'bg-violet-500/10 text-violet-500 border-violet-500/30',
+  2: 'bg-rose-500/10 text-rose-500 border-rose-500/30',
 }
 
 const priorityLabels = {
@@ -114,10 +122,10 @@ export default async function DashboardPage() {
   ])
 
   const statCards = [
-    { label: 'Notes', count: stats.notes, icon: FileText, href: '/app/notes' },
-    { label: 'Boards', count: stats.boards, icon: Grid3X3, href: '/app/boards' },
-    { label: 'Links', count: stats.links, icon: Link2, href: '/app/links' },
-    { label: 'Files', count: stats.files, icon: FolderOpen, href: '/app/files' },
+    { label: 'Notes', count: stats.notes, href: '/app/notes' },
+    { label: 'Boards', count: stats.boards, href: '/app/boards' },
+    { label: 'Links', count: stats.links, href: '/app/links' },
+    { label: 'Files', count: stats.files, href: '/app/files' },
   ]
 
   const formatDate = (dateStr: string | null) => {
@@ -127,42 +135,29 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
-        <p className="text-sm sm:text-base text-muted-foreground mt-1">Welcome back to your personal hub.</p>
-      </div>
+    <div className="space-y-8 sm:space-y-10">
+      {/* Header */}
+      <AnimatedDashboardHeader
+        title="Dashboard"
+        subtitle="Welcome back to your personal hub."
+      />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statCards.map((stat) => (
-          <Link key={stat.label} href={stat.href}>
-            <Card className="hover:border-amber-500/50 transition-colors cursor-pointer h-full group">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-amber-500 transition-colors">
-                  {stat.label}
-                </CardTitle>
-                <stat.icon className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 transition-colors" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl sm:text-3xl font-bold">{stat.count}</div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
+      <AnimatedStatCards stats={statCards} />
 
       {/* Goals & Wishlist Grid */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Active Goals */}
-        <Card>
+        <AnimatedCard delay={0.1}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-amber-500" />
-                <CardTitle>Active Goals</CardTitle>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25">
+                  <Target className="w-4 h-4 text-white" />
+                </div>
+                <CardTitle className="text-lg">Active Goals</CardTitle>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="text-violet-500 hover:text-violet-400 hover:bg-violet-500/10">
                 <Link href="/app/goals">
                   View All
                   <ArrowRight className="w-4 h-4 ml-1" />
@@ -173,9 +168,11 @@ export default async function DashboardPage() {
           <CardContent>
             {activeGoals.length === 0 ? (
               <div className="text-center py-8">
-                <Target className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground mb-3">No active goals yet</p>
-                <Button asChild size="sm">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500/10 to-purple-500/10 flex items-center justify-center">
+                  <Target className="w-8 h-8 text-violet-500/50" />
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">No active goals yet</p>
+                <Button asChild size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white border-0">
                   <Link href="/app/goals?new=true">
                     <Plus className="w-4 h-4 mr-1" />
                     Add Goal
@@ -187,10 +184,10 @@ export default async function DashboardPage() {
                 {activeGoals.map((goal) => (
                   <div
                     key={goal.id}
-                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    className="flex items-start gap-3 p-3 rounded-xl bg-gradient-to-br from-muted/50 to-muted/20 hover:from-violet-500/10 hover:to-purple-500/5 border border-transparent hover:border-violet-500/20 transition-all duration-300"
                   >
                     <div className="mt-0.5">
-                      <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
+                      <CheckCircle2 className="w-4 h-4 text-violet-500/50" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{goal.title}</p>
@@ -206,7 +203,7 @@ export default async function DashboardPage() {
                     </Badge>
                   </div>
                 ))}
-                <Button asChild variant="ghost" size="sm" className="w-full">
+                <Button asChild variant="ghost" size="sm" className="w-full hover:bg-violet-500/10 hover:text-violet-500">
                   <Link href="/app/goals?new=true">
                     <Plus className="w-4 h-4 mr-1" />
                     Add Goal
@@ -215,17 +212,19 @@ export default async function DashboardPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </AnimatedCard>
 
         {/* Wishlist */}
-        <Card>
+        <AnimatedCard delay={0.2}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-amber-500" />
-                <CardTitle>Wishlist</CardTitle>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/25">
+                  <ShoppingBag className="w-4 h-4 text-white" />
+                </div>
+                <CardTitle className="text-lg">Wishlist</CardTitle>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10">
                 <Link href="/app/assets">
                   View All
                   <ArrowRight className="w-4 h-4 ml-1" />
@@ -236,9 +235,11 @@ export default async function DashboardPage() {
           <CardContent>
             {wishlistItems.length === 0 ? (
               <div className="text-center py-8">
-                <ShoppingBag className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground mb-3">Nothing on wishlist yet</p>
-                <Button asChild size="sm">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-500/10 flex items-center justify-center">
+                  <ShoppingBag className="w-8 h-8 text-amber-500/50" />
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">Nothing on wishlist yet</p>
+                <Button asChild size="sm" className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-white border-0">
                   <Link href="/app/assets?new=true">
                     <Plus className="w-4 h-4 mr-1" />
                     Add Item
@@ -250,7 +251,7 @@ export default async function DashboardPage() {
                 {wishlistItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    className="flex items-start gap-3 p-3 rounded-xl bg-gradient-to-br from-muted/50 to-muted/20 hover:from-amber-500/10 hover:to-orange-500/5 border border-transparent hover:border-amber-500/20 transition-all duration-300"
                   >
                     {item.image_url ? (
                       <Image
@@ -258,12 +259,12 @@ export default async function DashboardPage() {
                         alt={item.name}
                         width={40}
                         height={40}
-                        className="w-10 h-10 rounded object-cover"
+                        className="w-10 h-10 rounded-lg object-cover ring-1 ring-border/50"
                         unoptimized
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">
-                        <ShoppingBag className="w-4 h-4 text-muted-foreground" />
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center">
+                        <ShoppingBag className="w-4 h-4 text-amber-500/50" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
@@ -279,14 +280,14 @@ export default async function DashboardPage() {
                         href={item.external_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        className="text-muted-foreground hover:text-amber-500 transition-colors"
                       >
                         <ExternalLink className="w-4 h-4" />
                       </a>
                     )}
                   </div>
                 ))}
-                <Button asChild variant="ghost" size="sm" className="w-full">
+                <Button asChild variant="ghost" size="sm" className="w-full hover:bg-amber-500/10 hover:text-amber-500">
                   <Link href="/app/assets?new=true">
                     <Plus className="w-4 h-4 mr-1" />
                     Add Item
@@ -295,7 +296,7 @@ export default async function DashboardPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </AnimatedCard>
       </div>
 
       {/* Activity Feed */}
@@ -303,25 +304,33 @@ export default async function DashboardPage() {
 
       {/* Productivity Analytics */}
       <div>
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Productivity Analytics</h2>
+        <AnimatedSectionHeader
+          title="Productivity Analytics"
+          icon={<Sparkles className="w-5 h-5 text-violet-500" />}
+          className="mb-4"
+        />
         <ProductivityAnalytics />
       </div>
 
       {/* GitHub Section */}
       <div>
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 flex items-center gap-2">
-          <Github className="w-5 h-5" />
-          GitHub Activity
-        </h2>
+        <AnimatedSectionHeader
+          title="GitHub Activity"
+          icon={<Github className="w-5 h-5 text-foreground" />}
+          className="mb-4"
+        />
         <GitHubDashboard />
       </div>
 
       {/* Projects Section */}
       <div>
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Ventures</h2>
+        <AnimatedSectionHeader
+          title="Ventures"
+          className="mb-4"
+        />
         <div className="grid sm:grid-cols-2 gap-4">
-          {PROJECTS.map((project) => (
-            <Card key={project.slug}>
+          {PROJECTS.map((project, index) => (
+            <AnimatedCard key={project.slug} delay={index * 0.1}>
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <CardTitle className="text-lg">{project.name}</CardTitle>
@@ -332,59 +341,62 @@ export default async function DashboardPage() {
                 <CardDescription>{project.description}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button asChild variant="outline" size="sm">
+                <Button asChild variant="outline" size="sm" className="hover:border-violet-500/50 hover:text-violet-500">
                   <Link href={`/app/projects/${project.slug}`}>
                     Open Project Page
                     <ExternalLink className="w-3 h-3 ml-2" />
                   </Link>
                 </Button>
               </CardContent>
-            </Card>
+            </AnimatedCard>
           ))}
         </div>
       </div>
 
       {/* Quick Actions */}
       <div>
-        <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3">
-          <Button asChild className="h-10 sm:h-9 text-sm">
+        <AnimatedSectionHeader
+          title="Quick Actions"
+          className="mb-4"
+        />
+        <AnimatedQuickActions>
+          <Button asChild className="h-10 sm:h-9 text-sm bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-violet-500/25">
             <Link href="/app/notes?new=true">
               <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               New Note
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm hover:border-violet-500/50 hover:text-violet-500 hover:bg-violet-500/5">
             <Link href="/app/goals?new=true">
               <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               New Goal
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm hover:border-amber-500/50 hover:text-amber-500 hover:bg-amber-500/5">
             <Link href="/app/assets?new=true">
               <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               Wishlist
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm hover:border-cyan-500/50 hover:text-cyan-500 hover:bg-cyan-500/5">
             <Link href="/app/boards?new=true">
               <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               New Board
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm hover:border-blue-500/50 hover:text-blue-500 hover:bg-blue-500/5">
             <Link href="/app/links?new=true">
               <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               Add Link
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm">
+          <Button asChild variant="outline" className="h-10 sm:h-9 text-sm hover:border-emerald-500/50 hover:text-emerald-500 hover:bg-emerald-500/5">
             <Link href="/app/files?upload=true">
               <Plus className="w-4 h-4 mr-1.5 sm:mr-2" />
               Upload
             </Link>
           </Button>
-        </div>
+        </AnimatedQuickActions>
       </div>
     </div>
   )

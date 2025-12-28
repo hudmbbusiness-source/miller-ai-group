@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
+import { motion } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -26,8 +27,10 @@ import {
   Flame,
   Award,
   BarChart3,
+  Sparkles,
 } from 'lucide-react'
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 
 interface GitHubStats {
   user: {
@@ -96,6 +99,44 @@ interface GitHubStats {
   }
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+}
+
+function PremiumCard({ children, className, delay = 0 }: {
+  children: React.ReactNode
+  className?: string
+  delay?: number
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-50px' }}
+      transition={{ duration: 0.5, delay }}
+      className={cn(
+        'relative overflow-hidden rounded-2xl',
+        'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
+        'border border-border/50 hover:border-violet-500/20',
+        'transition-all duration-300',
+        'shadow-lg',
+        className
+      )}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
 export function GitHubDashboard() {
   const [stats, setStats] = useState<GitHubStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -105,14 +146,12 @@ export function GitHubDashboard() {
   const [tempUsername, setTempUsername] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Fetch GitHub username - first from OAuth metadata, then from site_content
   useEffect(() => {
     const fetchUsername = async () => {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        // First check if user logged in with GitHub OAuth - get username from metadata
         const githubUsername = user.user_metadata?.user_name ||
                                user.user_metadata?.preferred_username ||
                                user.user_metadata?.login
@@ -120,8 +159,6 @@ export function GitHubDashboard() {
         if (githubUsername) {
           setUsername(githubUsername)
           setTempUsername(githubUsername)
-
-          // Also save to site_content for future reference
           // @ts-expect-error - Supabase types not fully inferred
           await supabase.from('site_content').upsert({
             key: 'github_username',
@@ -129,12 +166,10 @@ export function GitHubDashboard() {
             user_id: user.id,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'key,user_id' })
-
           setLoading(false)
           return
         }
 
-        // Fallback: check site_content for manually saved username
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (supabase.from('site_content') as any)
           .select('value')
@@ -168,7 +203,6 @@ export function GitHubDashboard() {
         user_id: user.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'key,user_id' })
-
       setUsername(tempUsername.trim())
     }
     setSaving(false)
@@ -183,7 +217,6 @@ export function GitHubDashboard() {
     try {
       const res = await fetch(`/api/github/stats?username=${username}`)
       if (!res.ok) throw new Error('Failed to fetch GitHub stats')
-
       const data = await res.json()
       setStats(data)
       setLastUpdated(new Date())
@@ -203,6 +236,30 @@ export function GitHubDashboard() {
 
   const getLanguageColor = (language: string): string => {
     const colors: Record<string, string> = {
+      TypeScript: 'from-blue-500 to-blue-600',
+      JavaScript: 'from-yellow-400 to-yellow-500',
+      Python: 'from-green-500 to-green-600',
+      Rust: 'from-orange-500 to-orange-600',
+      Go: 'from-cyan-400 to-cyan-500',
+      Java: 'from-red-500 to-red-600',
+      'C++': 'from-pink-500 to-pink-600',
+      C: 'from-gray-500 to-gray-600',
+      'C#': 'from-purple-500 to-purple-600',
+      Ruby: 'from-red-400 to-red-500',
+      Swift: 'from-orange-400 to-orange-500',
+      Kotlin: 'from-purple-400 to-purple-500',
+      PHP: 'from-indigo-500 to-indigo-600',
+      Shell: 'from-green-400 to-green-500',
+      HTML: 'from-orange-500 to-orange-600',
+      CSS: 'from-blue-400 to-blue-500',
+      Vue: 'from-emerald-500 to-emerald-600',
+      Svelte: 'from-orange-500 to-orange-600',
+    }
+    return colors[language] || 'from-gray-400 to-gray-500'
+  }
+
+  const getLanguageBgColor = (language: string): string => {
+    const colors: Record<string, string> = {
       TypeScript: 'bg-blue-500',
       JavaScript: 'bg-yellow-500',
       Python: 'bg-green-600',
@@ -217,34 +274,27 @@ export function GitHubDashboard() {
       Kotlin: 'bg-purple-500',
       PHP: 'bg-indigo-500',
       Shell: 'bg-green-400',
-      Bash: 'bg-green-400',
       HTML: 'bg-orange-500',
       CSS: 'bg-blue-400',
-      SCSS: 'bg-pink-400',
       Vue: 'bg-emerald-500',
-      Svelte: 'bg-orange-500',
-      Dart: 'bg-sky-500',
-      Elixir: 'bg-purple-400',
-      Haskell: 'bg-violet-500',
-      Scala: 'bg-red-600',
-      Lua: 'bg-indigo-400',
-      R: 'bg-blue-600',
-      Julia: 'bg-purple-500',
-      Zig: 'bg-amber-500',
-      Dockerfile: 'bg-blue-400',
-      Makefile: 'bg-gray-600',
-      Jupyter: 'bg-orange-400',
     }
     return colors[language] || 'bg-gray-400'
   }
 
-  // Show setup if no username configured
+  // Setup screen
   if (!username && !loading) {
     return (
-      <Card className="border-dashed border-primary/30">
+      <PremiumCard className="border-dashed border-violet-500/30">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Github className="w-12 h-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Connect Your GitHub</h3>
+          <motion.div
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 200 }}
+            className="p-4 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25 mb-6"
+          >
+            <Github className="w-10 h-10 text-white" />
+          </motion.div>
+          <h3 className="text-xl font-semibold mb-2">Connect Your GitHub</h3>
           <p className="text-muted-foreground text-center mb-6 max-w-md">
             Enter your GitHub username to display your profile, repositories, and contribution stats.
           </p>
@@ -253,43 +303,54 @@ export function GitHubDashboard() {
               value={tempUsername}
               onChange={(e) => setTempUsername(e.target.value)}
               placeholder="your-github-username"
-              className="flex-1"
+              className="flex-1 bg-muted/50 border-violet-500/20 focus:border-violet-500/50"
             />
-            <Button onClick={saveUsername} disabled={saving || !tempUsername.trim()}>
+            <Button
+              onClick={saveUsername}
+              disabled={saving || !tempUsername.trim()}
+              className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white border-0"
+            >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Connect'}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-4">
             You can also set this in{' '}
-            <Link href="/app/settings" className="text-primary hover:underline">
+            <Link href="/app/settings" className="text-violet-500 hover:underline">
               Settings
             </Link>
           </p>
         </CardContent>
-      </Card>
+      </PremiumCard>
     )
   }
 
   if (loading && !stats) {
     return (
-      <Card className="border-primary/30">
+      <PremiumCard className="border-violet-500/20">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Loader2 className="w-10 h-10 text-primary animate-spin" />
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          >
+            <Sparkles className="w-10 h-10 text-violet-500" />
+          </motion.div>
           <p className="text-muted-foreground mt-4">Loading GitHub stats...</p>
         </CardContent>
-      </Card>
+      </PremiumCard>
     )
   }
 
   if (error && !stats) {
     return (
-      <Card className="border-destructive/30">
+      <PremiumCard className="border-destructive/30">
         <CardContent className="flex flex-col items-center justify-center py-8">
-          <AlertCircle className="w-10 h-10 text-destructive mb-4" />
+          <div className="p-3 rounded-xl bg-destructive/10 mb-4">
+            <AlertCircle className="w-8 h-8 text-destructive" />
+          </div>
           <p className="text-muted-foreground mb-2">{error}</p>
           <p className="text-sm text-muted-foreground mb-4">Username: {username}</p>
           <div className="flex gap-2">
-            <Button onClick={fetchGitHubStats} variant="outline">
+            <Button onClick={fetchGitHubStats} variant="outline" className="hover:border-violet-500/50 hover:text-violet-500">
               Try Again
             </Button>
             <Button onClick={() => setUsername('')} variant="ghost">
@@ -297,403 +358,507 @@ export function GitHubDashboard() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </PremiumCard>
     )
   }
 
   if (!stats) return null
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-6"
+    >
       {/* Profile Overview */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Github className="w-5 h-5" />
-              GitHub Profile
-            </CardTitle>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onClick={() => setUsername('')} title="Change username">
-                <Settings className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={fetchGitHubStats} disabled={loading}>
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </Button>
+      <motion.div variants={itemVariants}>
+        <PremiumCard>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25">
+                  <Github className="w-4 h-4 text-white" />
+                </div>
+                <CardTitle className="text-lg">GitHub Profile</CardTitle>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setUsername('')}
+                  title="Change username"
+                  className="hover:bg-violet-500/10 hover:text-violet-500"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={fetchGitHubStats}
+                  disabled={loading}
+                  className="hover:bg-violet-500/10 hover:text-violet-500"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
             </div>
-          </div>
-          {lastUpdated && (
-            <CardDescription>
-              Last updated: {lastUpdated.toLocaleTimeString()}
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4 mb-6">
-            <Image
-              src={stats.user.avatar_url}
-              alt={stats.user.name}
-              width={64}
-              height={64}
-              className="w-16 h-16 rounded-full border-2 border-primary/20"
-              unoptimized
-            />
-            <div>
-              <h3 className="font-semibold text-lg">{stats.user.name}</h3>
-              <a
-                href={`https://github.com/${stats.user.login}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary flex items-center gap-1"
+            {lastUpdated && (
+              <CardDescription className="text-xs">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 mb-6">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                className="relative"
               >
-                @{stats.user.login}
-                <ExternalLink className="w-3 h-3" />
-              </a>
+                <Image
+                  src={stats.user.avatar_url}
+                  alt={stats.user.name}
+                  width={64}
+                  height={64}
+                  className="w-16 h-16 rounded-full ring-2 ring-violet-500/30"
+                  unoptimized
+                />
+                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                  <Github className="w-3 h-3 text-white" />
+                </div>
+              </motion.div>
+              <div>
+                <h3 className="font-semibold text-lg">{stats.user.name}</h3>
+                <a
+                  href={`https://github.com/${stats.user.login}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-violet-500 flex items-center gap-1 transition-colors"
+                >
+                  @{stats.user.login}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             </div>
-          </div>
 
-          {/* Auth status indicator */}
-          {stats.auth && (
-            <div className={`mb-4 px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
-              stats.auth.authenticated
-                ? 'bg-green-500/10 text-green-500 border border-green-500/20'
-                : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-            }`}>
-              {stats.auth.authenticated ? (
-                <>
-                  <Github className="w-4 h-4" />
-                  Connected via GitHub OAuth
-                  {stats.auth.hasPrivateAccess && ' • Private repo access'}
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="w-4 h-4" />
-                  Limited access - Re-login for full stats
-                </>
-              )}
-            </div>
-          )}
+            {/* Auth status */}
+            {stats.auth && (
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className={cn(
+                  'mb-4 px-4 py-2.5 rounded-xl text-sm flex items-center gap-2',
+                  stats.auth.authenticated
+                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                )}
+              >
+                {stats.auth.authenticated ? (
+                  <>
+                    <Github className="w-4 h-4" />
+                    Connected via GitHub OAuth
+                    {stats.auth.hasPrivateAccess && ' • Private repo access'}
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4" />
+                    Limited access - Re-login for full stats
+                  </>
+                )}
+              </motion.div>
+            )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <Code className="w-5 h-5 mx-auto mb-1 text-primary" />
-              <p className="text-2xl font-bold">
-                {stats.user.total_repos || stats.user.public_repos}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {stats.user.private_repos ? `${stats.user.public_repos} public, ${stats.user.private_repos} private` : 'Repositories'}
-              </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { icon: Code, value: stats.user.total_repos || stats.user.public_repos, label: stats.user.private_repos ? `${stats.user.public_repos} public, ${stats.user.private_repos} private` : 'Repositories', color: 'violet' },
+                { icon: Star, value: stats.repos.reduce((acc, r) => acc + r.stargazers_count, 0), label: 'Total Stars', color: 'amber' },
+                { icon: GitCommit, value: stats.contributions.total, label: 'Contributions', color: 'emerald' },
+                { icon: TrendingUp, value: stats.contributions.lastWeek, label: 'This Week', color: 'cyan' },
+              ].map((stat, index) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.1 * index }}
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  className={cn(
+                    'text-center p-4 rounded-xl border transition-all duration-300',
+                    stat.color === 'violet' && 'bg-violet-500/5 border-violet-500/20 hover:border-violet-500/40',
+                    stat.color === 'amber' && 'bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40',
+                    stat.color === 'emerald' && 'bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/40',
+                    stat.color === 'cyan' && 'bg-cyan-500/5 border-cyan-500/20 hover:border-cyan-500/40'
+                  )}
+                >
+                  <stat.icon className={cn(
+                    'w-5 h-5 mx-auto mb-2',
+                    stat.color === 'violet' && 'text-violet-500',
+                    stat.color === 'amber' && 'text-amber-500',
+                    stat.color === 'emerald' && 'text-emerald-500',
+                    stat.color === 'cyan' && 'text-cyan-500'
+                  )} />
+                  <p className="text-2xl font-bold">{stat.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
+                </motion.div>
+              ))}
             </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <Star className="w-5 h-5 mx-auto mb-1 text-yellow-500" />
-              <p className="text-2xl font-bold">
-                {stats.repos.reduce((acc, r) => acc + r.stargazers_count, 0)}
-              </p>
-              <p className="text-xs text-muted-foreground">Total Stars</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <GitCommit className="w-5 h-5 mx-auto mb-1 text-green-500" />
-              <p className="text-2xl font-bold">{stats.contributions.total}</p>
-              <p className="text-xs text-muted-foreground">Contributions</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <TrendingUp className="w-5 h-5 mx-auto mb-1 text-blue-500" />
-              <p className="text-2xl font-bold">{stats.contributions.lastWeek}</p>
-              <p className="text-xs text-muted-foreground">This Week</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </PremiumCard>
+      </motion.div>
 
       {/* Top Repositories */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <GitFork className="w-5 h-5 text-purple-500" />
-            Top Repositories
-          </CardTitle>
-          <CardDescription>
-            Most active and starred projects
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {stats.repos.slice(0, 6).map((repo) => (
-              <div
-                key={repo.name}
-                className="p-4 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <a
-                      href={repo.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium hover:text-primary flex items-center gap-1"
-                    >
-                      {repo.name}
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                    {repo.description && (
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        {repo.description}
-                      </p>
-                    )}
-                    {repo.topics && repo.topics.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {repo.topics.slice(0, 4).map((topic) => (
-                          <Badge key={topic} variant="secondary" className="text-xs">
-                            {topic}
-                          </Badge>
-                        ))}
+      <motion.div variants={itemVariants}>
+        <PremiumCard>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-600 shadow-lg shadow-purple-500/25">
+                <GitFork className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Top Repositories</CardTitle>
+                <CardDescription>Most active and starred projects</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {stats.repos.slice(0, 6).map((repo, index) => (
+                <motion.div
+                  key={repo.name}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.05 * index }}
+                  whileHover={{ x: 4 }}
+                  className="p-4 rounded-xl bg-gradient-to-br from-muted/50 to-muted/20 border border-transparent hover:border-violet-500/20 transition-all duration-300"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={repo.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium hover:text-violet-500 flex items-center gap-1 transition-colors"
+                      >
+                        {repo.name}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                      {repo.description && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                          {repo.description}
+                        </p>
+                      )}
+                      {repo.topics && repo.topics.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {repo.topics.slice(0, 4).map((topic) => (
+                            <Badge key={topic} variant="secondary" className="text-xs bg-violet-500/10 text-violet-500 border-violet-500/20">
+                              {topic}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {repo.language && (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2.5 h-2.5 rounded-full ${getLanguageBgColor(repo.language)}`} />
+                          <span className="text-xs text-muted-foreground">{repo.language}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Star className="w-3.5 h-3.5 text-amber-500" />
+                          {repo.stargazers_count}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <GitFork className="w-3.5 h-3.5 text-purple-500" />
+                          {repo.forks_count}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    {repo.language && (
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full ${getLanguageColor(repo.language)}`} />
-                        <span className="text-xs text-muted-foreground">{repo.language}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-0.5">
-                        <Star className="w-3 h-3" />
-                        {repo.stargazers_count}
-                      </span>
-                      <span className="flex items-center gap-0.5">
-                        <GitFork className="w-3 h-3" />
-                        {repo.forks_count}
-                      </span>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+                </motion.div>
+              ))}
+            </div>
+          </CardContent>
+        </PremiumCard>
+      </motion.div>
 
       {/* Contribution Breakdown */}
       {stats.contributions.commits !== undefined && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-purple-500" />
-              Contribution Breakdown
-            </CardTitle>
-            <CardDescription>
-              This year&apos;s activity across different contribution types
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="text-center p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                <GitCommit className="w-5 h-5 mx-auto mb-1 text-green-500" />
-                <p className="text-2xl font-bold text-green-500">{stats.contributions.commits}</p>
-                <p className="text-xs text-muted-foreground">Commits</p>
+        <motion.div variants={itemVariants}>
+          <PremiumCard>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/25">
+                  <BarChart3 className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Contribution Breakdown</CardTitle>
+                  <CardDescription>This year&apos;s activity across different contribution types</CardDescription>
+                </div>
               </div>
-              <div className="text-center p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                <GitPullRequest className="w-5 h-5 mx-auto mb-1 text-purple-500" />
-                <p className="text-2xl font-bold text-purple-500">{stats.contributions.pullRequests}</p>
-                <p className="text-xs text-muted-foreground">Pull Requests</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { icon: GitCommit, value: stats.contributions.commits, label: 'Commits', color: 'emerald' },
+                  { icon: GitPullRequest, value: stats.contributions.pullRequests, label: 'Pull Requests', color: 'purple' },
+                  { icon: Bug, value: stats.contributions.issues, label: 'Issues', color: 'orange' },
+                  { icon: Eye, value: stats.contributions.reviews, label: 'Reviews', color: 'blue' },
+                ].map((stat, index) => (
+                  <motion.div
+                    key={stat.label}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.05 * index }}
+                    whileHover={{ scale: 1.02 }}
+                    className={cn(
+                      'text-center p-4 rounded-xl border transition-all',
+                      stat.color === 'emerald' && 'bg-emerald-500/10 border-emerald-500/20',
+                      stat.color === 'purple' && 'bg-purple-500/10 border-purple-500/20',
+                      stat.color === 'orange' && 'bg-orange-500/10 border-orange-500/20',
+                      stat.color === 'blue' && 'bg-blue-500/10 border-blue-500/20'
+                    )}
+                  >
+                    <stat.icon className={cn(
+                      'w-5 h-5 mx-auto mb-1',
+                      stat.color === 'emerald' && 'text-emerald-500',
+                      stat.color === 'purple' && 'text-purple-500',
+                      stat.color === 'orange' && 'text-orange-500',
+                      stat.color === 'blue' && 'text-blue-500'
+                    )} />
+                    <p className={cn(
+                      'text-2xl font-bold',
+                      stat.color === 'emerald' && 'text-emerald-500',
+                      stat.color === 'purple' && 'text-purple-500',
+                      stat.color === 'orange' && 'text-orange-500',
+                      stat.color === 'blue' && 'text-blue-500'
+                    )}>{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                  </motion.div>
+                ))}
               </div>
-              <div className="text-center p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                <Bug className="w-5 h-5 mx-auto mb-1 text-orange-500" />
-                <p className="text-2xl font-bold text-orange-500">{stats.contributions.issues}</p>
-                <p className="text-xs text-muted-foreground">Issues</p>
-              </div>
-              <div className="text-center p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                <Eye className="w-5 h-5 mx-auto mb-1 text-blue-500" />
-                <p className="text-2xl font-bold text-blue-500">{stats.contributions.reviews}</p>
-                <p className="text-xs text-muted-foreground">Reviews</p>
-              </div>
-            </div>
 
-            {/* Streak Info */}
-            {stats.contributions.streak && (
-              <div className="grid sm:grid-cols-2 gap-4 mt-4">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <Flame className="w-8 h-8 text-amber-500" />
-                  <div>
-                    <p className="text-2xl font-bold text-amber-500">{stats.contributions.streak.current}</p>
-                    <p className="text-xs text-muted-foreground">Day Current Streak</p>
-                  </div>
+              {/* Streak Info */}
+              {stats.contributions.streak && (
+                <div className="grid sm:grid-cols-2 gap-3 mt-4">
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-amber-500/10 to-orange-500/5 border border-amber-500/20"
+                  >
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/25">
+                      <Flame className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-amber-500">{stats.contributions.streak.current}</p>
+                      <p className="text-xs text-muted-foreground">Day Current Streak</p>
+                    </div>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-yellow-500/10 to-amber-500/5 border border-yellow-500/20"
+                  >
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-yellow-400 to-amber-500 shadow-lg shadow-yellow-500/25">
+                      <Award className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-yellow-500">{stats.contributions.streak.longest}</p>
+                      <p className="text-xs text-muted-foreground">Day Longest Streak</p>
+                    </div>
+                  </motion.div>
                 </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                  <Award className="w-8 h-8 text-yellow-500" />
-                  <div>
-                    <p className="text-2xl font-bold text-yellow-500">{stats.contributions.streak.longest}</p>
-                    <p className="text-xs text-muted-foreground">Day Longest Streak</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </PremiumCard>
+        </motion.div>
       )}
 
-      {/* Contribution Calendar (Mini Heatmap) */}
+      {/* Contribution Calendar */}
       {stats.contributions.calendar && stats.contributions.calendar.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-green-500" />
-              Recent Activity
-            </CardTitle>
-            <CardDescription>Last 12 weeks of contributions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-1 flex-wrap">
-              {stats.contributions.calendar.map((day, i) => (
-                <div
-                  key={i}
-                  title={`${day.date}: ${day.count} contributions`}
-                  className={`w-3 h-3 rounded-sm ${
-                    day.level === 0 ? 'bg-muted' :
-                    day.level === 1 ? 'bg-green-200 dark:bg-green-900' :
-                    day.level === 2 ? 'bg-green-400 dark:bg-green-700' :
-                    day.level === 3 ? 'bg-green-500 dark:bg-green-500' :
-                    'bg-green-600 dark:bg-green-400'
-                  }`}
-                />
-              ))}
-            </div>
-            <div className="flex items-center justify-end gap-2 mt-2 text-xs text-muted-foreground">
-              <span>Less</span>
-              <div className="flex gap-0.5">
-                <div className="w-3 h-3 rounded-sm bg-muted" />
-                <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-900" />
-                <div className="w-3 h-3 rounded-sm bg-green-400 dark:bg-green-700" />
-                <div className="w-3 h-3 rounded-sm bg-green-500" />
-                <div className="w-3 h-3 rounded-sm bg-green-600 dark:bg-green-400" />
+        <motion.div variants={itemVariants}>
+          <PremiumCard>
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 shadow-lg shadow-emerald-500/25">
+                  <Calendar className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Recent Activity</CardTitle>
+                  <CardDescription>Last 12 weeks of contributions</CardDescription>
+                </div>
               </div>
-              <span>More</span>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-1 flex-wrap">
+                {stats.contributions.calendar.map((day, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, scale: 0 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.005 }}
+                    title={`${day.date}: ${day.count} contributions`}
+                    className={cn(
+                      'w-3 h-3 rounded-sm transition-all hover:scale-125',
+                      day.level === 0 && 'bg-muted',
+                      day.level === 1 && 'bg-emerald-200 dark:bg-emerald-900',
+                      day.level === 2 && 'bg-emerald-400 dark:bg-emerald-700',
+                      day.level === 3 && 'bg-emerald-500',
+                      day.level === 4 && 'bg-emerald-600 dark:bg-emerald-400'
+                    )}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center justify-end gap-2 mt-3 text-xs text-muted-foreground">
+                <span>Less</span>
+                <div className="flex gap-0.5">
+                  <div className="w-3 h-3 rounded-sm bg-muted" />
+                  <div className="w-3 h-3 rounded-sm bg-emerald-200 dark:bg-emerald-900" />
+                  <div className="w-3 h-3 rounded-sm bg-emerald-400 dark:bg-emerald-700" />
+                  <div className="w-3 h-3 rounded-sm bg-emerald-500" />
+                  <div className="w-3 h-3 rounded-sm bg-emerald-600 dark:bg-emerald-400" />
+                </div>
+                <span>More</span>
+              </div>
+            </CardContent>
+          </PremiumCard>
+        </motion.div>
       )}
 
       {/* Language Distribution */}
       {stats.languageDistribution && stats.languageDistribution.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Code className="w-5 h-5 text-blue-500" />
-              Language Distribution
-            </CardTitle>
-            <CardDescription>Languages used across your repositories</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {stats.languageDistribution.map((lang) => (
-                <div key={lang.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-3 h-3 rounded-full ${getLanguageColor(lang.name)}`} />
-                      <span className="font-medium">{lang.name}</span>
-                    </div>
-                    <span className="text-muted-foreground">
-                      {lang.count} {lang.count === 1 ? 'repo' : 'repos'} ({lang.percentage}%)
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${getLanguageColor(lang.name)}`}
-                      style={{ width: `${lang.percentage}%` }}
-                    />
-                  </div>
+        <motion.div variants={itemVariants}>
+          <PremiumCard>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25">
+                  <Code className="w-4 h-4 text-white" />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <div>
+                  <CardTitle className="text-lg">Language Distribution</CardTitle>
+                  <CardDescription>Languages used across your repositories</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {stats.languageDistribution.map((lang, index) => (
+                  <motion.div
+                    key={lang.name}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.05 * index }}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full bg-gradient-to-br ${getLanguageColor(lang.name)}`} />
+                        <span className="font-medium">{lang.name}</span>
+                      </div>
+                      <span className="text-muted-foreground">
+                        {lang.count} {lang.count === 1 ? 'repo' : 'repos'} ({lang.percentage}%)
+                      </span>
+                    </div>
+                    <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${lang.percentage}%` }}
+                        transition={{ duration: 0.8, delay: 0.1 * index }}
+                        className={`h-full rounded-full bg-gradient-to-r ${getLanguageColor(lang.name)}`}
+                      />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </CardContent>
+          </PremiumCard>
+        </motion.div>
       )}
 
       {/* Repository Activity & Stats */}
       {(stats.repoActivity || stats.repoStats) && (
         <div className="grid sm:grid-cols-2 gap-6">
           {stats.repoActivity && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-cyan-500" />
-                  Repository Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm">Active this week</span>
-                  <Badge variant="secondary" className="bg-green-500/10 text-green-500">
-                    {stats.repoActivity.activeThisWeek}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm">Active this month</span>
-                  <Badge variant="secondary" className="bg-blue-500/10 text-blue-500">
-                    {stats.repoActivity.activeThisMonth}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm">Original repositories</span>
-                  <Badge variant="secondary">{stats.repoActivity.original}</Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm">Forked repositories</span>
-                  <Badge variant="outline">{stats.repoActivity.forked}</Badge>
-                </div>
-              </CardContent>
-            </Card>
+            <motion.div variants={itemVariants}>
+              <PremiumCard className="h-full">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-400 to-teal-500 shadow-lg shadow-cyan-500/25">
+                      <TrendingUp className="w-4 h-4 text-white" />
+                    </div>
+                    <CardTitle className="text-lg">Repository Activity</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {[
+                    { label: 'Active this week', value: stats.repoActivity.activeThisWeek, color: 'emerald' },
+                    { label: 'Active this month', value: stats.repoActivity.activeThisMonth, color: 'blue' },
+                    { label: 'Original repositories', value: stats.repoActivity.original, color: 'violet' },
+                    { label: 'Forked repositories', value: stats.repoActivity.forked, color: 'gray' },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
+                      <span className="text-sm">{item.label}</span>
+                      <Badge variant="secondary" className={cn(
+                        item.color === 'emerald' && 'bg-emerald-500/10 text-emerald-500',
+                        item.color === 'blue' && 'bg-blue-500/10 text-blue-500',
+                        item.color === 'violet' && 'bg-violet-500/10 text-violet-500',
+                        item.color === 'gray' && ''
+                      )}>
+                        {item.value}
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </PremiumCard>
+            </motion.div>
           )}
 
           {stats.repoStats && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Star className="w-5 h-5 text-yellow-500" />
-                  Repository Stats
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm flex items-center gap-2">
-                    <Star className="w-4 h-4 text-yellow-500" />
-                    Total Stars
-                  </span>
-                  <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-500">
-                    {stats.repoStats.totalStars}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm flex items-center gap-2">
-                    <GitFork className="w-4 h-4 text-purple-500" />
-                    Total Forks
-                  </span>
-                  <Badge variant="secondary" className="bg-purple-500/10 text-purple-500">
-                    {stats.repoStats.totalForks}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm">Total Code Size</span>
-                  <Badge variant="outline">
-                    {stats.repoStats.totalSize > 1000
-                      ? `${(stats.repoStats.totalSize / 1024).toFixed(1)} MB`
-                      : `${stats.repoStats.totalSize} KB`}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-muted/50">
-                  <span className="text-sm">Avg Repo Size</span>
-                  <Badge variant="outline">
-                    {stats.repoStats.avgSize > 1000
-                      ? `${(stats.repoStats.avgSize / 1024).toFixed(1)} MB`
-                      : `${stats.repoStats.avgSize} KB`}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+            <motion.div variants={itemVariants}>
+              <PremiumCard className="h-full">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/25">
+                      <Star className="w-4 h-4 text-white" />
+                    </div>
+                    <CardTitle className="text-lg">Repository Stats</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {[
+                    { label: 'Total Stars', value: stats.repoStats.totalStars, icon: Star, color: 'amber' },
+                    { label: 'Total Forks', value: stats.repoStats.totalForks, icon: GitFork, color: 'purple' },
+                    { label: 'Total Code Size', value: stats.repoStats.totalSize > 1000 ? `${(stats.repoStats.totalSize / 1024).toFixed(1)} MB` : `${stats.repoStats.totalSize} KB`, icon: null, color: 'gray' },
+                    { label: 'Avg Repo Size', value: stats.repoStats.avgSize > 1000 ? `${(stats.repoStats.avgSize / 1024).toFixed(1)} MB` : `${stats.repoStats.avgSize} KB`, icon: null, color: 'gray' },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
+                      <span className="text-sm flex items-center gap-2">
+                        {item.icon && <item.icon className={cn(
+                          'w-4 h-4',
+                          item.color === 'amber' && 'text-amber-500',
+                          item.color === 'purple' && 'text-purple-500'
+                        )} />}
+                        {item.label}
+                      </span>
+                      <Badge variant="secondary" className={cn(
+                        item.color === 'amber' && 'bg-amber-500/10 text-amber-500',
+                        item.color === 'purple' && 'bg-purple-500/10 text-purple-500',
+                        item.color === 'gray' && ''
+                      )}>
+                        {item.value}
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </PremiumCard>
+            </motion.div>
           )}
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

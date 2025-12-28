@@ -332,36 +332,75 @@ function LoginContent() {
             </div>
           </HolographicPanel>
 
-          {/* Partner logos */}
+          {/* Partner & Product logos */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="mt-8 mb-16 flex items-center justify-center gap-8"
+            className="mt-8 mb-8"
           >
-            <div className="text-center">
-              <div className="w-10 h-10 mx-auto rounded-lg bg-black/50 border border-purple-500/30 p-2 flex items-center justify-center">
-                <Image
-                  src="/logos/cozyfilmz.png"
-                  alt="CozyFilmz"
-                  width={24}
-                  height={24}
-                  className="w-6 h-6 object-contain"
-                />
+            {/* Partners Row */}
+            <p className="text-[10px] text-neutral-600 text-center mb-3 font-mono uppercase tracking-wider">Partners</p>
+            <div className="flex items-center justify-center gap-6 mb-6">
+              <div className="text-center">
+                <div className="w-10 h-10 mx-auto rounded-lg bg-black/50 border border-purple-500/30 p-2 flex items-center justify-center">
+                  <Image
+                    src="/logos/cozyfilmz.png"
+                    alt="CozyFilmz"
+                    width={24}
+                    height={24}
+                    className="w-6 h-6 object-contain"
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-1 font-mono">COZYFILMZ</p>
               </div>
-              <p className="text-[10px] text-neutral-500 mt-1 font-mono">COZYFILMZ</p>
+              <div className="text-center">
+                <div className="w-10 h-10 mx-auto rounded-lg bg-black/50 border border-amber-500/30 p-2 flex items-center justify-center">
+                  <Image
+                    src="/logos/arcene.png"
+                    alt="Arcene Studios"
+                    width={24}
+                    height={24}
+                    className="w-6 h-6 object-contain"
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-1 font-mono">ARCENE</p>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="w-10 h-10 mx-auto rounded-lg bg-black/50 border border-amber-500/30 p-2 flex items-center justify-center">
-                <Image
-                  src="/logos/arcene.png"
-                  alt="Arcene Studios"
-                  width={24}
-                  height={24}
-                  className="w-6 h-6 object-contain"
-                />
+
+            {/* Products Row */}
+            <p className="text-[10px] text-neutral-600 text-center mb-3 font-mono uppercase tracking-wider">Products</p>
+            <div className="flex items-center justify-center gap-4 flex-wrap">
+              <div className="text-center">
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-cyan-500/30 p-1.5 flex items-center justify-center">
+                  <Image
+                    src="/logos/kachow.png"
+                    alt="Kachow AI"
+                    width={20}
+                    height={20}
+                    className="w-5 h-5 object-contain"
+                  />
+                </div>
+                <p className="text-[9px] text-neutral-500 mt-1 font-mono">KACHOW</p>
               </div>
-              <p className="text-[10px] text-neutral-500 mt-1 font-mono">ARCENE</p>
+              <div className="text-center">
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-red-500/30 p-1.5 flex items-center justify-center">
+                  <span className="text-red-400 text-xs">🎬</span>
+                </div>
+                <p className="text-[9px] text-neutral-500 mt-1 font-mono">STUNTMAN</p>
+              </div>
+              <div className="text-center">
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-pink-500/30 p-1.5 flex items-center justify-center">
+                  <span className="text-pink-400 text-xs">🧠</span>
+                </div>
+                <p className="text-[9px] text-neutral-500 mt-1 font-mono">BRAINBOX</p>
+              </div>
+              <div className="text-center">
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-green-500/30 p-1.5 flex items-center justify-center">
+                  <span className="text-green-400 text-xs">💻</span>
+                </div>
+                <p className="text-[9px] text-neutral-500 mt-1 font-mono">CODE</p>
+              </div>
             </div>
           </motion.div>
 

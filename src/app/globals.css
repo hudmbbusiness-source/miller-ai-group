@@ -197,12 +197,14 @@ html, body {
   }
 }
 
-/* Hide scrollbar on mobile for cleaner look */
-@media (max-width: 767px) {
-  ::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
+/* Hide scrollbar everywhere while keeping scroll functionality */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 /* CRITICAL: Prevent iOS zoom on input focus - must be 16px minimum */

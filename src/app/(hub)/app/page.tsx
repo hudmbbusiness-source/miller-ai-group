@@ -17,10 +17,6 @@ import {
   Github,
   Sparkles,
   Activity,
-  Cpu,
-  Database,
-  Wifi,
-  Clock,
   TrendingUp,
   Zap,
   BarChart3,
@@ -213,17 +209,17 @@ export default async function DashboardPage() {
           })}
         </div>
 
-        {/* System Metrics Bar */}
+        {/* Real Data Metrics Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'CPU', value: '23%', icon: Cpu, color: 'cyan' },
-            { label: 'Memory', value: '47%', icon: Database, color: 'green' },
-            { label: 'Network', value: '12ms', icon: Wifi, color: 'purple' },
-            { label: 'Uptime', value: '99.9%', icon: Clock, color: 'amber' },
+            { label: 'Notes', value: stats.notes.toString(), icon: FileText, color: 'fuchsia' },
+            { label: 'Boards', value: stats.boards.toString(), icon: Grid3X3, color: 'green' },
+            { label: 'Links', value: stats.links.toString(), icon: Link2, color: 'purple' },
+            { label: 'Files', value: stats.files.toString(), icon: FolderOpen, color: 'amber' },
           ].map((metric) => (
             <div
               key={metric.label}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-white/5 bg-black/40"
+              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-fuchsia-500/20 bg-black/40"
             >
               <metric.icon className={`w-4 h-4 text-${metric.color}-400`} />
               <div>

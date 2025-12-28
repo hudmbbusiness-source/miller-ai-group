@@ -197,7 +197,6 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
   const pathname = usePathname()
   const router = useRouter()
   const prefersReducedMotion = usePrefersReducedMotion()
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
 
   useKeyboardShortcuts()
 
@@ -254,8 +253,7 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
-              onMouseEnter={() => { setHoveredItem(item.href); handleNavHover() }}
-              onMouseLeave={() => setHoveredItem(null)}
+              onMouseEnter={handleNavHover}
             >
               <Link
                 href={item.href}
@@ -306,8 +304,7 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: (navItems.length + index) * 0.05 }}
-                onMouseEnter={() => { setHoveredItem(item.href); handleNavHover() }}
-                onMouseLeave={() => setHoveredItem(null)}
+                onMouseEnter={handleNavHover}
               >
                 <Link
                   href={item.href}

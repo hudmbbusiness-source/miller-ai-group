@@ -9,8 +9,8 @@ export { DataStreamBackground } from './data-stream-background'
 export { TerminalFeed, generateSystemLog, TAKEOVER_LOGS, type LogEntry } from './terminal-feed'
 export { SystemTakeoverSequence } from './system-takeover'
 
-// New Cinematic Takeover System
-export { CinematicTakeover, CHARACTERS, type CinematicStage } from './cinematic-takeover'
+// Cinematic Takeover System - Full hacking experience
+export { CinematicTakeover, CHARACTERS } from './cinematic-takeover'
 export {
   NeonDataStreams,
   HolographicGrid,
@@ -21,12 +21,6 @@ export {
   BreachTunnel,
   NeonVortex,
 } from './cinematic-takeover/effects'
-export {
-  HolographicSilhouette,
-  CharacterCard,
-  CharacterIndicator,
-  CharacterRevealSequence,
-} from './cinematic-takeover/character-silhouettes'
 
 // Legacy - kept for backwards compatibility
 export { CinematicIntro } from './cinematic-intro'

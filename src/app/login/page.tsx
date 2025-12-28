@@ -64,9 +64,9 @@ function LoginContent() {
         if (user) {
           setIsAuthenticated(true)
           setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
-          // Initialize and start audio for the cinematic experience
+          // Initialize and start intro song for the cinematic experience
           await audioEngine?.initialize()
-          audioEngine?.playCinematicSoundtrack(50)
+          await audioEngine?.playIntroSong()
           // Auto-trigger takeover after successful GitHub auth
           setShowTakeover(true)
         }
@@ -135,12 +135,13 @@ function LoginContent() {
   const handleEnterSystem = async () => {
     await audioEngine?.initialize()
     audioEngine?.playEffect('button_click')
-    // Start the cinematic soundtrack (45 seconds for full experience)
-    audioEngine?.playCinematicSoundtrack(50)
+    // Start the intro song
+    await audioEngine?.playIntroSong()
     setShowTakeover(true)
   }
 
   const handleTakeoverComplete = () => {
+    audioEngine?.stopIntroSong()
     audioEngine?.startAmbient('system_idle')
     router.push('/app')
   }

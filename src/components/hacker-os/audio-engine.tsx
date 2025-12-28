@@ -50,6 +50,8 @@ interface AudioEngineContextType {
   playEffect: (name: AudioEffectName) => void
   playTakeoverSequence: () => void
   playCinematicSoundtrack: (durationSeconds?: number) => () => void
+  playIntroSong: () => Promise<void>
+  stopIntroSong: () => void
   startAmbient: (name: AmbientTrackName) => void
   stopAmbient: (name: AmbientTrackName) => void
   setMasterVolume: (volume: number) => void
@@ -73,6 +75,7 @@ interface AudioEngineProviderProps {
 export function AudioEngineProvider({ children }: AudioEngineProviderProps) {
   const audioContextRef = useRef<AudioContext | null>(null)
   const ambientNodesRef = useRef<Map<AmbientTrackName, { oscillator: OscillatorNode; gain: GainNode }>>(new Map())
+  const introSongRef = useRef<HTMLAudioElement | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [masterVolume, setMasterVolumeState] = useState(0.5)
@@ -383,6 +386,38 @@ export function AudioEngineProvider({ children }: AudioEngineProviderProps) {
     }
   }, [isMuted, masterVolume])
 
+  // Play the actual intro song MP3 file
+  const playIntroSong = useCallback(async () => {
+    if (isMuted) return
+
+    try {
+      // Stop any existing intro song
+      if (introSongRef.current) {
+        introSongRef.current.pause()
+        introSongRef.current.currentTime = 0
+      }
+
+      // Create new audio element
+      const audio = new Audio('/audio/intro-song.mp3')
+      audio.volume = masterVolume
+      introSongRef.current = audio
+
+      // Play the song
+      await audio.play()
+    } catch (error) {
+      console.error('Failed to play intro song:', error)
+    }
+  }, [isMuted, masterVolume])
+
+  // Stop the intro song
+  const stopIntroSong = useCallback(() => {
+    if (introSongRef.current) {
+      introSongRef.current.pause()
+      introSongRef.current.currentTime = 0
+      introSongRef.current = null
+    }
+  }, [])
+
   const playTakeoverSequence = useCallback(() => {
     if (!audioContextRef.current || isMuted) return
 
@@ -546,6 +581,8 @@ export function AudioEngineProvider({ children }: AudioEngineProviderProps) {
     playEffect,
     playTakeoverSequence,
     playCinematicSoundtrack,
+    playIntroSong,
+    stopIntroSong,
     startAmbient,
     stopAmbient,
     setMasterVolume,

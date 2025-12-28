@@ -38,6 +38,7 @@ import {
   Target,
   ShoppingBag,
   Rocket,
+  Code2,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import { cn } from '@/lib/utils'
@@ -119,9 +120,10 @@ const navItems = [
 ]
 
 const toolItems = [
+  { href: '/app/tools/playground', label: 'Code Playground', icon: Code2, color: 'violet' },
   { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap, color: 'amber' },
   { href: '/app/tools/stuntman', label: 'Stuntman AI', icon: BarChart3, color: 'emerald' },
-  { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain, color: 'violet' },
+  { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain, color: 'blue' },
 ]
 
 const adminItems = [
@@ -209,6 +211,7 @@ export function HubLayout({ children, user }: HubLayoutProps) {
               amber: 'from-amber-500/15 to-orange-500/10 text-amber-400',
               emerald: 'from-emerald-500/15 to-green-500/10 text-emerald-400',
               violet: 'from-violet-500/15 to-purple-500/10 text-violet-400',
+              blue: 'from-blue-500/15 to-cyan-500/10 text-blue-400',
             }
             return (
               <motion.div
@@ -232,7 +235,8 @@ export function HubLayout({ children, user }: HubLayoutProps) {
                       "absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full",
                       item.color === 'amber' && "bg-gradient-to-b from-amber-500 to-orange-500",
                       item.color === 'emerald' && "bg-gradient-to-b from-emerald-500 to-green-500",
-                      item.color === 'violet' && "bg-gradient-to-b from-violet-500 to-purple-500"
+                      item.color === 'violet' && "bg-gradient-to-b from-violet-500 to-purple-500",
+                      item.color === 'blue' && "bg-gradient-to-b from-blue-500 to-cyan-500"
                     )} />
                   )}
                   <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -302,14 +306,14 @@ export function HubLayout({ children, user }: HubLayoutProps) {
                       transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                     >
                       <Image
-                        src="/miller-ai-group-icon.png"
+                        src="/logos/miller-ai-group.png"
                         alt="Miller AI Group"
                         width={32}
                         height={32}
                         className="rounded-lg"
                       />
                     </motion.div>
-                    <SheetTitle className="text-lg font-bold text-left bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+                    <SheetTitle className="text-lg font-bold text-left text-white">
                       Miller AI Group
                     </SheetTitle>
                   </div>
@@ -337,14 +341,14 @@ export function HubLayout({ children, user }: HubLayoutProps) {
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
               >
                 <Image
-                  src="/miller-ai-group-icon.png"
+                  src="/logos/miller-ai-group.png"
                   alt="Miller AI Group"
                   width={28}
                   height={28}
                   className="rounded-lg"
                 />
               </motion.div>
-              <span className="text-lg font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent group-hover:from-violet-300 group-hover:to-purple-300 transition-all">
+              <span className="text-lg font-bold text-white group-hover:text-violet-300 transition-colors">
                 Miller AI Group
               </span>
             </Link>

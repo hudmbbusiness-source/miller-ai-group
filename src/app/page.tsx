@@ -486,20 +486,6 @@ function KachowLandingContent() {
           </motion.div>
         </div>
 
-        {/* Scroll indicator */}
-        <motion.div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2"
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <div className="w-7 h-11 rounded-full border-2 border-neutral-700/50 flex items-start justify-center p-2 backdrop-blur-sm">
-            <motion.div
-              className="w-1.5 h-1.5 rounded-full bg-gradient-to-b from-violet-400 to-purple-500"
-              animate={{ y: [0, 14, 0], opacity: [0.3, 1, 0.3] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
-        </motion.div>
       </section>
 
       {/* Value Proposition */}

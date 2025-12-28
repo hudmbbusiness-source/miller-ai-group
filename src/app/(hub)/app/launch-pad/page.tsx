@@ -692,42 +692,20 @@ export default function LaunchPadPage() {
         ))}
       </div>
 
-      {/* Main Content Tabs */}
+      {/* Main Content Tabs - Simplified */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="flex overflow-x-auto w-full pb-1 gap-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Overview</TabsTrigger>
-          <TabsTrigger value="plan" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <Calendar className="w-3 h-3 mr-1" />
-            Plan
+        <TabsList className="flex w-full gap-2">
+          <TabsTrigger value="overview" className="flex-1 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black font-mono">
+            <Target className="w-4 h-4 mr-2" />
+            OVERVIEW
           </TabsTrigger>
-          <TabsTrigger value="careers" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">AI Careers</TabsTrigger>
-          <TabsTrigger value="career-hub" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <DollarSign className="w-3 h-3 mr-1" />
-            Career Hub
+          <TabsTrigger value="plan" className="flex-1 rounded-lg data-[state=active]:bg-purple-500 data-[state=active]:text-white font-mono">
+            <Calendar className="w-4 h-4 mr-2" />
+            THE PLAN
           </TabsTrigger>
-          <TabsTrigger value="courses" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Courses</TabsTrigger>
-          <TabsTrigger value="certificates" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Certs</TabsTrigger>
-          <TabsTrigger value="applications" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Jobs</TabsTrigger>
-          <TabsTrigger value="internships" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <Rocket className="w-3 h-3 mr-1" />
-            Internships
-          </TabsTrigger>
-          <TabsTrigger value="github" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <Github className="w-3 h-3 mr-1" />
-            GitHub
-          </TabsTrigger>
-          <TabsTrigger value="insights" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <Sparkles className="w-3 h-3 mr-1" />
-            AI
-          </TabsTrigger>
-          <TabsTrigger value="paths" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Paths</TabsTrigger>
-          <TabsTrigger value="connections" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <Key className="w-3 h-3 mr-1" />
-            APIs
-          </TabsTrigger>
-          <TabsTrigger value="document" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
-            <FileText className="w-3 h-3 mr-1" />
-            Doc
+          <TabsTrigger value="github" className="flex-1 rounded-lg data-[state=active]:bg-green-500 data-[state=active]:text-black font-mono">
+            <Github className="w-4 h-4 mr-2" />
+            GITHUB
           </TabsTrigger>
         </TabsList>
 

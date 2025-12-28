@@ -337,7 +337,7 @@ function LoginContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="mt-8 flex items-center justify-center gap-8"
+            className="mt-8 mb-16 flex items-center justify-center gap-8"
           >
             <div className="text-center">
               <div className="w-10 h-10 mx-auto rounded-lg bg-black/50 border border-purple-500/30 p-2 flex items-center justify-center">
@@ -364,20 +364,20 @@ function LoginContent() {
               <p className="text-[10px] text-neutral-500 mt-1 font-mono">ARCENE</p>
             </div>
           </motion.div>
+
+          {/* Footer - inline instead of fixed */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            className="text-center pb-6"
+          >
+            <p className="text-xs text-neutral-600 font-mono">
+              © {new Date().getFullYear()} MILLER AI GROUP | SECURE SYSTEM v2.0
+            </p>
+          </motion.div>
         </motion.div>
       </div>
-
-      {/* Footer */}
-      <motion.footer
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8 }}
-        className="fixed bottom-0 left-0 right-0 p-4 text-center"
-      >
-        <p className="text-xs text-neutral-600 font-mono">
-          © {new Date().getFullYear()} MILLER AI GROUP | SECURE SYSTEM v2.0
-        </p>
-      </motion.footer>
     </div>
   )
 }

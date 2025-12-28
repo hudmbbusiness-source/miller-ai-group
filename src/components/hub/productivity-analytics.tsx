@@ -1,14 +1,10 @@
 'use client'
 
-import { useState, useEffect, Suspense, lazy } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   BarChart3,
   TrendingUp,
-  TrendingDown,
   FileText,
   Link2,
   Target,
@@ -22,18 +18,17 @@ import {
   FolderOpen,
   Grid3X3,
   Sparkles,
+  ArrowUpRight,
+  Activity,
 } from 'lucide-react'
-import { StatCardAnimated } from '@/components/charts/stat-card-animated'
+import {
+  PremiumProgressRing,
+  PremiumBarChart,
+  PremiumDonutChart,
+  PremiumStatCard,
+  AnimatedNumber,
+} from '@/components/charts/premium-charts'
 import { cn } from '@/lib/utils'
-
-// Lazy load 3D components to avoid SSR issues
-const ProgressRing3D = lazy(() => import('@/components/charts/progress-ring-3d').then(m => ({ default: m.ProgressRing3D })))
-const BarChart3D = lazy(() => import('@/components/charts/bar-chart-3d').then(m => ({ default: m.BarChart3D })))
-const DonutChart3D = lazy(() => import('@/components/charts/donut-chart-3d').then(m => ({ default: m.DonutChart3D })))
-
-// Fallback components
-const ProgressRing2DFallback = lazy(() => import('@/components/charts/progress-ring-3d').then(m => ({ default: m.ProgressRing2DFallback })))
-const BarChart2DFallback = lazy(() => import('@/components/charts/bar-chart-3d').then(m => ({ default: m.BarChart2DFallback })))
 
 interface AnalyticsData {
   overview: {
@@ -65,49 +60,23 @@ interface AnalyticsData {
   productivityScore: number
 }
 
-function getProductivityLevel(score: number): { label: string; color: string; glowClass: string } {
-  if (score >= 80) return { label: 'On Fire!', color: 'amber', glowClass: 'glow-amber' }
-  if (score >= 60) return { label: 'Great', color: 'green', glowClass: 'glow-green' }
-  if (score >= 40) return { label: 'Good', color: 'blue', glowClass: 'glow-blue' }
-  if (score >= 20) return { label: 'Getting Started', color: 'purple', glowClass: 'glow-purple' }
-  return { label: 'Start Building!', color: 'amber', glowClass: '' }
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
 }
 
-// Check if WebGL is available
-function useWebGLSupport() {
-  const [supported, setSupported] = useState(true)
-
-  useEffect(() => {
-    try {
-      const canvas = document.createElement('canvas')
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-      setSupported(!!gl)
-    } catch {
-      setSupported(false)
-    }
-  }, [])
-
-  return supported
-}
-
-function ChartLoader() {
-  return (
-    <div className="w-full h-full flex items-center justify-center min-h-[200px]">
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-      >
-        <Sparkles className="w-8 h-8 text-amber-500" />
-      </motion.div>
-    </div>
-  )
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 },
 }
 
 export function ProductivityAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const webGLSupported = useWebGLSupport()
 
   const fetchAnalytics = async () => {
     try {
@@ -136,369 +105,314 @@ export function ProductivityAnalytics() {
 
   if (loading) {
     return (
-      <Card className="glass-card">
-        <CardContent className="flex items-center justify-center py-12">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          >
-            <Loader2 className="w-8 h-8 text-amber-500" />
-          </motion.div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center py-20">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+        >
+          <Sparkles className="w-10 h-10 text-violet-500" />
+        </motion.div>
+      </div>
     )
   }
 
   if (!data) {
     return (
-      <Card className="glass-card">
-        <CardContent className="py-8 text-center">
-          <BarChart3 className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">Unable to load analytics</p>
-          <Button onClick={handleRefresh} variant="outline" size="sm" className="mt-4">
-            Try Again
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="text-center py-20">
+        <BarChart3 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+        <p className="text-muted-foreground mb-4">Unable to load analytics</p>
+        <button
+          onClick={handleRefresh}
+          className="px-4 py-2 rounded-lg bg-violet-500 text-white font-medium hover:bg-violet-600 transition-colors"
+        >
+          Try Again
+        </button>
+      </div>
     )
   }
 
-  const { label, color, glowClass } = getProductivityLevel(data.productivityScore)
   const hasActivity = data.dailyActivity.some(d => d.notes > 0 || d.links > 0)
 
-  // Prepare data for 3D charts
-  const weeklyBarData = data.weeklyTrend.slice(-6).map((w, i) => ({
-    label: w.week,
-    value: w.notes + w.links,
-    color: ['#f59e0b', '#8b5cf6', '#3b82f6', '#22c55e', '#ec4899', '#06b6d4'][i % 6],
+  // Prepare chart data
+  const weeklyBarData = data.weeklyTrend.slice(-7).map((w) => ({
+    label: w.week.split(' ')[0],
+    value: w.notes + w.links + w.goals,
   }))
 
-  const dayActivityData = data.activityByDay.map((d, i) => ({
+  const dayActivityData = data.activityByDay.map((d) => ({
     label: d.day,
     value: d.count,
-    color: ['#f59e0b', '#8b5cf6', '#3b82f6', '#22c55e', '#ec4899', '#06b6d4', '#ef4444'][i % 7],
+  }))
+
+  // Premium color scheme for donut
+  const categoryColors = [
+    '#8b5cf6', // violet
+    '#3b82f6', // blue
+    '#10b981', // emerald
+    '#f59e0b', // amber
+    '#ef4444', // red
+  ]
+
+  const donutData = data.categoryBreakdown.map((cat, i) => ({
+    name: cat.name,
+    value: cat.value,
+    color: categoryColors[i % categoryColors.length],
   }))
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-8"
+    >
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
+      <motion.div variants={itemVariants} className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Productivity Analytics</h2>
-          <p className="text-sm text-muted-foreground">Track your progress and insights</p>
+          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 bg-clip-text text-transparent">
+            Analytics
+          </h2>
+          <p className="text-muted-foreground mt-1">Your productivity insights</p>
         </div>
-        <Button
+        <motion.button
           onClick={handleRefresh}
-          variant="outline"
-          size="sm"
           disabled={refreshing}
-          className="glass-card hover:glow-amber-subtle transition-all"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-xl',
+            'bg-gradient-to-r from-violet-500/10 to-purple-500/10',
+            'border border-violet-500/20 hover:border-violet-500/40',
+            'text-sm font-medium text-violet-500',
+            'transition-all duration-300'
+          )}
         >
-          <RefreshCw className={cn('w-4 h-4 mr-2', refreshing && 'animate-spin')} />
+          <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
           Refresh
-        </Button>
+        </motion.button>
       </motion.div>
 
-      {/* Top Stats Row - 3D Progress + Streaks */}
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* 3D Productivity Score */}
+      {/* Main Score + Streaks Row */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Productivity Score - Hero Card */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
+          variants={itemVariants}
+          className="lg:col-span-1 relative overflow-hidden rounded-3xl p-8 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-fuchsia-500/10 border border-violet-500/20"
         >
-          <Card className={cn('glass-card overflow-hidden', glowClass)}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-500" />
-                Productivity Score
-              </CardTitle>
-              <CardDescription>{label}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Suspense fallback={<ChartLoader />}>
-                {webGLSupported ? (
-                  <ProgressRing3D
-                    value={data.productivityScore}
-                    color={color as 'amber' | 'blue' | 'purple' | 'green'}
-                    size="md"
-                  />
-                ) : (
-                  <ProgressRing2DFallback
-                    value={data.productivityScore}
-                    color={color as 'amber' | 'blue' | 'purple' | 'green'}
-                    size="md"
-                  />
-                )}
-              </Suspense>
-            </CardContent>
-          </Card>
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-violet-500/20 to-transparent rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-fuchsia-500/20 to-transparent rounded-full blur-3xl" />
+
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-semibold">Productivity Score</span>
+            </div>
+
+            <div className="flex justify-center">
+              <PremiumProgressRing
+                value={data.productivityScore}
+                size={180}
+                strokeWidth={14}
+                colorScheme="primary"
+                label={data.productivityScore >= 80 ? 'Excellent!' : data.productivityScore >= 50 ? 'Good' : 'Keep going'}
+              />
+            </div>
+          </div>
         </motion.div>
 
-        {/* Streaks */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2 }}
-          className="space-y-4"
-        >
-          <StatCardAnimated
+        {/* Stats Grid */}
+        <motion.div variants={itemVariants} className="lg:col-span-2 grid sm:grid-cols-2 gap-4">
+          <PremiumStatCard
             title="Current Streak"
             value={data.streaks.current}
             suffix=" days"
             icon={Flame}
-            color="amber"
-            description="Keep it going!"
-            delay={0.2}
+            colorScheme="accent"
+            description="Keep the momentum!"
+            delay={0.1}
           />
-          <StatCardAnimated
+          <PremiumStatCard
             title="Longest Streak"
             value={data.streaks.longest}
             suffix=" days"
             icon={Trophy}
-            color="purple"
-            description="Your personal best"
-            delay={0.3}
+            colorScheme="success"
+            description="Personal best"
+            delay={0.15}
           />
-        </motion.div>
-
-        {/* This Week Stats */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="space-y-4"
-        >
-          <StatCardAnimated
-            title="Notes This Week"
-            value={data.thisWeek.notes}
-            icon={FileText}
-            color="blue"
+          <PremiumStatCard
+            title="This Week"
+            value={data.thisWeek.notes + data.thisWeek.links}
+            icon={Activity}
+            colorScheme="secondary"
+            description={`${data.thisWeek.notes} notes, ${data.thisWeek.links} links`}
             trend={data.thisMonth.monthlyChange !== 0 ? {
               value: Math.abs(data.thisMonth.monthlyChange),
               isPositive: data.thisMonth.monthlyChange > 0
             } : undefined}
-            delay={0.4}
+            delay={0.2}
           />
-          <StatCardAnimated
-            title="Links Saved"
-            value={data.thisWeek.links}
-            icon={Link2}
-            color="green"
-            delay={0.5}
+          <PremiumStatCard
+            title="Active Goals"
+            value={data.overview.activeGoals}
+            icon={Target}
+            colorScheme="primary"
+            description={`${data.overview.completedGoals} completed`}
+            delay={0.25}
           />
         </motion.div>
       </div>
 
       {/* Charts Row */}
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Weekly Activity 3D Bar Chart */}
+        {/* Weekly Activity */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          variants={itemVariants}
+          className="rounded-3xl p-6 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl border border-border/50"
         >
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-amber-500" />
-                Weekly Activity
-              </CardTitle>
-              <CardDescription>Your content creation over the past weeks</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {hasActivity ? (
-                <Suspense fallback={<ChartLoader />}>
-                  {webGLSupported ? (
-                    <BarChart3D
-                      data={weeklyBarData}
-                      height={280}
-                      showLabels
-                      showValues
-                      colorScheme="gradient"
-                    />
-                  ) : (
-                    <BarChart2DFallback data={weeklyBarData} height={200} />
-                  )}
-                </Suspense>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center">
-                  <div className="text-center text-muted-foreground">
-                    <Calendar className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                    <p>Start creating to see your activity!</p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-blue-500/25">
+                <BarChart3 className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Weekly Activity</h3>
+                <p className="text-xs text-muted-foreground">Last 7 weeks</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-emerald-500 text-sm">
+              <ArrowUpRight className="w-4 h-4" />
+              <span className="font-medium">Active</span>
+            </div>
+          </div>
+
+          {hasActivity ? (
+            <PremiumBarChart
+              data={weeklyBarData}
+              height={220}
+              showValues
+              showLabels
+            />
+          ) : (
+            <div className="h-[220px] flex items-center justify-center">
+              <div className="text-center">
+                <Calendar className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+                <p className="text-muted-foreground">Start creating to see activity</p>
+              </div>
+            </div>
+          )}
         </motion.div>
 
-        {/* Category Breakdown 3D Donut */}
+        {/* Content Distribution */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          variants={itemVariants}
+          className="rounded-3xl p-6 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl border border-border/50"
         >
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Target className="w-5 h-5 text-purple-500" />
-                Content Distribution
-              </CardTitle>
-              <CardDescription>Breakdown by category</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {data.categoryBreakdown.length > 0 ? (
-                <Suspense fallback={<ChartLoader />}>
-                  {webGLSupported ? (
-                    <DonutChart3D
-                      data={data.categoryBreakdown}
-                      height={280}
-                      centerValue={data.overview.totalNotes + data.overview.totalLinks}
-                      centerLabel="Total Items"
-                    />
-                  ) : (
-                    <div className="h-[280px] flex items-center justify-center">
-                      <div className="grid grid-cols-2 gap-4">
-                        {data.categoryBreakdown.map((cat) => (
-                          <div key={cat.name} className="flex items-center gap-2">
-                            <div
-                              className="w-4 h-4 rounded-full"
-                              style={{ backgroundColor: cat.color }}
-                            />
-                            <span className="text-sm">{cat.name}: {cat.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Suspense>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center">
-                  <div className="text-center text-muted-foreground">
-                    <Grid3X3 className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                    <p>No content yet</p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25">
+              <Target className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold">Content Distribution</h3>
+              <p className="text-xs text-muted-foreground">By category</p>
+            </div>
+          </div>
+
+          {donutData.length > 0 && donutData.some(d => d.value > 0) ? (
+            <div className="flex justify-center">
+              <PremiumDonutChart
+                data={donutData}
+                size={200}
+                strokeWidth={20}
+                centerValue={data.overview.totalNotes + data.overview.totalLinks + data.overview.totalBoards}
+                centerLabel="Total Items"
+              />
+            </div>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center">
+              <div className="text-center">
+                <Grid3X3 className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+                <p className="text-muted-foreground">No content yet</p>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
 
-      {/* Activity by Day */}
+      {/* Most Active Days */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
+        variants={itemVariants}
+        className="rounded-3xl p-6 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl border border-border/50"
       >
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-blue-500" />
-              Most Active Days
-            </CardTitle>
-            <CardDescription>When you create the most content</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.activityByDay.some(d => d.count > 0) ? (
-              <Suspense fallback={<ChartLoader />}>
-                {webGLSupported ? (
-                  <BarChart3D
-                    data={dayActivityData}
-                    height={220}
-                    showLabels
-                    showValues
-                    colorScheme="gradient"
-                  />
-                ) : (
-                  <BarChart2DFallback data={dayActivityData} height={180} />
-                )}
-              </Suspense>
-            ) : (
-              <div className="h-[220px] flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <TrendingUp className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                  <p>Activity will appear here as you use the app</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/25">
+            <Calendar className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold">Most Active Days</h3>
+            <p className="text-xs text-muted-foreground">When you&apos;re most productive</p>
+          </div>
+        </div>
+
+        {dayActivityData.some(d => d.value > 0) ? (
+          <PremiumBarChart
+            data={dayActivityData}
+            height={180}
+            showValues
+            showLabels
+          />
+        ) : (
+          <div className="h-[180px] flex items-center justify-center">
+            <div className="text-center">
+              <TrendingUp className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="text-muted-foreground">Activity will appear as you use the app</p>
+            </div>
+          </div>
+        )}
       </motion.div>
 
-      {/* Lifetime Stats Grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-      >
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-500" />
-              Lifetime Stats
-            </CardTitle>
-            <CardDescription>Everything you&apos;ve created</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <StatCardAnimated
-                title="Notes"
-                value={data.overview.totalNotes}
-                icon={FileText}
-                color="blue"
-                delay={0.8}
-                className="h-auto"
+      {/* Lifetime Stats */}
+      <motion.div variants={itemVariants}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-400 to-green-500">
+            <Trophy className="w-4 h-4 text-white" />
+          </div>
+          <h3 className="font-semibold text-lg">Lifetime Stats</h3>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[
+            { label: 'Notes', value: data.overview.totalNotes, icon: FileText, color: '#8b5cf6' },
+            { label: 'Links', value: data.overview.totalLinks, icon: Link2, color: '#3b82f6' },
+            { label: 'Boards', value: data.overview.totalBoards, icon: Grid3X3, color: '#f59e0b' },
+            { label: 'Files', value: data.overview.totalFiles, icon: FolderOpen, color: '#10b981' },
+            { label: 'Active Goals', value: data.overview.activeGoals, icon: Target, color: '#ec4899' },
+            { label: 'Completed', value: data.overview.completedGoals, icon: CheckCircle2, color: '#06b6d4' },
+          ].map((stat, index) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 + index * 0.05 }}
+              whileHover={{ scale: 1.05, y: -2 }}
+              className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-muted/50 to-muted/20 border border-border/50 text-center group"
+            >
+              <div
+                className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-300"
+                style={{ backgroundColor: stat.color }}
               />
-              <StatCardAnimated
-                title="Links"
-                value={data.overview.totalLinks}
-                icon={Link2}
-                color="purple"
-                delay={0.85}
-                className="h-auto"
-              />
-              <StatCardAnimated
-                title="Boards"
-                value={data.overview.totalBoards}
-                icon={Grid3X3}
-                color="amber"
-                delay={0.9}
-                className="h-auto"
-              />
-              <StatCardAnimated
-                title="Files"
-                value={data.overview.totalFiles}
-                icon={FolderOpen}
-                color="green"
-                delay={0.95}
-                className="h-auto"
-              />
-              <StatCardAnimated
-                title="Active Goals"
-                value={data.overview.activeGoals}
-                icon={Target}
-                color="blue"
-                delay={1.0}
-                className="h-auto"
-              />
-              <StatCardAnimated
-                title="Completed"
-                value={data.overview.completedGoals}
-                icon={CheckCircle2}
-                color="green"
-                delay={1.05}
-                className="h-auto"
-              />
-            </div>
-          </CardContent>
-        </Card>
+              <stat.icon className="w-5 h-5 mx-auto mb-2" style={{ color: stat.color }} />
+              <div className="text-2xl font-bold">
+                <AnimatedNumber value={stat.value} duration={1} />
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>
+            </motion.div>
+          ))}
+        </div>
       </motion.div>
-    </div>
+    </motion.div>
   )
 }

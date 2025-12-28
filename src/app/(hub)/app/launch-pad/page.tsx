@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
+import { createClient } from '@/lib/supabase/client'
 import {
   Rocket,
   GraduationCap,
@@ -22,12 +23,20 @@ import {
   ChevronRight,
   Sparkles,
   BookOpen,
+  Loader2,
+  Download,
+  FileText,
+  Calendar,
+  Percent,
+  Github,
+  Key,
 } from 'lucide-react'
-import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -67,7 +76,17 @@ import {
   type CareerProfile,
 } from '@/lib/actions/launch-pad'
 import { AI_COMPANIES, AI_CERTIFICATIONS, DATA_SOURCES } from '@/lib/data/career-data'
+import { PdfViewer } from '@/components/pdf-viewer'
+import { AIInsights } from '@/components/hub/ai-insights'
+import { GitHubDashboard } from '@/components/hub/github-dashboard'
+import { APIConnections } from '@/components/hub/api-connections'
+import { InternshipRequirements } from '@/components/hub/internship-requirements'
+import { CareerPlanning } from '@/components/hub/career-planning'
+import { CAREER_PATHS, type CareerPath } from '@/types'
+import type { Tables } from '@/types/database'
 import { cn } from '@/lib/utils'
+
+type ZProjectItem = Tables<'z_project_items'>
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -117,8 +136,126 @@ const TOP_ROLES = [
 
 const RECOMMENDED_CERTS = AI_CERTIFICATIONS.slice(0, 5)
 
+// Zuckerberg Project semester data
+const semesters = [
+  {
+    id: 'spring',
+    name: 'Spring Semester',
+    subtitle: 'Foundation',
+    icon: '🌱',
+    color: 'bg-green-500/10 border-green-500/20',
+  },
+  {
+    id: 'summer',
+    name: 'Summer',
+    subtitle: 'Acceleration',
+    icon: '☀️',
+    color: 'bg-yellow-500/10 border-yellow-500/20',
+  },
+  {
+    id: 'fall',
+    name: 'Fall Semester',
+    subtitle: 'AI + Capstone',
+    icon: '🍂',
+    color: 'bg-orange-500/10 border-orange-500/20',
+  },
+]
+
+const zCategories = ['Course', 'Certificate', 'Output', 'Interview Prep', 'Other']
+
+const defaultSections = [
+  'Spring - Courses',
+  'Spring - Certificates',
+  'Spring - Outputs',
+  'Summer - Courses',
+  'Summer - Certificates',
+  'Summer - Outputs',
+  'Fall - Courses',
+  'Fall - Certificates',
+  'Fall - Outputs',
+]
+
+const defaultItems = [
+  { section: 'Spring - Courses', title: 'CS 111 (In Person)', description: 'Core programming and debugging', category: 'Course' },
+  { section: 'Spring - Courses', title: 'STAT 121 (In Person, GE)', description: 'Probability and ML intuition', category: 'Course' },
+  { section: 'Spring - Courses', title: 'IS 201 (Online)', description: 'Systems and automation', category: 'Course' },
+  { section: 'Spring - Certificates', title: 'Google IT Automation with Python', description: '6-8 weeks, ~4 hrs/week. Start Week 3.', category: 'Certificate' },
+  { section: 'Spring - Outputs', title: 'Active GitHub with weekly commits', description: 'Consistent contribution history', category: 'Output' },
+  { section: 'Spring - Outputs', title: 'One deployed web application', description: 'Real, production-ready project', category: 'Output' },
+  { section: 'Spring - Outputs', title: 'Interview prep started', description: '3-4 days/week practice', category: 'Interview Prep' },
+  { section: 'Summer - Courses', title: 'MATH 112', description: 'Calculus 1', category: 'Course' },
+  { section: 'Summer - Courses', title: 'CS 235', description: 'Data Structures & Algorithms', category: 'Course' },
+  { section: 'Summer - Certificates', title: 'DeepLearning.AI TensorFlow Developer Certificate', description: '8-10 weeks, ~6 hrs/week', category: 'Certificate' },
+  { section: 'Summer - Outputs', title: '75-120 completed DSA problems', description: 'LeetCode/HackerRank practice', category: 'Output' },
+  { section: 'Summer - Outputs', title: 'Second deployed backend-heavy project', description: 'Showcase backend skills', category: 'Output' },
+  { section: 'Summer - Outputs', title: 'Internship resume and referral list', description: 'Prepared application materials', category: 'Output' },
+  { section: 'Fall - Courses', title: 'CS 472', description: 'Machine Learning (In Person)', category: 'Course' },
+  { section: 'Fall - Courses', title: 'ENT 402', description: 'Entrepreneurial Capstone', category: 'Course' },
+  { section: 'Fall - Certificates', title: 'DeepLearning.AI Generative AI Specialization', description: '6-8 weeks, ~4 hrs/week. Start Mid-Semester.', category: 'Certificate' },
+  { section: 'Fall - Outputs', title: 'Production AI feature deployed', description: 'Real AI in production', category: 'Output' },
+  { section: 'Fall - Outputs', title: 'One technical case study written', description: 'Document your work', category: 'Output' },
+  { section: 'Fall - Outputs', title: 'Internship applications submitted', description: 'Aug-Oct application window', category: 'Output' },
+]
+
+function formatSalary(amount: number): string {
+  if (amount >= 1000) {
+    return `$${(amount / 1000).toFixed(0)}k`
+  }
+  return `$${amount.toLocaleString()}`
+}
+
+function CareerCard({ career, isFounder = false }: { career: CareerPath; isFounder?: boolean }) {
+  const probabilityColor = career.probability >= 70
+    ? 'text-green-500'
+    : career.probability >= 50
+    ? 'text-yellow-500'
+    : 'text-orange-500'
+
+  return (
+    <div className={`p-3 sm:p-4 rounded-lg border ${isFounder ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-border'}`}>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-sm sm:text-base mb-1">{career.title}</h4>
+          <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3">{career.description}</p>
+          <div className="flex flex-wrap gap-1 sm:gap-1.5 mb-2 sm:mb-3">
+            {career.skills.slice(0, 4).map((skill) => (
+              <Badge key={skill} variant="outline" className="text-[10px] sm:text-xs">
+                {skill}
+              </Badge>
+            ))}
+            {career.skills.length > 4 && (
+              <Badge variant="outline" className="text-[10px] sm:text-xs">
+                +{career.skills.length - 4}
+              </Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex sm:flex-col items-center sm:items-end gap-3 sm:gap-1 sm:text-right shrink-0">
+          {career.salaryRange ? (
+            <div className="flex items-center gap-1 text-xs sm:text-sm font-medium">
+              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-500" />
+              <span>{formatSalary(career.salaryRange.min)} - {formatSalary(career.salaryRange.max)}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-xs sm:text-sm font-medium">
+              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary" />
+              <span>Equity-based</span>
+            </div>
+          )}
+          <div className={`flex items-center gap-1 text-xs sm:text-sm ${probabilityColor}`}>
+            <Percent className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            <span>{career.probability}% likely</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function LaunchPadPage() {
   const [activeTab, setActiveTab] = useState('overview')
+
+  // Launch Pad state
   const [courses, setCourses] = useState<Course[]>([])
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [applications, setApplications] = useState<JobApplication[]>([])
@@ -132,6 +269,17 @@ export default function LaunchPadPage() {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null)
   const [editingCert, setEditingCert] = useState<Certificate | null>(null)
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null)
+
+  // Zuckerberg Project state
+  const [zItems, setZItems] = useState<ZProjectItem[]>([])
+  const [zDialogOpen, setZDialogOpen] = useState(false)
+  const [editingZItem, setEditingZItem] = useState<ZProjectItem | null>(null)
+  const [zSaving, setZSaving] = useState(false)
+  const [zInitializing, setZInitializing] = useState(false)
+  const [zSection, setZSection] = useState(defaultSections[0])
+  const [zTitle, setZTitle] = useState('')
+  const [zDescription, setZDescription] = useState('')
+  const [zCategory, setZCategory] = useState(zCategories[0])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -154,9 +302,47 @@ export default function LaunchPadPage() {
     setLoading(false)
   }, [])
 
+  const fetchZItems = useCallback(async () => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data, error } = await supabase
+      .from('z_project_items')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('section')
+      .order('order_index')
+
+    if (!error && data) {
+      setZItems(data)
+    }
+  }, [])
+
+  const initializeDefaultItems = async () => {
+    setZInitializing(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const itemsToInsert = defaultItems.map((item, index) => ({
+      ...item,
+      user_id: user.id,
+      order_index: index,
+      completed: false,
+    }))
+
+    // @ts-expect-error - Supabase types not fully inferred
+    await supabase.from('z_project_items').insert(itemsToInsert)
+
+    setZInitializing(false)
+    fetchZItems()
+  }
+
   useEffect(() => {
     loadData()
-  }, [loadData])
+    fetchZItems()
+  }, [loadData, fetchZItems])
 
   const courseProgress = stats?.courses?.total
     ? Math.round((stats.courses.completed / stats.courses.total) * 100)
@@ -180,6 +366,7 @@ export default function LaunchPadPage() {
     withdrawn: 'bg-zinc-400',
   }
 
+  // Launch Pad handlers
   async function handleSaveCourse(formData: FormData) {
     const courseData = {
       name: formData.get('name') as string,
@@ -266,6 +453,140 @@ export default function LaunchPadPage() {
     if (await deleteJobApplication(id)) loadData()
   }
 
+  // Zuckerberg handlers
+  const openNewZDialog = (sectionName?: string) => {
+    setEditingZItem(null)
+    setZSection(sectionName || defaultSections[0])
+    setZTitle('')
+    setZDescription('')
+    setZCategory(zCategories[0])
+    setZDialogOpen(true)
+  }
+
+  const openEditZDialog = (item: ZProjectItem) => {
+    setEditingZItem(item)
+    setZSection(item.section)
+    setZTitle(item.title)
+    setZDescription(item.description || '')
+    setZCategory((item as ZProjectItem & { category?: string }).category || zCategories[0])
+    setZDialogOpen(true)
+  }
+
+  const handleSaveZ = async () => {
+    setZSaving(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const sectionItems = zItems.filter(i => i.section === zSection)
+    const nextOrder = editingZItem
+      ? editingZItem.order_index
+      : Math.max(...sectionItems.map(i => i.order_index), -1) + 1
+
+    const itemData = {
+      section: zSection,
+      title: zTitle,
+      description: zDescription || null,
+      category: zCategory,
+      user_id: user.id,
+      order_index: nextOrder,
+    }
+
+    if (editingZItem) {
+      // @ts-expect-error - Supabase types not fully inferred
+      await supabase.from('z_project_items').update(itemData).eq('id', editingZItem.id)
+    } else {
+      // @ts-expect-error - Supabase types not fully inferred
+      await supabase.from('z_project_items').insert(itemData)
+    }
+
+    setZSaving(false)
+    setZDialogOpen(false)
+    fetchZItems()
+  }
+
+  const handleToggleZComplete = async (item: ZProjectItem) => {
+    const supabase = createClient()
+    // @ts-expect-error - Supabase types not fully inferred
+    await supabase.from('z_project_items').update({ completed: !item.completed }).eq('id', item.id)
+    fetchZItems()
+  }
+
+  const handleDeleteZ = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) return
+    const supabase = createClient()
+    await supabase.from('z_project_items').delete().eq('id', id)
+    fetchZItems()
+  }
+
+  const handleExport = () => {
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      project: 'The Zuckerberg Project',
+      sections: defaultSections.map(sectionName => ({
+        name: sectionName,
+        items: zItems
+          .filter(i => i.section === sectionName)
+          .map(i => ({
+            title: i.title,
+            description: i.description,
+            completed: i.completed,
+          })),
+      })),
+      stats: {
+        total: zItems.length,
+        completed: zItems.filter(i => i.completed).length,
+        pending: zItems.filter(i => !i.completed).length,
+      },
+    }
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `zuckerberg-project-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Zuckerberg helpers
+  const itemsBySection = defaultSections.reduce((acc, sectionName) => {
+    acc[sectionName] = zItems.filter(i => i.section === sectionName)
+    return acc
+  }, {} as Record<string, ZProjectItem[]>)
+
+  const zTotalItems = zItems.length
+  const zCompletedItems = zItems.filter(i => i.completed).length
+  const zProgress = zTotalItems > 0 ? Math.round((zCompletedItems / zTotalItems) * 100) : 0
+
+  const getSemesterProgress = (semesterId: string) => {
+    const semesterSections = defaultSections.filter(s => s.toLowerCase().startsWith(semesterId))
+    const semesterItems = zItems.filter(i => semesterSections.includes(i.section))
+    const completed = semesterItems.filter(i => i.completed).length
+    return semesterItems.length > 0 ? Math.round((completed / semesterItems.length) * 100) : 0
+  }
+
+  const getCategoryIcon = (cat: string) => {
+    switch (cat) {
+      case 'Course': return <GraduationCap className="w-3 h-3" />
+      case 'Certificate': return <Award className="w-3 h-3" />
+      case 'Output': return <Target className="w-3 h-3" />
+      default: return null
+    }
+  }
+
+  const getCategoryColor = (cat: string) => {
+    switch (cat) {
+      case 'Course': return 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+      case 'Certificate': return 'bg-purple-500/10 text-purple-500 border-purple-500/20'
+      case 'Output': return 'bg-green-500/10 text-green-500 border-green-500/20'
+      case 'Interview Prep': return 'bg-orange-500/10 text-orange-500 border-orange-500/20'
+      default: return 'bg-muted text-muted-foreground'
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -302,10 +623,16 @@ export default function LaunchPadPage() {
             <p className="text-muted-foreground">Your AI-powered career launchpad</p>
           </div>
         </div>
-        <Badge variant="outline" className="bg-violet-500/10 text-violet-500 border-violet-500/30">
-          <Sparkles className="w-3 h-3 mr-1" />
-          AI + Entrepreneurship Focus
-        </Badge>
+        <div className="flex gap-2">
+          <Badge variant="outline" className="bg-violet-500/10 text-violet-500 border-violet-500/30">
+            <Sparkles className="w-3 h-3 mr-1" />
+            AI + Entrepreneurship Focus
+          </Badge>
+          <Button onClick={handleExport} variant="outline" size="sm" className="h-9">
+            <Download className="w-4 h-4 mr-1.5" />
+            Export
+          </Button>
+        </div>
       </motion.div>
 
       {/* Quick Stats */}
@@ -367,16 +694,80 @@ export default function LaunchPadPage() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid bg-muted/50 p-1 rounded-xl">
-          <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Overview</TabsTrigger>
-          <TabsTrigger value="careers" className="rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">AI Careers</TabsTrigger>
-          <TabsTrigger value="courses" className="rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Courses</TabsTrigger>
-          <TabsTrigger value="certificates" className="rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Certs</TabsTrigger>
-          <TabsTrigger value="applications" className="rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Jobs</TabsTrigger>
+        <TabsList className="flex overflow-x-auto w-full pb-1 gap-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <TabsTrigger value="overview" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Overview</TabsTrigger>
+          <TabsTrigger value="plan" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <Calendar className="w-3 h-3 mr-1" />
+            Plan
+          </TabsTrigger>
+          <TabsTrigger value="careers" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">AI Careers</TabsTrigger>
+          <TabsTrigger value="career-hub" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <DollarSign className="w-3 h-3 mr-1" />
+            Career Hub
+          </TabsTrigger>
+          <TabsTrigger value="courses" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Courses</TabsTrigger>
+          <TabsTrigger value="certificates" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Certs</TabsTrigger>
+          <TabsTrigger value="applications" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Jobs</TabsTrigger>
+          <TabsTrigger value="internships" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <Rocket className="w-3 h-3 mr-1" />
+            Internships
+          </TabsTrigger>
+          <TabsTrigger value="github" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <Github className="w-3 h-3 mr-1" />
+            GitHub
+          </TabsTrigger>
+          <TabsTrigger value="insights" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <Sparkles className="w-3 h-3 mr-1" />
+            AI
+          </TabsTrigger>
+          <TabsTrigger value="paths" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">Paths</TabsTrigger>
+          <TabsTrigger value="connections" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <Key className="w-3 h-3 mr-1" />
+            APIs
+          </TabsTrigger>
+          <TabsTrigger value="document" className="flex-shrink-0 rounded-lg data-[state=active]:bg-violet-500 data-[state=active]:text-white">
+            <FileText className="w-3 h-3 mr-1" />
+            Doc
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {/* Career Snapshot */}
+          <Card className="border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-transparent">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-amber-500" />
+                Career Snapshot - Best Entry Points
+              </CardTitle>
+              <CardDescription>
+                Most accessible management/leadership roles for BYU CS + Business grads
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <Badge className="bg-green-500/20 text-green-500 text-xs mb-2">3-8% Likelihood</Badge>
+                  <h4 className="font-semibold mb-1">Technical Program Manager</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Amazon, Google, Meta</p>
+                  <p className="text-sm font-medium text-green-500">$120k-$160k + RSUs</p>
+                </div>
+                <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <Badge className="bg-blue-500/20 text-blue-500 text-xs mb-2">15-30% Likelihood</Badge>
+                  <h4 className="font-semibold mb-1">Business Development Rep</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Google Cloud, AWS, Salesforce</p>
+                  <p className="text-sm font-medium text-blue-500">$70k-$90k + OTE $150k</p>
+                </div>
+                <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                  <Badge className="bg-purple-500/20 text-purple-500 text-xs mb-2">2-5% Likelihood</Badge>
+                  <h4 className="font-semibold mb-1">Strategy & Operations</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Stripe, Uber, DoorDash</p>
+                  <p className="text-sm font-medium text-purple-500">$130k-$170k + Equity</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Target Roles */}
           <motion.div variants={itemVariants}>
             <PremiumCard>
@@ -403,12 +794,9 @@ export default function LaunchPadPage() {
                       className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-muted/50 to-muted/20 border border-transparent hover:border-amber-500/20 transition-all"
                     >
                       <div className="flex items-center gap-4">
-                        <motion.span
-                          className="text-2xl font-bold bg-gradient-to-br from-amber-400 to-orange-500 bg-clip-text text-transparent"
-                          whileHover={{ scale: 1.1 }}
-                        >
+                        <span className="text-2xl font-bold bg-gradient-to-br from-amber-400 to-orange-500 bg-clip-text text-transparent">
                           #{i + 1}
-                        </motion.span>
+                        </span>
                         <div>
                           <p className="font-medium">{role.title}</p>
                           <p className="text-sm text-muted-foreground">{role.salary}</p>
@@ -505,6 +893,170 @@ export default function LaunchPadPage() {
           </motion.div>
         </TabsContent>
 
+        {/* Plan Tab (Zuckerberg Project) */}
+        <TabsContent value="plan" className="space-y-6">
+          {zItems.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Calendar className="w-12 h-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Get Started with Your Plan</h3>
+                <p className="text-muted-foreground text-center mb-6 max-w-md">
+                  Initialize your Zuckerberg Project with the complete roadmap,
+                  including all courses, certificates, and required outputs.
+                </p>
+                <Button onClick={initializeDefaultItems} disabled={zInitializing}>
+                  {zInitializing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Load Full Plan
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {zItems.length > 0 && (
+            <>
+              {/* Overall Progress Card */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Overall Progress</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all duration-500"
+                        style={{ width: `${zProgress}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium">{zProgress}%</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {zCompletedItems} of {zTotalItems} items completed
+                  </p>
+                  <div className="grid grid-cols-3 gap-4 pt-2">
+                    {semesters.map(sem => (
+                      <div key={sem.id} className="text-center">
+                        <div className="text-2xl mb-1">{sem.icon}</div>
+                        <p className="text-xs text-muted-foreground">{sem.name}</p>
+                        <p className="text-sm font-semibold">{getSemesterProgress(sem.id)}%</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Semesters */}
+              {semesters.map(semester => {
+                const semesterSections = defaultSections.filter(s =>
+                  s.toLowerCase().startsWith(semester.id)
+                )
+                return (
+                  <Card key={semester.id} className={`border ${semester.color}`}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{semester.icon}</span>
+                          <div>
+                            <CardTitle>{semester.name}</CardTitle>
+                            <CardDescription>{semester.subtitle}</CardDescription>
+                          </div>
+                        </div>
+                        <Badge variant="outline">{getSemesterProgress(semester.id)}%</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {semesterSections.map(sectionName => {
+                        const sectionType = sectionName.split(' - ')[1]
+                        return (
+                          <div key={sectionName}>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                                {sectionType}
+                              </h4>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7"
+                                onClick={() => openNewZDialog(sectionName)}
+                              >
+                                <Plus className="w-3 h-3 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                            {itemsBySection[sectionName]?.length === 0 ? (
+                              <p className="text-sm text-muted-foreground py-2">No items yet</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {itemsBySection[sectionName]?.map(item => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 group"
+                                  >
+                                    <Checkbox
+                                      checked={item.completed}
+                                      onCheckedChange={() => handleToggleZComplete(item)}
+                                      className="mt-0.5"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <p className={`text-sm font-medium ${item.completed ? 'line-through text-muted-foreground' : ''}`}>
+                                          {item.title}
+                                        </p>
+                                        {(item as ZProjectItem & { category?: string }).category && (
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-xs ${getCategoryColor((item as ZProjectItem & { category?: string }).category || '')}`}
+                                          >
+                                            {getCategoryIcon((item as ZProjectItem & { category?: string }).category || '')}
+                                            <span className="ml-1">{(item as ZProjectItem & { category?: string }).category}</span>
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      {item.description && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {item.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => openEditZDialog(item)}
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-destructive"
+                                        onClick={() => handleDeleteZ(item.id)}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+
+              <div className="flex justify-center">
+                <Button onClick={() => openNewZDialog()}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+              </div>
+            </>
+          )}
+        </TabsContent>
+
         {/* AI Careers Tab */}
         <TabsContent value="careers" className="space-y-6">
           <motion.div variants={itemVariants} className="flex justify-between items-center">
@@ -520,7 +1072,6 @@ export default function LaunchPadPage() {
             </div>
           </motion.div>
 
-          {/* Company Cards */}
           <div className="space-y-6">
             {AI_COMPANIES.map((company, companyIndex) => (
               <motion.div
@@ -568,7 +1119,6 @@ export default function LaunchPadPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Roles */}
                     <div>
                       <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
                         <Briefcase className="w-4 h-4 text-violet-500" />
@@ -599,7 +1149,6 @@ export default function LaunchPadPage() {
                       </div>
                     </div>
 
-                    {/* Internships */}
                     {company.internships.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
@@ -618,7 +1167,6 @@ export default function LaunchPadPage() {
                       </div>
                     )}
 
-                    {/* Interview Process */}
                     <div>
                       <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
                         <Target className="w-4 h-4 text-amber-500" />
@@ -633,7 +1181,6 @@ export default function LaunchPadPage() {
                       </div>
                     </div>
 
-                    {/* Requirements */}
                     <div>
                       <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
                         <Check className="w-4 h-4 text-emerald-500" />
@@ -649,7 +1196,6 @@ export default function LaunchPadPage() {
                       </ul>
                     </div>
 
-                    {/* Source Link */}
                     <div className="pt-2 border-t border-border/50">
                       <a
                         href={company.levelsUrl}
@@ -667,7 +1213,6 @@ export default function LaunchPadPage() {
             ))}
           </div>
 
-          {/* Data Source Disclaimer */}
           <PremiumCard className="bg-muted/30">
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">
@@ -680,6 +1225,11 @@ export default function LaunchPadPage() {
               </p>
             </CardContent>
           </PremiumCard>
+        </TabsContent>
+
+        {/* Career Hub Tab */}
+        <TabsContent value="career-hub" className="space-y-6">
+          <CareerPlanning />
         </TabsContent>
 
         {/* Courses Tab */}
@@ -942,6 +1492,139 @@ export default function LaunchPadPage() {
             </div>
           )}
         </TabsContent>
+
+        {/* Internships Tab */}
+        <TabsContent value="internships" className="space-y-6">
+          <InternshipRequirements />
+        </TabsContent>
+
+        {/* GitHub Tab */}
+        <TabsContent value="github" className="space-y-6">
+          <GitHubDashboard />
+        </TabsContent>
+
+        {/* AI Insights Tab */}
+        <TabsContent value="insights" className="space-y-6">
+          <AIInsights
+            completedItems={zItems.filter(i => i.completed).map(i => i.title)}
+            pendingItems={zItems.filter(i => !i.completed).map(i => i.title)}
+            totalItems={zItems.length}
+            completedCount={zItems.filter(i => i.completed).length}
+          />
+        </TabsContent>
+
+        {/* Career Paths Tab */}
+        <TabsContent value="paths" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Briefcase className="w-5 h-5" />
+                Career Outcomes
+              </CardTitle>
+              <CardDescription>
+                Potential career paths based on the Zuckerberg Project trajectory
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                The Zuckerberg Project is designed to position you for top-tier opportunities in tech.
+                Below are the potential career outcomes, organized by category with estimated compensation
+                ranges and probability scores based on current progress.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-blue-500" />
+                Internship Opportunities
+              </CardTitle>
+              <CardDescription>Summer 2025 internship targets</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {CAREER_PATHS.filter(c => c.category === 'internship').map((career) => (
+                  <CareerCard key={career.title} career={career} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-green-500" />
+                Entry Level Positions
+              </CardTitle>
+              <CardDescription>Full-time roles post-graduation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {CAREER_PATHS.filter(c => c.category === 'entry').map((career) => (
+                  <CareerCard key={career.title} career={career} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Target className="w-5 h-5 text-purple-500" />
+                Advanced Roles
+              </CardTitle>
+              <CardDescription>Mid-level and senior positions (2-5 years)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {CAREER_PATHS.filter(c => c.category === 'mid' || c.category === 'senior').map((career) => (
+                  <CareerCard key={career.title} career={career} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Award className="w-5 h-5 text-primary" />
+                Founder Track
+              </CardTitle>
+              <CardDescription>Entrepreneurial leadership opportunities</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {CAREER_PATHS.filter(c => c.category === 'founder').map((career) => (
+                  <CareerCard key={career.title} career={career} isFounder />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* API Connections Tab */}
+        <TabsContent value="connections" className="space-y-6">
+          <APIConnections />
+        </TabsContent>
+
+        {/* Document Tab */}
+        <TabsContent value="document">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Project Document
+              </CardTitle>
+              <CardDescription>
+                The original Zuckerberg Project documentation
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PdfViewer src="/zuckerberg.pdf" />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Course Dialog */}
@@ -1183,6 +1866,76 @@ export default function LaunchPadPage() {
               <Button type="submit" className="bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0">{editingApp ? 'Update' : 'Add'} Application</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Zuckerberg Item Dialog */}
+      <Dialog open={zDialogOpen} onOpenChange={setZDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingZItem ? 'Edit Item' : 'Add Checklist Item'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="z-section">Section</Label>
+              <Select value={zSection} onValueChange={setZSection}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {defaultSections.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="z-category">Category</Label>
+              <Select value={zCategory} onValueChange={setZCategory}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {zCategories.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="z-title">Title</Label>
+              <Input
+                id="z-title"
+                value={zTitle}
+                onChange={(e) => setZTitle(e.target.value)}
+                placeholder="Item title"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="z-description">Description (optional)</Label>
+              <Textarea
+                id="z-description"
+                value={zDescription}
+                onChange={(e) => setZDescription(e.target.value)}
+                placeholder="Additional details"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setZDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveZ} disabled={zSaving || !zTitle.trim()}>
+              {zSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {editingZItem ? 'Save Changes' : 'Add Item'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </motion.div>

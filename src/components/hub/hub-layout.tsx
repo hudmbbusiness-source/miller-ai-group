@@ -110,19 +110,9 @@ function HubMesh() {
 
 const navItems = [
   { href: '/app', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/app/settings', label: 'Settings', icon: Settings },
-]
-
-const launchPadItems = [
   { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket },
-  { href: '/app/zuckerberg', label: 'Zuckerberg Project', icon: FileCheck },
-]
-
-const workspaceItems = [
-  { href: '/app/notes', label: 'Notes', icon: FileText },
-  { href: '/app/boards', label: 'Boards', icon: Grid3X3 },
-  { href: '/app/assets', label: 'Assets', icon: ShoppingBag },
-  { href: '/app/goals', label: 'Goals', icon: Target },
+  { href: '/app/workspace', label: 'Workspace', icon: FileText },
+  { href: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
 const toolItems = [
@@ -208,76 +198,6 @@ export function HubLayout({ children, user }: HubLayoutProps) {
           )
         })}
 
-        {/* Launch Pad Section */}
-        <div className="pt-4 mt-4 border-t border-white/5">
-          <p className="px-3 mb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-            Launch Pad
-          </p>
-          {launchPadItems.map((item, index) => {
-            const active = isActive(item.href)
-            return (
-              <motion.div
-                key={item.href}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: (navItems.length + index) * 0.05 }}
-              >
-                <Link
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium',
-                    'transition-all duration-200 relative min-h-[44px]',
-                    active
-                      ? 'bg-gradient-to-r from-orange-500/15 to-amber-500/10 text-orange-400 shadow-lg shadow-orange-500/5'
-                      : 'text-neutral-400 hover:bg-white/5 hover:text-white'
-                  )}
-                >
-                  {active && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-orange-500 to-amber-500 rounded-r-full" />
-                  )}
-                  <item.icon className={cn("w-5 h-5 flex-shrink-0", active && "text-orange-400")} />
-                  {item.label}
-                </Link>
-              </motion.div>
-            )
-          })}
-        </div>
-
-        {/* Workspace Section (Notes, Boards, Assets, Goals) */}
-        <div className="pt-4 mt-4 border-t border-white/5">
-          <p className="px-3 mb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-            Workspace
-          </p>
-          {workspaceItems.map((item, index) => {
-            const active = isActive(item.href)
-            return (
-              <motion.div
-                key={item.href}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: (navItems.length + launchPadItems.length + index) * 0.05 }}
-              >
-                <Link
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium',
-                    'transition-all duration-200 relative min-h-[44px]',
-                    active
-                      ? 'bg-gradient-to-r from-cyan-500/15 to-blue-500/10 text-cyan-400 shadow-lg shadow-cyan-500/5'
-                      : 'text-neutral-400 hover:bg-white/5 hover:text-white'
-                  )}
-                >
-                  {active && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-cyan-500 to-blue-500 rounded-r-full" />
-                  )}
-                  <item.icon className={cn("w-5 h-5 flex-shrink-0", active && "text-cyan-400")} />
-                  {item.label}
-                </Link>
-              </motion.div>
-            )
-          })}
-        </div>
-
         {/* Tools Section */}
         <div className="pt-4 mt-4 border-t border-white/5">
           <p className="px-3 mb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
@@ -296,7 +216,7 @@ export function HubLayout({ children, user }: HubLayoutProps) {
                 key={item.href}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: (navItems.length + launchPadItems.length + workspaceItems.length + index) * 0.05 }}
+                transition={{ delay: (navItems.length + index) * 0.05 }}
               >
                 <Link
                   href={item.href}

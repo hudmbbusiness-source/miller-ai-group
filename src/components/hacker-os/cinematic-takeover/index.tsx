@@ -2,7 +2,28 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Image from 'next/image'
+
+// Import our advanced effects and components
+import {
+  GlitchCanvas,
+  PerspectiveGrid,
+  DataStreamRain,
+  ScreenShake,
+  ChromaticText,
+  GlitchTyper,
+  HUDBrackets,
+  ScanLineOverlay,
+  Flicker,
+  GlitchProgressBar,
+  AlertBox
+} from './effects-engine'
+
+import {
+  CharacterPortraitCanvas,
+  CharacterDossierCard,
+  OPERATIVES,
+  type Character
+} from './character-portraits'
 
 // ============================================
 // TYPES
@@ -20,95 +41,11 @@ type SceneType =
 interface CinematicTakeoverProps {
   onComplete: () => void
   userName?: string
+  initialStage?: string
 }
 
-// ============================================
-// CHARACTER DATA - Iconic, Recognizable
-// ============================================
-export const CHARACTERS = [
-  {
-    id: 'wick',
-    name: 'JOHN WICK',
-    codename: 'BABA YAGA',
-    quote: "People keep asking if I'm back. Yeah, I'm thinking I'm back.",
-    specialty: 'TACTICAL ELIMINATION',
-    threat: 'EXTREME',
-    color: '#ff0040',
-    accentColor: '#8b0000',
-    // Visual identifiers for canvas drawing
-    features: {
-      hair: 'long-dark',
-      beard: 'stubble',
-      suit: 'black-tactical',
-      icon: 'crosshair'
-    }
-  },
-  {
-    id: 'bart',
-    name: 'BART SIMPSON',
-    codename: 'EL BARTO',
-    quote: "Eat my shorts, firewall.",
-    specialty: 'CHAOS ENGINEERING',
-    threat: 'UNPREDICTABLE',
-    color: '#ffd700',
-    accentColor: '#ff8c00',
-    features: {
-      hair: 'spiky-yellow',
-      shirt: 'red',
-      expression: 'mischievous',
-      icon: 'spray-can'
-    }
-  },
-  {
-    id: 'joker',
-    name: 'THE JOKER',
-    codename: 'AGENT OF CHAOS',
-    quote: "Why so serious about your security?",
-    specialty: 'PSYCHOLOGICAL WARFARE',
-    threat: 'MAXIMUM',
-    color: '#9d00ff',
-    accentColor: '#4a0080',
-    features: {
-      hair: 'green-slicked',
-      face: 'white-paint',
-      smile: 'red-scars',
-      suit: 'purple',
-      icon: 'playing-card'
-    }
-  },
-  {
-    id: 'wolf',
-    name: 'JORDAN BELFORT',
-    codename: 'THE WOLF',
-    quote: "I'm not f***ing leaving!",
-    specialty: 'FINANCIAL EXTRACTION',
-    threat: 'SEVERE',
-    color: '#00ff41',
-    accentColor: '#006400',
-    features: {
-      hair: 'slicked-back',
-      suit: 'expensive',
-      expression: 'confident',
-      icon: 'dollar'
-    }
-  },
-  {
-    id: 'duchess',
-    name: 'NAOMI LAPAGLIA',
-    codename: 'THE DUCHESS',
-    quote: "Let me put this in terms you'll understand.",
-    specialty: 'SOCIAL ENGINEERING',
-    threat: 'HIGH',
-    color: '#ff1493',
-    accentColor: '#c71585',
-    features: {
-      hair: 'blonde-long',
-      dress: 'elegant',
-      expression: 'commanding',
-      icon: 'crown'
-    }
-  },
-]
+// Re-export CHARACTERS for backwards compatibility
+export { OPERATIVES as CHARACTERS }
 
 // ============================================
 // DEDSEC-STYLE DITHER EFFECT CANVAS
@@ -821,149 +758,495 @@ function TerminalTakeoverScene({ onComplete }: { onComplete: () => void }) {
 }
 
 // ============================================
-// SCENE 5: FILE INTRUSION
+// SCENE 5: FILE INTRUSION - Advanced Tree View
 // ============================================
-function FileIntrusionScene({ onComplete }: { onComplete: () => void }) {
-  const [files, setFiles] = useState<Array<{
-    path: string
-    status: 'scanning' | 'accessed' | 'exfiltrated'
-    type: 'file' | 'folder'
-  }>>([])
 
-  const fileSystem = useMemo(() => [
-    { path: '/etc/passwd', type: 'file' as const },
-    { path: '/etc/shadow', type: 'file' as const },
-    { path: '/home/admin/.ssh/', type: 'folder' as const },
-    { path: '/home/admin/.ssh/id_rsa', type: 'file' as const },
-    { path: '/var/lib/mysql/', type: 'folder' as const },
-    { path: '/var/lib/mysql/users.db', type: 'file' as const },
-    { path: '/opt/app/config/', type: 'folder' as const },
-    { path: '/opt/app/config/secrets.env', type: 'file' as const },
-    { path: '/root/.bash_history', type: 'file' as const },
-    { path: '/var/log/auth.log', type: 'file' as const },
-    { path: '/etc/ssl/private/', type: 'folder' as const },
-    { path: '/etc/ssl/private/server.key', type: 'file' as const },
-  ], [])
+interface FileNode {
+  name: string
+  path: string
+  type: 'file' | 'folder'
+  children?: FileNode[]
+  size?: string
+  permissions?: string
+  status: 'hidden' | 'scanning' | 'accessed' | 'encrypted' | 'exfiltrated'
+  sensitive?: boolean
+}
 
-  useEffect(() => {
-    let idx = 0
+function FileTreeNode({ node, depth = 0, onStatusChange }: {
+  node: FileNode
+  depth?: number
+  onStatusChange?: (path: string, status: FileNode['status']) => void
+}) {
+  const [isExpanded, setIsExpanded] = useState(true)
 
-    const scanInterval = setInterval(() => {
-      if (idx < fileSystem.length) {
-        const file = fileSystem[idx]
-        setFiles(prev => [...prev, { ...file, status: 'scanning' }])
+  const statusColors = {
+    hidden: 'text-neutral-600',
+    scanning: 'text-yellow-400',
+    accessed: 'text-cyan-400',
+    encrypted: 'text-orange-500',
+    exfiltrated: 'text-green-500'
+  }
 
-        // Update to accessed after delay
-        setTimeout(() => {
-          setFiles(prev => prev.map((f, i) =>
-            i === idx ? { ...f, status: 'accessed' } : f
-          ))
-        }, 300)
-
-        // Update to exfiltrated
-        setTimeout(() => {
-          setFiles(prev => prev.map((f, i) =>
-            i === idx ? { ...f, status: 'exfiltrated' } : f
-          ))
-        }, 600)
-
-        idx++
-      } else {
-        clearInterval(scanInterval)
-        setTimeout(onComplete, 2000)
-      }
-    }, 400)
-
-    return () => clearInterval(scanInterval)
-  }, [fileSystem, onComplete])
-
-  const exfiltratedCount = files.filter(f => f.status === 'exfiltrated').length
+  const statusIcons = {
+    hidden: '○',
+    scanning: '◐',
+    accessed: '◉',
+    encrypted: '🔒',
+    exfiltrated: '✓'
+  }
 
   return (
     <motion.div
-      className="fixed inset-0 z-20 bg-black"
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div
+        className={`flex items-center gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer ${
+          node.sensitive ? 'bg-red-500/10' : ''
+        }`}
+        style={{ paddingLeft: depth * 16 + 8 }}
+        onClick={() => node.type === 'folder' && setIsExpanded(!isExpanded)}
+      >
+        {/* Expand/collapse icon for folders */}
+        {node.type === 'folder' && (
+          <motion.span
+            className="text-neutral-500 text-xs w-3"
+            animate={{ rotate: isExpanded ? 90 : 0 }}
+          >
+            ▶
+          </motion.span>
+        )}
+        {node.type === 'file' && <span className="w-3" />}
+
+        {/* Icon */}
+        <span className={node.type === 'folder' ? 'text-blue-400' : 'text-neutral-400'}>
+          {node.type === 'folder' ? '📁' : node.sensitive ? '🔴' : '📄'}
+        </span>
+
+        {/* Name */}
+        <span className={`flex-1 font-mono text-sm ${
+          node.sensitive ? 'text-red-400' : 'text-neutral-300'
+        }`}>
+          {node.name}
+        </span>
+
+        {/* Size */}
+        {node.size && (
+          <span className="text-xs text-neutral-600 font-mono">{node.size}</span>
+        )}
+
+        {/* Permissions */}
+        {node.permissions && (
+          <span className="text-xs text-neutral-700 font-mono">{node.permissions}</span>
+        )}
+
+        {/* Status indicator */}
+        <motion.span
+          className={`text-sm ${statusColors[node.status]}`}
+          animate={node.status === 'scanning' ? { opacity: [1, 0.3, 1] } : {}}
+          transition={{ duration: 0.5, repeat: Infinity }}
+        >
+          {statusIcons[node.status]}
+        </motion.span>
+      </div>
+
+      {/* Children */}
+      <AnimatePresence>
+        {node.type === 'folder' && isExpanded && node.children && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+          >
+            {node.children.map((child, i) => (
+              <FileTreeNode key={child.path} node={child} depth={depth + 1} />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+function FileIntrusionScene({ onComplete }: { onComplete: () => void }) {
+  const [fileTree, setFileTree] = useState<FileNode[]>([])
+  const [currentAction, setCurrentAction] = useState('')
+  const [alerts, setAlerts] = useState<Array<{ id: string; type: string; title: string; message: string }>>([])
+  const [stats, setStats] = useState({ scanned: 0, accessed: 0, exfiltrated: 0, totalSize: 0 })
+
+  const initialFileTree: FileNode[] = useMemo(() => [
+    {
+      name: '/',
+      path: '/',
+      type: 'folder',
+      status: 'hidden',
+      children: [
+        {
+          name: 'etc',
+          path: '/etc',
+          type: 'folder',
+          status: 'hidden',
+          children: [
+            { name: 'passwd', path: '/etc/passwd', type: 'file', size: '2.4KB', permissions: '-rw-r--r--', status: 'hidden', sensitive: true },
+            { name: 'shadow', path: '/etc/shadow', type: 'file', size: '1.8KB', permissions: '-rw-------', status: 'hidden', sensitive: true },
+            {
+              name: 'ssl',
+              path: '/etc/ssl',
+              type: 'folder',
+              status: 'hidden',
+              children: [
+                {
+                  name: 'private',
+                  path: '/etc/ssl/private',
+                  type: 'folder',
+                  status: 'hidden',
+                  children: [
+                    { name: 'server.key', path: '/etc/ssl/private/server.key', type: 'file', size: '4.1KB', permissions: '-rw-------', status: 'hidden', sensitive: true },
+                    { name: 'ca-cert.pem', path: '/etc/ssl/private/ca-cert.pem', type: 'file', size: '2.2KB', permissions: '-rw-------', status: 'hidden', sensitive: true }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          name: 'home',
+          path: '/home',
+          type: 'folder',
+          status: 'hidden',
+          children: [
+            {
+              name: 'admin',
+              path: '/home/admin',
+              type: 'folder',
+              status: 'hidden',
+              children: [
+                {
+                  name: '.ssh',
+                  path: '/home/admin/.ssh',
+                  type: 'folder',
+                  status: 'hidden',
+                  children: [
+                    { name: 'id_rsa', path: '/home/admin/.ssh/id_rsa', type: 'file', size: '3.2KB', permissions: '-rw-------', status: 'hidden', sensitive: true },
+                    { name: 'id_rsa.pub', path: '/home/admin/.ssh/id_rsa.pub', type: 'file', size: '0.7KB', permissions: '-rw-r--r--', status: 'hidden' },
+                    { name: 'authorized_keys', path: '/home/admin/.ssh/authorized_keys', type: 'file', size: '2.1KB', permissions: '-rw-r--r--', status: 'hidden', sensitive: true }
+                  ]
+                },
+                { name: '.bash_history', path: '/home/admin/.bash_history', type: 'file', size: '48KB', permissions: '-rw-------', status: 'hidden', sensitive: true },
+                { name: '.aws', path: '/home/admin/.aws', type: 'folder', status: 'hidden', children: [
+                  { name: 'credentials', path: '/home/admin/.aws/credentials', type: 'file', size: '0.4KB', permissions: '-rw-------', status: 'hidden', sensitive: true },
+                  { name: 'config', path: '/home/admin/.aws/config', type: 'file', size: '0.2KB', permissions: '-rw-r--r--', status: 'hidden' }
+                ]}
+              ]
+            }
+          ]
+        },
+        {
+          name: 'var',
+          path: '/var',
+          type: 'folder',
+          status: 'hidden',
+          children: [
+            {
+              name: 'lib',
+              path: '/var/lib',
+              type: 'folder',
+              status: 'hidden',
+              children: [
+                {
+                  name: 'mysql',
+                  path: '/var/lib/mysql',
+                  type: 'folder',
+                  status: 'hidden',
+                  children: [
+                    { name: 'users.db', path: '/var/lib/mysql/users.db', type: 'file', size: '847MB', permissions: '-rw-rw----', status: 'hidden', sensitive: true },
+                    { name: 'transactions.db', path: '/var/lib/mysql/transactions.db', type: 'file', size: '2.4GB', permissions: '-rw-rw----', status: 'hidden', sensitive: true }
+                  ]
+                }
+              ]
+            },
+            {
+              name: 'log',
+              path: '/var/log',
+              type: 'folder',
+              status: 'hidden',
+              children: [
+                { name: 'auth.log', path: '/var/log/auth.log', type: 'file', size: '12MB', permissions: '-rw-r-----', status: 'hidden' },
+                { name: 'syslog', path: '/var/log/syslog', type: 'file', size: '45MB', permissions: '-rw-r-----', status: 'hidden' }
+              ]
+            }
+          ]
+        },
+        {
+          name: 'opt',
+          path: '/opt',
+          type: 'folder',
+          status: 'hidden',
+          children: [
+            {
+              name: 'app',
+              path: '/opt/app',
+              type: 'folder',
+              status: 'hidden',
+              children: [
+                { name: '.env', path: '/opt/app/.env', type: 'file', size: '1.2KB', permissions: '-rw-------', status: 'hidden', sensitive: true },
+                { name: 'config.json', path: '/opt/app/config.json', type: 'file', size: '4.8KB', permissions: '-rw-r--r--', status: 'hidden', sensitive: true },
+                { name: 'secrets.enc', path: '/opt/app/secrets.enc', type: 'file', size: '0.8KB', permissions: '-rw-------', status: 'hidden', sensitive: true }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ], [])
+
+  // Flatten tree to get all paths
+  const flattenTree = useCallback((nodes: FileNode[]): FileNode[] => {
+    const result: FileNode[] = []
+    const traverse = (items: FileNode[]) => {
+      items.forEach(item => {
+        result.push(item)
+        if (item.children) traverse(item.children)
+      })
+    }
+    traverse(nodes)
+    return result
+  }, [])
+
+  // Update status of a node by path
+  const updateNodeStatus = useCallback((tree: FileNode[], path: string, status: FileNode['status']): FileNode[] => {
+    return tree.map(node => {
+      if (node.path === path) {
+        return { ...node, status }
+      }
+      if (node.children) {
+        return { ...node, children: updateNodeStatus(node.children, path, status) }
+      }
+      return node
+    })
+  }, [])
+
+  useEffect(() => {
+    // Initialize tree
+    setFileTree(initialFileTree)
+
+    const allPaths = flattenTree(initialFileTree).filter(n => n.path !== '/')
+    let currentIndex = 0
+
+    const processFile = () => {
+      if (currentIndex >= allPaths.length) {
+        setCurrentAction('EXFILTRATION COMPLETE - CLEANING TRACES...')
+        setTimeout(() => {
+          setCurrentAction('TRACKS COVERED - DISCONNECTING...')
+          setTimeout(onComplete, 1500)
+        }, 1500)
+        return
+      }
+
+      const node = allPaths[currentIndex]
+      const isSensitive = node.sensitive
+
+      // Phase 1: Scanning
+      setCurrentAction(`SCANNING: ${node.path}`)
+      setFileTree(prev => updateNodeStatus(prev, node.path, 'scanning'))
+      setStats(prev => ({ ...prev, scanned: prev.scanned + 1 }))
+
+      setTimeout(() => {
+        // Phase 2: Accessed
+        setFileTree(prev => updateNodeStatus(prev, node.path, 'accessed'))
+        setStats(prev => ({ ...prev, accessed: prev.accessed + 1 }))
+
+        if (isSensitive) {
+          setAlerts(prev => [...prev.slice(-2), {
+            id: Math.random().toString(),
+            type: 'warning',
+            title: 'SENSITIVE FILE DETECTED',
+            message: `${node.path} contains valuable data`
+          }])
+        }
+
+        setTimeout(() => {
+          // Phase 3: Exfiltrated (if sensitive) or just mark complete
+          if (node.type === 'file') {
+            setFileTree(prev => updateNodeStatus(prev, node.path, 'exfiltrated'))
+            setStats(prev => ({
+              ...prev,
+              exfiltrated: prev.exfiltrated + 1,
+              totalSize: prev.totalSize + (parseFloat(node.size?.replace(/[^0-9.]/g, '') || '0') * (node.size?.includes('GB') ? 1024 : node.size?.includes('MB') ? 1 : 0.001))
+            }))
+
+            if (isSensitive) {
+              setAlerts(prev => [...prev.slice(-2), {
+                id: Math.random().toString(),
+                type: 'breach',
+                title: 'DATA EXFILTRATED',
+                message: `${node.name} captured (${node.size})`
+              }])
+            }
+          } else {
+            setFileTree(prev => updateNodeStatus(prev, node.path, 'exfiltrated'))
+          }
+
+          currentIndex++
+          setTimeout(processFile, node.type === 'folder' ? 100 : (isSensitive ? 400 : 200))
+        }, 200)
+      }, 250)
+    }
+
+    // Start after a brief delay
+    const startTimer = setTimeout(processFile, 500)
+
+    return () => clearTimeout(startTimer)
+  }, [initialFileTree, flattenTree, updateNodeStatus, onComplete])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-20 bg-black overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      <DedSecBackground intensity={0.3} />
+      <PerspectiveGrid color="#00ffff" speed={0.3} density={25} className="opacity-20" />
 
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-full max-w-3xl mx-8">
+      <div className="absolute inset-0 flex">
+        {/* Left panel - File Tree */}
+        <div className="w-2/3 h-full p-6 flex flex-col">
           {/* Header */}
-          <div className="mb-6">
-            <h2 className="text-3xl font-mono font-bold text-fuchsia-500 mb-2">
-              FILE SYSTEM INTRUSION
-            </h2>
-            <p className="text-cyan-400 font-mono text-sm">
-              Scanning and exfiltrating sensitive files...
-            </p>
-          </div>
-
-          {/* File list */}
-          <div className="bg-black/80 border border-fuchsia-500/30 rounded-lg p-4 font-mono text-sm max-h-96 overflow-y-auto">
-            {files.map((file, i) => (
+          <div className="mb-4">
+            <div className="flex items-center gap-3 mb-2">
               <motion.div
-                key={i}
-                className="flex items-center gap-3 py-1"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-              >
-                <span className={`w-24 text-xs ${
-                  file.status === 'scanning' ? 'text-yellow-400' :
-                  file.status === 'accessed' ? 'text-cyan-400' :
-                  'text-green-500'
-                }`}>
-                  [{file.status.toUpperCase()}]
-                </span>
-                <span className={file.type === 'folder' ? 'text-blue-400' : 'text-neutral-300'}>
-                  {file.type === 'folder' ? '📁' : '📄'} {file.path}
-                </span>
-                {file.status === 'exfiltrated' && (
-                  <span className="text-green-500 ml-auto">✓ CAPTURED</span>
-                )}
-              </motion.div>
-            ))}
+                className="w-3 h-3 bg-red-500 rounded-full"
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 0.5, repeat: Infinity }}
+              />
+              <h2 className="text-2xl font-mono font-bold text-fuchsia-500">
+                FILE SYSTEM INTRUSION
+              </h2>
+            </div>
+            <motion.p
+              className="text-cyan-400 font-mono text-sm h-5"
+              key={currentAction}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {currentAction}
+            </motion.p>
           </div>
 
-          {/* Stats */}
-          <div className="mt-4 flex justify-between text-sm font-mono">
-            <span className="text-fuchsia-400">
-              FILES EXFILTRATED: {exfiltratedCount}/{fileSystem.length}
-            </span>
-            <span className="text-cyan-400">
-              DATA SIZE: {(exfiltratedCount * 0.3).toFixed(1)} GB
-            </span>
+          {/* File tree container */}
+          <div className="flex-1 bg-black/80 border border-cyan-500/30 rounded-lg overflow-hidden">
+            <div className="bg-neutral-900/80 px-4 py-2 border-b border-cyan-500/20 flex items-center gap-2">
+              <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+              </div>
+              <span className="text-xs font-mono text-neutral-400 ml-2">root@target:/</span>
+            </div>
+            <div className="p-2 h-[calc(100%-40px)] overflow-y-auto">
+              {fileTree.map((node, i) => (
+                <FileTreeNode key={node.path} node={node} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right panel - Stats and Alerts */}
+        <div className="w-1/3 h-full p-6 flex flex-col gap-4">
+          {/* Stats panel */}
+          <div className="bg-black/80 border border-fuchsia-500/30 rounded-lg p-4">
+            <h3 className="text-sm font-mono text-fuchsia-500 mb-4 tracking-wider">EXFILTRATION STATUS</h3>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs font-mono mb-1">
+                  <span className="text-neutral-400">FILES SCANNED</span>
+                  <span className="text-cyan-400">{stats.scanned}</span>
+                </div>
+                <GlitchProgressBar progress={stats.scanned * 3} color="#00ffff" height={4} showPercentage={false} />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-mono mb-1">
+                  <span className="text-neutral-400">FILES ACCESSED</span>
+                  <span className="text-yellow-400">{stats.accessed}</span>
+                </div>
+                <GlitchProgressBar progress={stats.accessed * 3} color="#ffd700" height={4} showPercentage={false} />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-mono mb-1">
+                  <span className="text-neutral-400">EXFILTRATED</span>
+                  <span className="text-green-400">{stats.exfiltrated}</span>
+                </div>
+                <GlitchProgressBar progress={stats.exfiltrated * 5} color="#00ff41" height={4} showPercentage={false} />
+              </div>
+
+              <div className="pt-2 border-t border-neutral-800">
+                <div className="flex justify-between text-sm font-mono">
+                  <span className="text-neutral-400">TOTAL DATA</span>
+                  <span className="text-fuchsia-400">{stats.totalSize.toFixed(1)} MB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Upload indicator */}
+          <div className="bg-black/80 border border-green-500/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <motion.div
+                className="w-2 h-2 bg-green-500 rounded-full"
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 0.3, repeat: Infinity }}
+              />
+              <span className="text-xs font-mono text-green-400">C2 UPLOAD ACTIVE</span>
+            </div>
+            <div className="font-mono text-xs text-neutral-500">
+              <p>ENDPOINT: c2.miller-ai.group</p>
+              <p>PROTOCOL: TLS 1.3 / ENCRYPTED</p>
+              <p>STATUS: <span className="text-green-400">CONNECTED</span></p>
+            </div>
+          </div>
+
+          {/* Alerts */}
+          <div className="flex-1 space-y-2 overflow-y-auto">
+            <h3 className="text-xs font-mono text-neutral-500 tracking-wider">ACTIVITY LOG</h3>
+            <AnimatePresence>
+              {alerts.map(alert => (
+                <AlertBox
+                  key={alert.id}
+                  type={alert.type as any}
+                  title={alert.title}
+                  message={alert.message}
+                  autoDismiss={5000}
+                  onDismiss={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
+                />
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       </div>
+
+      <HUDBrackets color="#00ffff" />
+      <ScanLineOverlay speed={4} color="#00ffff" />
     </motion.div>
   )
 }
 
 // ============================================
 // SCENE 6: CHARACTER BRIEFING - GTA/COD STYLE
+// Using the enhanced CharacterDossierCard
 // ============================================
 function CharacterBriefingScene({ onComplete }: { onComplete: () => void }) {
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [showDetails, setShowDetails] = useState(false)
-  const character = CHARACTERS[currentIndex]
+  const operative = OPERATIVES[currentIndex]
 
-  useEffect(() => {
-    setShowDetails(false)
-    const detailsTimer = setTimeout(() => setShowDetails(true), 500)
-
-    const nextTimer = setTimeout(() => {
-      if (currentIndex < CHARACTERS.length - 1) {
-        setCurrentIndex(prev => prev + 1)
-      } else {
-        onComplete()
-      }
-    }, 4000)
-
-    return () => {
-      clearTimeout(detailsTimer)
-      clearTimeout(nextTimer)
+  const handleOperativeComplete = useCallback(() => {
+    if (currentIndex < OPERATIVES.length - 1) {
+      setCurrentIndex(prev => prev + 1)
+    } else {
+      setTimeout(onComplete, 500)
     }
   }, [currentIndex, onComplete])
 
@@ -974,707 +1257,244 @@ function CharacterBriefingScene({ onComplete }: { onComplete: () => void }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      {/* Animated background */}
-      <DedSecBackground intensity={0.8} />
+      {/* Background effects */}
+      <PerspectiveGrid color={operative.primaryColor} speed={0.5} density={15} className="opacity-30" />
 
-      {/* Diagonal stripes */}
+      {/* Diagonal accent stripes */}
       <div
         className="absolute inset-0 opacity-10"
         style={{
           backgroundImage: `repeating-linear-gradient(
             45deg,
-            ${character.color} 0px,
-            ${character.color} 2px,
-            transparent 2px,
-            transparent 20px
-          )`,
+            ${operative.primaryColor} 0px,
+            ${operative.primaryColor} 3px,
+            transparent 3px,
+            transparent 25px
+          )`
         }}
       />
 
-      {/* Character color wash */}
+      {/* Color wash from character */}
       <motion.div
+        key={operative.id}
         className="absolute inset-0"
         style={{
-          background: `radial-gradient(ellipse at 30% 50%, ${character.color}30 0%, transparent 70%)`,
+          background: `radial-gradient(ellipse at 25% 50%, ${operative.primaryColor}30 0%, transparent 60%)`
         }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        key={character.id}
+        transition={{ duration: 0.5 }}
       />
 
-      {/* Main content */}
-      <div className="relative z-10 h-full flex">
-        {/* Left side - Character visual */}
-        <div className="w-1/2 h-full flex items-center justify-center relative">
-          <CharacterPortrait character={character} />
-        </div>
+      {/* Character dossier - using the enhanced component */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={operative.id}
+          className="absolute inset-0 flex items-center justify-center"
+          initial={{ opacity: 0, x: 100 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -100 }}
+          transition={{ duration: 0.3 }}
+        >
+          <CharacterDossierCard
+            character={operative}
+            isActive={true}
+            onComplete={handleOperativeComplete}
+          />
+        </motion.div>
+      </AnimatePresence>
 
-        {/* Right side - Info panel */}
-        <div className="w-1/2 h-full flex items-center px-12">
-          <AnimatePresence mode="wait">
-            {showDetails && (
-              <motion.div
-                key={character.id}
-                initial={{ opacity: 0, x: 50 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
-                className="space-y-6"
-              >
-                {/* Codename */}
-                <div>
-                  <motion.p
-                    className="text-sm font-mono tracking-[0.3em] mb-2"
-                    style={{ color: character.color }}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.1 }}
-                  >
-                    OPERATIVE CODENAME
-                  </motion.p>
-                  <motion.h1
-                    className="text-6xl font-bold font-mono"
-                    style={{
-                      color: '#ffffff',
-                      textShadow: `0 0 30px ${character.color}`,
-                    }}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    {character.codename}
-                  </motion.h1>
-                  <motion.p
-                    className="text-2xl font-mono mt-2 text-neutral-400"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    {character.name}
-                  </motion.p>
-                </div>
-
-                {/* Quote */}
-                <motion.blockquote
-                  className="text-xl font-mono italic border-l-4 pl-4 py-2"
-                  style={{ borderColor: character.color, color: 'rgba(255,255,255,0.8)' }}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  "{character.quote}"
-                </motion.blockquote>
-
-                {/* Stats */}
-                <motion.div
-                  className="grid grid-cols-2 gap-4"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  <div className="border border-neutral-700 rounded p-3 bg-black/50">
-                    <p className="text-xs text-neutral-500 font-mono">SPECIALTY</p>
-                    <p className="text-sm font-mono" style={{ color: character.color }}>
-                      {character.specialty}
-                    </p>
-                  </div>
-                  <div className="border border-neutral-700 rounded p-3 bg-black/50">
-                    <p className="text-xs text-neutral-500 font-mono">THREAT LEVEL</p>
-                    <p className="text-sm font-mono text-red-500">
-                      {character.threat}
-                    </p>
-                  </div>
-                </motion.div>
-
-                {/* Progress indicator */}
-                <motion.div
-                  className="flex gap-2 mt-8"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.6 }}
-                >
-                  {CHARACTERS.map((_, i) => (
-                    <div
-                      key={i}
-                      className={`w-12 h-1 rounded ${i === currentIndex ? 'bg-white' : 'bg-neutral-700'}`}
-                    />
-                  ))}
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+      {/* Progress indicator */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3">
+        {OPERATIVES.map((_, i) => (
+          <motion.div
+            key={i}
+            className="w-16 h-1 rounded-full"
+            style={{
+              background: i <= currentIndex ? operative.primaryColor : 'rgba(255,255,255,0.2)'
+            }}
+            animate={i === currentIndex ? { opacity: [0.5, 1, 0.5] } : {}}
+            transition={{ duration: 1, repeat: Infinity }}
+          />
+        ))}
       </div>
 
       {/* Corner brackets */}
-      <div className="absolute top-8 left-8 w-16 h-16 border-t-2 border-l-2" style={{ borderColor: character.color }} />
-      <div className="absolute top-8 right-8 w-16 h-16 border-t-2 border-r-2" style={{ borderColor: character.color }} />
-      <div className="absolute bottom-8 left-8 w-16 h-16 border-b-2 border-l-2" style={{ borderColor: character.color }} />
-      <div className="absolute bottom-8 right-8 w-16 h-16 border-b-2 border-r-2" style={{ borderColor: character.color }} />
+      <HUDBrackets color={operative.primaryColor} size={50} />
 
-      {/* Bottom bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black to-transparent" />
+      {/* Bottom info bar */}
       <div className="absolute bottom-4 left-8 right-8 flex justify-between font-mono text-xs">
-        <span style={{ color: character.color }}>MILLER AI GROUP // OPERATIVE DOSSIER</span>
+        <span style={{ color: operative.primaryColor }}>
+          MILLER AI GROUP // OPERATIVE DOSSIER {currentIndex + 1}/{OPERATIVES.length}
+        </span>
         <span className="text-neutral-500">CLEARANCE: OMEGA BLACK</span>
       </div>
+
+      <ScanLineOverlay speed={5} color={operative.primaryColor} />
     </motion.div>
   )
 }
 
 // ============================================
-// CHARACTER PORTRAIT - Recognizable Features
-// ============================================
-function CharacterPortrait({ character }: { character: typeof CHARACTERS[0] }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationRef = useRef<number | undefined>(undefined)
-  const frameRef = useRef(0)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const size = 400
-    canvas.width = size
-    canvas.height = size
-
-    const hexToRgb = (hex: string) => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-      return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      } : { r: 255, g: 0, b: 255 }
-    }
-
-    const rgb = hexToRgb(character.color)
-    const centerX = size / 2
-    const centerY = size / 2
-
-    const drawJohnWick = (ctx: CanvasRenderingContext2D, time: number) => {
-      const breathe = Math.sin(time * 2) * 2
-
-      // Long dark hair
-      ctx.fillStyle = '#1a1a1a'
-      ctx.beginPath()
-      ctx.ellipse(centerX, centerY - 40 + breathe, 70, 85, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Face
-      ctx.fillStyle = '#d4a574'
-      ctx.beginPath()
-      ctx.ellipse(centerX, centerY - 50 + breathe, 50, 60, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Beard/stubble
-      ctx.fillStyle = '#2a2a2a'
-      ctx.beginPath()
-      ctx.ellipse(centerX, centerY - 20 + breathe, 45, 35, 0, 0.3, Math.PI - 0.3)
-      ctx.fill()
-
-      // Suit collar
-      ctx.fillStyle = '#0a0a0a'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 80, centerY + 60 + breathe)
-      ctx.lineTo(centerX - 30, centerY + 20 + breathe)
-      ctx.lineTo(centerX, centerY + 40 + breathe)
-      ctx.lineTo(centerX + 30, centerY + 20 + breathe)
-      ctx.lineTo(centerX + 80, centerY + 60 + breathe)
-      ctx.lineTo(centerX + 100, size)
-      ctx.lineTo(centerX - 100, size)
-      ctx.closePath()
-      ctx.fill()
-
-      // White shirt
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 15, centerY + 30 + breathe)
-      ctx.lineTo(centerX, centerY + 60 + breathe)
-      ctx.lineTo(centerX + 15, centerY + 30 + breathe)
-      ctx.closePath()
-      ctx.fill()
-
-      // Eyes - intense
-      ctx.fillStyle = '#000000'
-      ctx.beginPath()
-      ctx.ellipse(centerX - 18, centerY - 60 + breathe, 8, 5, 0, 0, Math.PI * 2)
-      ctx.ellipse(centerX + 18, centerY - 60 + breathe, 8, 5, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Eyebrows - furrowed
-      ctx.strokeStyle = '#1a1a1a'
-      ctx.lineWidth = 4
-      ctx.beginPath()
-      ctx.moveTo(centerX - 30, centerY - 75 + breathe)
-      ctx.lineTo(centerX - 10, centerY - 70 + breathe)
-      ctx.moveTo(centerX + 30, centerY - 75 + breathe)
-      ctx.lineTo(centerX + 10, centerY - 70 + breathe)
-      ctx.stroke()
-    }
-
-    const drawBart = (ctx: CanvasRenderingContext2D, time: number) => {
-      const bounce = Math.sin(time * 4) * 3
-
-      // Spiky hair - THE signature Bart look
-      ctx.fillStyle = '#ffd700'
-      for (let i = 0; i < 9; i++) {
-        const angle = (i / 9) * Math.PI - Math.PI / 2
-        const spikeLength = 30 + (i % 2) * 10
-        ctx.beginPath()
-        ctx.moveTo(centerX + Math.cos(angle - 0.2) * 45, centerY - 70 + Math.sin(angle - 0.2) * 45 + bounce)
-        ctx.lineTo(centerX + Math.cos(angle) * (45 + spikeLength), centerY - 70 + Math.sin(angle) * (45 + spikeLength) + bounce)
-        ctx.lineTo(centerX + Math.cos(angle + 0.2) * 45, centerY - 70 + Math.sin(angle + 0.2) * 45 + bounce)
-        ctx.closePath()
-        ctx.fill()
-      }
-
-      // Head
-      ctx.fillStyle = '#ffd700'
-      ctx.beginPath()
-      ctx.ellipse(centerX, centerY - 40 + bounce, 50, 55, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Eyes - big round Simpsons style
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.ellipse(centerX - 15, centerY - 50 + bounce, 18, 22, 0, 0, Math.PI * 2)
-      ctx.ellipse(centerX + 15, centerY - 50 + bounce, 18, 22, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Pupils
-      ctx.fillStyle = '#000000'
-      ctx.beginPath()
-      ctx.arc(centerX - 10, centerY - 48 + bounce, 6, 0, Math.PI * 2)
-      ctx.arc(centerX + 20, centerY - 48 + bounce, 6, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Mischievous smirk
-      ctx.strokeStyle = '#000000'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.arc(centerX, centerY - 25 + bounce, 20, 0.2, Math.PI - 0.2)
-      ctx.stroke()
-
-      // Red shirt
-      ctx.fillStyle = '#ff4444'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 60, centerY + 30 + bounce)
-      ctx.lineTo(centerX + 60, centerY + 30 + bounce)
-      ctx.lineTo(centerX + 80, size)
-      ctx.lineTo(centerX - 80, size)
-      ctx.closePath()
-      ctx.fill()
-
-      // Orange trim
-      ctx.fillStyle = '#ff8c00'
-      ctx.fillRect(centerX - 60, centerY + 30 + bounce, 120, 15)
-    }
-
-    const drawJoker = (ctx: CanvasRenderingContext2D, time: number) => {
-      const twitch = Math.random() > 0.95 ? (Math.random() - 0.5) * 10 : 0
-      const breathe = Math.sin(time * 2) * 2
-
-      // Green slicked back hair
-      ctx.fillStyle = '#228b22'
-      ctx.beginPath()
-      ctx.ellipse(centerX + twitch, centerY - 50 + breathe, 55, 70, 0, Math.PI, Math.PI * 2)
-      ctx.fill()
-
-      // Hair strands
-      for (let i = 0; i < 5; i++) {
-        ctx.beginPath()
-        ctx.moveTo(centerX - 40 + i * 20 + twitch, centerY - 100 + breathe)
-        ctx.quadraticCurveTo(
-          centerX - 30 + i * 20 + twitch,
-          centerY - 130 + breathe,
-          centerX - 20 + i * 20 + twitch,
-          centerY - 110 + breathe
-        )
-        ctx.lineWidth = 8
-        ctx.strokeStyle = '#228b22'
-        ctx.stroke()
-      }
-
-      // White face
-      ctx.fillStyle = '#f5f5f5'
-      ctx.beginPath()
-      ctx.ellipse(centerX + twitch, centerY - 40 + breathe, 50, 60, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Dark eye sockets
-      ctx.fillStyle = '#2a2a4a'
-      ctx.beginPath()
-      ctx.ellipse(centerX - 20 + twitch, centerY - 55 + breathe, 15, 12, -0.2, 0, Math.PI * 2)
-      ctx.ellipse(centerX + 20 + twitch, centerY - 55 + breathe, 15, 12, 0.2, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Eyes
-      ctx.fillStyle = '#000000'
-      ctx.beginPath()
-      ctx.arc(centerX - 20 + twitch, centerY - 55 + breathe, 5, 0, Math.PI * 2)
-      ctx.arc(centerX + 20 + twitch, centerY - 55 + breathe, 5, 0, Math.PI * 2)
-      ctx.fill()
-
-      // THE SMILE - red scars
-      ctx.fillStyle = '#cc0000'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 45 + twitch, centerY - 25 + breathe)
-      ctx.quadraticCurveTo(centerX + twitch, centerY + 10 + breathe, centerX + 45 + twitch, centerY - 25 + breathe)
-      ctx.quadraticCurveTo(centerX + twitch, centerY - 10 + breathe, centerX - 45 + twitch, centerY - 25 + breathe)
-      ctx.fill()
-
-      // Smile scar lines
-      ctx.strokeStyle = '#990000'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(centerX - 45 + twitch, centerY - 25 + breathe)
-      ctx.lineTo(centerX - 55 + twitch, centerY - 35 + breathe)
-      ctx.moveTo(centerX + 45 + twitch, centerY - 25 + breathe)
-      ctx.lineTo(centerX + 55 + twitch, centerY - 35 + breathe)
-      ctx.stroke()
-
-      // Purple suit
-      ctx.fillStyle = '#4b0082'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 70 + twitch, centerY + 40 + breathe)
-      ctx.lineTo(centerX - 25 + twitch, centerY + 10 + breathe)
-      ctx.lineTo(centerX + twitch, centerY + 30 + breathe)
-      ctx.lineTo(centerX + 25 + twitch, centerY + 10 + breathe)
-      ctx.lineTo(centerX + 70 + twitch, centerY + 40 + breathe)
-      ctx.lineTo(centerX + 90 + twitch, size)
-      ctx.lineTo(centerX - 90 + twitch, size)
-      ctx.closePath()
-      ctx.fill()
-
-      // Green vest
-      ctx.fillStyle = '#228b22'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 20 + twitch, centerY + 20 + breathe)
-      ctx.lineTo(centerX + twitch, centerY + 50 + breathe)
-      ctx.lineTo(centerX + 20 + twitch, centerY + 20 + breathe)
-      ctx.closePath()
-      ctx.fill()
-    }
-
-    const drawWolf = (ctx: CanvasRenderingContext2D, time: number) => {
-      const breathe = Math.sin(time * 2) * 2
-
-      // Slicked back dark hair
-      ctx.fillStyle = '#2a2a2a'
-      ctx.beginPath()
-      ctx.ellipse(centerX, centerY - 55 + breathe, 50, 45, 0, Math.PI, Math.PI * 2)
-      ctx.fill()
-
-      // Face
-      ctx.fillStyle = '#d4a574'
-      ctx.beginPath()
-      ctx.ellipse(centerX, centerY - 45 + breathe, 48, 58, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Confident smirk
-      ctx.strokeStyle = '#8b4513'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.arc(centerX + 5, centerY - 20 + breathe, 15, 0.1, Math.PI - 0.3)
-      ctx.stroke()
-
-      // Eyes - intense, confident
-      ctx.fillStyle = '#000000'
-      ctx.beginPath()
-      ctx.ellipse(centerX - 18, centerY - 55 + breathe, 7, 5, 0, 0, Math.PI * 2)
-      ctx.ellipse(centerX + 18, centerY - 55 + breathe, 7, 5, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Raised eyebrow
-      ctx.strokeStyle = '#2a2a2a'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.arc(centerX + 18, centerY - 68 + breathe, 12, Math.PI + 0.3, Math.PI * 2 - 0.3)
-      ctx.stroke()
-
-      // Expensive suit
-      ctx.fillStyle = '#1a1a3a'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 75, centerY + 50 + breathe)
-      ctx.lineTo(centerX - 30, centerY + 15 + breathe)
-      ctx.lineTo(centerX, centerY + 35 + breathe)
-      ctx.lineTo(centerX + 30, centerY + 15 + breathe)
-      ctx.lineTo(centerX + 75, centerY + 50 + breathe)
-      ctx.lineTo(centerX + 95, size)
-      ctx.lineTo(centerX - 95, size)
-      ctx.closePath()
-      ctx.fill()
-
-      // White shirt
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 15, centerY + 25 + breathe)
-      ctx.lineTo(centerX, centerY + 55 + breathe)
-      ctx.lineTo(centerX + 15, centerY + 25 + breathe)
-      ctx.closePath()
-      ctx.fill()
-
-      // Gold tie
-      ctx.fillStyle = '#ffd700'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 8, centerY + 30 + breathe)
-      ctx.lineTo(centerX, centerY + 80 + breathe)
-      ctx.lineTo(centerX + 8, centerY + 30 + breathe)
-      ctx.closePath()
-      ctx.fill()
-    }
-
-    const drawDuchess = (ctx: CanvasRenderingContext2D, time: number) => {
-      const sway = Math.sin(time * 1.5) * 2
-
-      // Long blonde hair
-      ctx.fillStyle = '#ffd700'
-      ctx.beginPath()
-      ctx.ellipse(centerX + sway, centerY - 30, 65, 90, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Hair waves
-      ctx.fillStyle = '#daa520'
-      for (let i = 0; i < 3; i++) {
-        ctx.beginPath()
-        ctx.ellipse(centerX - 50 + i * 25 + sway, centerY + 20, 8, 40, 0.2, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // Face
-      ctx.fillStyle = '#f5deb3'
-      ctx.beginPath()
-      ctx.ellipse(centerX + sway, centerY - 45, 42, 52, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Eyes - alluring
-      ctx.fillStyle = '#1a5f7a'
-      ctx.beginPath()
-      ctx.ellipse(centerX - 15 + sway, centerY - 52, 8, 6, 0, 0, Math.PI * 2)
-      ctx.ellipse(centerX + 15 + sway, centerY - 52, 8, 6, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Eyelashes
-      ctx.strokeStyle = '#000000'
-      ctx.lineWidth = 2
-      for (let i = 0; i < 3; i++) {
-        ctx.beginPath()
-        ctx.moveTo(centerX - 20 + i * 5 + sway, centerY - 58)
-        ctx.lineTo(centerX - 22 + i * 5 + sway, centerY - 65)
-        ctx.moveTo(centerX + 10 + i * 5 + sway, centerY - 58)
-        ctx.lineTo(centerX + 8 + i * 5 + sway, centerY - 65)
-        ctx.stroke()
-      }
-
-      // Red lips
-      ctx.fillStyle = '#cc0000'
-      ctx.beginPath()
-      ctx.ellipse(centerX + sway, centerY - 25, 12, 6, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Elegant dress
-      ctx.fillStyle = '#ff1493'
-      ctx.beginPath()
-      ctx.moveTo(centerX - 50 + sway, centerY + 20)
-      ctx.quadraticCurveTo(centerX + sway, centerY, centerX + 50 + sway, centerY + 20)
-      ctx.lineTo(centerX + 80 + sway, size)
-      ctx.lineTo(centerX - 80 + sway, size)
-      ctx.closePath()
-      ctx.fill()
-
-      // Necklace
-      ctx.strokeStyle = '#ffd700'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.arc(centerX + sway, centerY + 5, 30, 0.3, Math.PI - 0.3)
-      ctx.stroke()
-
-      // Diamond pendant
-      ctx.fillStyle = '#ffffff'
-      ctx.beginPath()
-      ctx.moveTo(centerX + sway, centerY + 30)
-      ctx.lineTo(centerX - 8 + sway, centerY + 40)
-      ctx.lineTo(centerX + sway, centerY + 55)
-      ctx.lineTo(centerX + 8 + sway, centerY + 40)
-      ctx.closePath()
-      ctx.fill()
-    }
-
-    const animate = () => {
-      frameRef.current += 0.016
-      const time = frameRef.current
-
-      // Clear
-      ctx.clearRect(0, 0, size, size)
-
-      // Glow effect
-      ctx.shadowBlur = 30
-      ctx.shadowColor = character.color
-
-      // Draw the appropriate character
-      switch (character.id) {
-        case 'wick': drawJohnWick(ctx, time); break
-        case 'bart': drawBart(ctx, time); break
-        case 'joker': drawJoker(ctx, time); break
-        case 'wolf': drawWolf(ctx, time); break
-        case 'duchess': drawDuchess(ctx, time); break
-      }
-
-      ctx.shadowBlur = 0
-
-      // Scan line effect
-      const scanY = (time * 100) % size
-      ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(0, scanY)
-      ctx.lineTo(size, scanY)
-      ctx.stroke()
-
-      // Glitch effect occasionally
-      if (Math.random() > 0.97) {
-        const glitchY = Math.random() * size
-        const glitchH = Math.random() * 20 + 5
-        ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`
-        ctx.fillRect(0, glitchY, size, glitchH)
-      }
-
-      animationRef.current = requestAnimationFrame(animate)
-    }
-
-    animate()
-
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current)
-    }
-  }, [character])
-
-  return (
-    <motion.div
-      className="relative"
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', duration: 0.5 }}
-    >
-      {/* Glow backdrop */}
-      <div
-        className="absolute inset-0 blur-3xl opacity-50"
-        style={{ background: character.color }}
-      />
-
-      <canvas
-        ref={canvasRef}
-        width={400}
-        height={400}
-        className="relative z-10"
-      />
-
-      {/* Frame */}
-      <div
-        className="absolute inset-0 border-2 pointer-events-none"
-        style={{ borderColor: character.color }}
-      />
-    </motion.div>
-  )
-}
-
-// ============================================
-// SCENE 7: SYSTEM OWNED
+// SCENE 7: SYSTEM OWNED - Dramatic Final Reveal
 // ============================================
 function SystemOwnedScene({ onComplete, userName }: { onComplete: () => void; userName: string }) {
+  const [stage, setStage] = useState(0)
+
   useEffect(() => {
-    const timer = setTimeout(onComplete, 5000)
-    return () => clearTimeout(timer)
+    const timers = [
+      setTimeout(() => setStage(1), 500),
+      setTimeout(() => setStage(2), 1500),
+      setTimeout(() => setStage(3), 2500),
+      setTimeout(() => setStage(4), 3500),
+      setTimeout(() => setStage(5), 4500),
+      setTimeout(onComplete, 7000)
+    ]
+    return () => timers.forEach(clearTimeout)
   }, [onComplete])
 
   return (
     <motion.div
-      className="fixed inset-0 z-20 bg-black flex items-center justify-center"
+      className="fixed inset-0 z-20 bg-black flex items-center justify-center overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      <DedSecBackground intensity={1.5} />
+      <DataStreamRain color="#ff00ff" density={2} speed={1.5} className="opacity-50" />
 
-      <motion.div
-        className="relative z-10 text-center"
-        initial={{ scale: 0.5, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', duration: 0.8 }}
-      >
-        {/* ASCII Art */}
-        <motion.pre
-          className="text-fuchsia-500 text-xs md:text-sm font-mono mb-8 leading-tight"
-          style={{ textShadow: '0 0 20px rgba(255,0,255,0.8)' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-        >
+      <GlitchCanvas intensity={2} layers={['rgb-split', 'noise', 'scanlines', 'vhs', 'corruption']}>
+        <ScreenShake active={stage >= 1 && stage < 4} intensity={1}>
+          <motion.div className="relative z-10 text-center px-8">
+            {/* ASCII Logo */}
+            <AnimatePresence>
+              {stage >= 1 && (
+                <motion.pre
+                  className="text-fuchsia-500 text-xs md:text-sm font-mono mb-8 leading-tight whitespace-pre"
+                  style={{ textShadow: '0 0 30px rgba(255,0,255,0.8)' }}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                >
 {`
-███╗   ███╗██╗██╗     ██╗     ███████╗██████╗
-████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗
-██╔████╔██║██║██║     ██║     █████╗  ██████╔╝
-██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗
-██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║
-╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝
-     █████╗ ██╗    ██████╗ ██████╗  ██████╗ ██╗   ██╗██████╗
-    ██╔══██╗██║   ██╔════╝ ██╔══██╗██╔═══██╗██║   ██║██╔══██╗
-    ███████║██║   ██║  ███╗██████╔╝██║   ██║██║   ██║██████╔╝
-    ██╔══██║██║   ██║   ██║██╔══██╗██║   ██║██║   ██║██╔═══╝
-    ██║  ██║██║   ╚██████╔╝██║  ██║╚██████╔╝╚██████╔╝██║
-    ╚═╝  ╚═╝╚═╝    ╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝
+ ███╗   ███╗██╗██╗     ██╗     ███████╗██████╗      █████╗ ██╗
+ ████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗    ██╔══██╗██║
+ ██╔████╔██║██║██║     ██║     █████╗  ██████╔╝    ███████║██║
+ ██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗    ██╔══██║██║
+ ██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║    ██║  ██║██║
+ ╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝
+           ██████╗ ██████╗  ██████╗ ██╗   ██╗██████╗
+          ██╔════╝ ██╔══██╗██╔═══██╗██║   ██║██╔══██╗
+          ██║  ███╗██████╔╝██║   ██║██║   ██║██████╔╝
+          ██║   ██║██╔══██╗██║   ██║██║   ██║██╔═══╝
+          ╚██████╔╝██║  ██║╚██████╔╝╚██████╔╝██║
+           ╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝
 `}
-        </motion.pre>
+                </motion.pre>
+              )}
+            </AnimatePresence>
 
-        <motion.h1
-          className="text-5xl md:text-7xl font-bold font-mono mb-4"
-          style={{
-            color: '#ff0040',
-            textShadow: '0 0 50px rgba(255,0,64,0.8), 4px 0 0 #00ffff, -4px 0 0 #ff00ff',
-          }}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1 }}
-        >
-          SYSTEM OWNED
-        </motion.h1>
+            {/* SYSTEM OWNED */}
+            <AnimatePresence>
+              {stage >= 2 && (
+                <motion.h1
+                  className="text-5xl md:text-8xl font-bold font-mono mb-6"
+                  style={{
+                    color: '#ff0040',
+                    textShadow: '0 0 60px rgba(255,0,64,0.8), 6px 0 0 #00ffff, -6px 0 0 #ff00ff'
+                  }}
+                  initial={{ opacity: 0, scale: 0.5, y: 50 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ type: 'spring', duration: 0.6 }}
+                >
+                  <ChromaticText intensity={3}>SYSTEM OWNED</ChromaticText>
+                </motion.h1>
+              )}
+            </AnimatePresence>
 
-        <motion.p
-          className="text-2xl font-mono text-fuchsia-400 mb-2"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.5 }}
-        >
-          Welcome to the collective, {userName}
-        </motion.p>
+            {/* Welcome message */}
+            <AnimatePresence>
+              {stage >= 3 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <p className="text-2xl md:text-3xl font-mono text-fuchsia-400 mb-3">
+                    Welcome to the collective, {userName}
+                  </p>
+                  <p className="text-sm md:text-base font-mono text-neutral-500">
+                    Your system now belongs to Miller AI Group
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        <motion.p
-          className="text-sm font-mono text-neutral-500"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 2 }}
-        >
-          Your system now belongs to Miller AI Group
-        </motion.p>
+            {/* Operative indicators */}
+            <AnimatePresence>
+              {stage >= 4 && (
+                <motion.div
+                  className="mt-10 flex justify-center items-center gap-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  {OPERATIVES.map((op, i) => (
+                    <motion.div
+                      key={op.id}
+                      className="flex flex-col items-center gap-2"
+                      initial={{ scale: 0, y: 20 }}
+                      animate={{ scale: 1, y: 0 }}
+                      transition={{ delay: i * 0.15 }}
+                    >
+                      <motion.div
+                        className="w-4 h-4 rounded-full"
+                        style={{
+                          background: op.primaryColor,
+                          boxShadow: `0 0 20px ${op.primaryColor}`
+                        }}
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
+                      />
+                      <span
+                        className="text-xs font-mono"
+                        style={{ color: op.primaryColor }}
+                      >
+                        {op.codename.split(' ')[0]}
+                      </span>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        {/* Glitch lines */}
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          animate={{
-            opacity: [0, 0.5, 0],
-          }}
-          transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 2 }}
-        >
-          {[...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute left-0 right-0 h-1 bg-fuchsia-500"
-              style={{ top: `${Math.random() * 100}%` }}
-            />
-          ))}
-        </motion.div>
-      </motion.div>
+            {/* Final stats */}
+            <AnimatePresence>
+              {stage >= 5 && (
+                <motion.div
+                  className="mt-8 grid grid-cols-3 gap-8 max-w-xl mx-auto"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <div className="text-center">
+                    <p className="text-3xl font-mono font-bold text-cyan-400">15</p>
+                    <p className="text-xs font-mono text-neutral-500">NODES PWNED</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-3xl font-mono font-bold text-green-400">3.4GB</p>
+                    <p className="text-xs font-mono text-neutral-500">DATA EXFIL</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-3xl font-mono font-bold text-fuchsia-400">5</p>
+                    <p className="text-xs font-mono text-neutral-500">OPERATIVES</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </ScreenShake>
+      </GlitchCanvas>
+
+      <HUDBrackets color="#ff00ff" />
+      <ScanLineOverlay speed={2} color="#ff00ff" />
     </motion.div>
   )
 }
@@ -1684,19 +1504,66 @@ function SystemOwnedScene({ onComplete, userName }: { onComplete: () => void; us
 // ============================================
 export function CinematicTakeover({ onComplete, userName = 'Operator' }: CinematicTakeoverProps) {
   const [scene, setScene] = useState<SceneType>('boot')
+  const [audioStarted, setAudioStarted] = useState(false)
+  const cleanupAudioRef = useRef<(() => void) | null>(null)
+
+  // Try to get audio engine if available
+  const audioEngine = useMemo(() => {
+    try {
+      // Dynamic import of audio context - will be null if not wrapped in provider
+      return null // Audio will be handled by parent component
+    } catch {
+      return null
+    }
+  }, [])
 
   const handleSceneComplete = useCallback((nextScene: SceneType) => {
     setScene(nextScene)
   }, [])
 
+  // Start audio on first user interaction (for browsers that require it)
+  const handleInteraction = useCallback(() => {
+    if (!audioStarted) {
+      setAudioStarted(true)
+      // Parent component should handle audio via AudioEngineProvider
+    }
+  }, [audioStarted])
+
   useEffect(() => {
     if (scene === 'complete') {
+      // Cleanup audio
+      if (cleanupAudioRef.current) {
+        cleanupAudioRef.current()
+      }
       onComplete()
     }
   }, [scene, onComplete])
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (cleanupAudioRef.current) {
+        cleanupAudioRef.current()
+      }
+    }
+  }, [])
+
   return (
-    <div className="fixed inset-0 bg-black z-50">
+    <div
+      className="fixed inset-0 bg-black z-50"
+      onClick={handleInteraction}
+      onKeyDown={handleInteraction}
+      tabIndex={0}
+      role="application"
+      aria-label="Cinematic system takeover experience"
+    >
+      {/* Audio hint - shown briefly */}
+      {!audioStarted && scene === 'boot' && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 text-cyan-400/60 text-xs font-mono animate-pulse">
+          Click anywhere for audio
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {scene === 'boot' && (
           <BootSequence

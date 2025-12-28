@@ -49,6 +49,7 @@ interface AudioEngineContextType {
   initialize: () => Promise<void>
   playEffect: (name: AudioEffectName) => void
   playTakeoverSequence: () => void
+  playCinematicSoundtrack: (durationSeconds?: number) => () => void
   startAmbient: (name: AmbientTrackName) => void
   stopAmbient: (name: AmbientTrackName) => void
   setMasterVolume: (volume: number) => void
@@ -129,6 +130,257 @@ export function AudioEngineProvider({ children }: AudioEngineProviderProps) {
 
     oscillator.start(ctx.currentTime)
     oscillator.stop(ctx.currentTime + config.duration)
+  }, [isMuted, masterVolume])
+
+  // Full cinematic takeover soundtrack - dramatic electronic music
+  const playCinematicSoundtrack = useCallback((durationSeconds: number = 45) => {
+    if (!audioContextRef.current || isMuted) return () => {}
+
+    const ctx = audioContextRef.current
+    const now = ctx.currentTime
+    const bpm = 128 // Beats per minute
+    const beatDuration = 60 / bpm
+    const nodesForCleanup: (OscillatorNode | AudioBufferSourceNode)[] = []
+
+    // Create master compressor for professional sound
+    const compressor = ctx.createDynamicsCompressor()
+    compressor.threshold.setValueAtTime(-24, now)
+    compressor.knee.setValueAtTime(30, now)
+    compressor.ratio.setValueAtTime(12, now)
+    compressor.attack.setValueAtTime(0.003, now)
+    compressor.release.setValueAtTime(0.25, now)
+    compressor.connect(ctx.destination)
+
+    // ===== DEEP SUB BASS =====
+    const createSubBass = () => {
+      const sub = ctx.createOscillator()
+      const subGain = ctx.createGain()
+      const subFilter = ctx.createBiquadFilter()
+
+      sub.type = 'sine'
+      sub.frequency.setValueAtTime(35, now)
+
+      subFilter.type = 'lowpass'
+      subFilter.frequency.setValueAtTime(100, now)
+
+      subGain.gain.setValueAtTime(0, now)
+      subGain.gain.linearRampToValueAtTime(0.25 * masterVolume, now + 2)
+
+      // Pulsing sub bass
+      const pulseInterval = beatDuration * 4
+      for (let t = 0; t < durationSeconds; t += pulseInterval) {
+        subGain.gain.setValueAtTime(0.3 * masterVolume, now + t)
+        subGain.gain.linearRampToValueAtTime(0.15 * masterVolume, now + t + pulseInterval * 0.8)
+      }
+
+      sub.connect(subFilter)
+      subFilter.connect(subGain)
+      subGain.connect(compressor)
+      sub.start(now)
+      sub.stop(now + durationSeconds)
+      nodesForCleanup.push(sub)
+    }
+
+    // ===== KICK DRUM PATTERN =====
+    const createKicks = () => {
+      for (let beat = 0; beat < durationSeconds / beatDuration; beat++) {
+        const time = now + beat * beatDuration
+
+        // Only kick on certain beats for variation
+        if (beat % 4 === 0 || beat % 4 === 2.5) {
+          const kick = ctx.createOscillator()
+          const kickGain = ctx.createGain()
+
+          kick.type = 'sine'
+          kick.frequency.setValueAtTime(150, time)
+          kick.frequency.exponentialRampToValueAtTime(40, time + 0.1)
+
+          kickGain.gain.setValueAtTime(0.4 * masterVolume, time)
+          kickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.2)
+
+          kick.connect(kickGain)
+          kickGain.connect(compressor)
+          kick.start(time)
+          kick.stop(time + 0.2)
+          nodesForCleanup.push(kick)
+        }
+      }
+    }
+
+    // ===== HI-HAT PATTERN =====
+    const createHiHats = () => {
+      for (let beat = 0; beat < durationSeconds / beatDuration * 2; beat++) {
+        const time = now + beat * (beatDuration / 2)
+
+        // Create noise for hi-hat
+        const bufferSize = ctx.sampleRate * 0.05
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+        const output = noiseBuffer.getChannelData(0)
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1
+        }
+
+        const noise = ctx.createBufferSource()
+        noise.buffer = noiseBuffer
+
+        const hihatFilter = ctx.createBiquadFilter()
+        hihatFilter.type = 'highpass'
+        hihatFilter.frequency.setValueAtTime(8000, time)
+
+        const hihatGain = ctx.createGain()
+        hihatGain.gain.setValueAtTime(beat % 2 === 1 ? 0.08 * masterVolume : 0.12 * masterVolume, time)
+        hihatGain.gain.exponentialRampToValueAtTime(0.001, time + 0.05)
+
+        noise.connect(hihatFilter)
+        hihatFilter.connect(hihatGain)
+        hihatGain.connect(compressor)
+        noise.start(time)
+        noise.stop(time + 0.05)
+        nodesForCleanup.push(noise)
+      }
+    }
+
+    // ===== SYNTH PAD (Atmospheric) =====
+    const createSynthPad = () => {
+      const padFreqs = [65.41, 82.41, 98.00, 130.81] // C2, E2, G2, C3 - Minor chord
+
+      padFreqs.forEach((freq, i) => {
+        const pad = ctx.createOscillator()
+        const padGain = ctx.createGain()
+        const padFilter = ctx.createBiquadFilter()
+
+        pad.type = 'sawtooth'
+        pad.frequency.setValueAtTime(freq, now)
+        // Subtle detune for width
+        pad.detune.setValueAtTime(i % 2 === 0 ? -5 : 5, now)
+
+        padFilter.type = 'lowpass'
+        padFilter.frequency.setValueAtTime(400, now)
+        padFilter.frequency.linearRampToValueAtTime(2000, now + 10)
+        padFilter.frequency.linearRampToValueAtTime(600, now + 20)
+
+        padGain.gain.setValueAtTime(0, now)
+        padGain.gain.linearRampToValueAtTime(0.06 * masterVolume, now + 4)
+        padGain.gain.linearRampToValueAtTime(0.04 * masterVolume, now + durationSeconds - 2)
+        padGain.gain.linearRampToValueAtTime(0, now + durationSeconds)
+
+        pad.connect(padFilter)
+        padFilter.connect(padGain)
+        padGain.connect(compressor)
+        pad.start(now)
+        pad.stop(now + durationSeconds)
+        nodesForCleanup.push(pad)
+      })
+    }
+
+    // ===== ARPEGGIO SYNTH =====
+    const createArpeggio = () => {
+      const arpNotes = [130.81, 155.56, 196.00, 261.63, 196.00, 155.56] // C, Eb, G, C, G, Eb
+      const arpInterval = beatDuration / 3
+
+      for (let t = 4; t < durationSeconds - 2; t += arpInterval) { // Start after 4 seconds
+        const noteIndex = Math.floor((t - 4) / arpInterval) % arpNotes.length
+        const freq = arpNotes[noteIndex]
+
+        const arp = ctx.createOscillator()
+        const arpGain = ctx.createGain()
+        const arpFilter = ctx.createBiquadFilter()
+
+        arp.type = 'square'
+        arp.frequency.setValueAtTime(freq, now + t)
+
+        arpFilter.type = 'lowpass'
+        arpFilter.frequency.setValueAtTime(1500, now + t)
+
+        arpGain.gain.setValueAtTime(0.08 * masterVolume, now + t)
+        arpGain.gain.exponentialRampToValueAtTime(0.001, now + t + arpInterval * 0.8)
+
+        arp.connect(arpFilter)
+        arpFilter.connect(arpGain)
+        arpGain.connect(compressor)
+        arp.start(now + t)
+        arp.stop(now + t + arpInterval)
+        nodesForCleanup.push(arp)
+      }
+    }
+
+    // ===== GLITCH EFFECTS (Random) =====
+    const createGlitchEffects = () => {
+      const glitchTimes = [8, 12, 18, 25, 32, 38]
+
+      glitchTimes.forEach(t => {
+        if (t < durationSeconds) {
+          for (let g = 0; g < 3; g++) {
+            const glitch = ctx.createOscillator()
+            const glitchGain = ctx.createGain()
+
+            glitch.type = 'square'
+            glitch.frequency.setValueAtTime(Math.random() * 2000 + 500, now + t + g * 0.05)
+
+            glitchGain.gain.setValueAtTime(0.15 * masterVolume, now + t + g * 0.05)
+            glitchGain.gain.exponentialRampToValueAtTime(0.001, now + t + g * 0.05 + 0.04)
+
+            glitch.connect(glitchGain)
+            glitchGain.connect(compressor)
+            glitch.start(now + t + g * 0.05)
+            glitch.stop(now + t + g * 0.05 + 0.04)
+            nodesForCleanup.push(glitch)
+          }
+        }
+      })
+    }
+
+    // ===== RISERS (Build tension) =====
+    const createRisers = () => {
+      const riserTimes = [15, 30] // Build tension at these points
+
+      riserTimes.forEach(t => {
+        if (t < durationSeconds - 5) {
+          const riser = ctx.createOscillator()
+          const riserGain = ctx.createGain()
+          const riserFilter = ctx.createBiquadFilter()
+
+          riser.type = 'sawtooth'
+          riser.frequency.setValueAtTime(100, now + t)
+          riser.frequency.exponentialRampToValueAtTime(2000, now + t + 4)
+
+          riserFilter.type = 'lowpass'
+          riserFilter.frequency.setValueAtTime(500, now + t)
+          riserFilter.frequency.exponentialRampToValueAtTime(8000, now + t + 4)
+
+          riserGain.gain.setValueAtTime(0, now + t)
+          riserGain.gain.linearRampToValueAtTime(0.2 * masterVolume, now + t + 3.5)
+          riserGain.gain.linearRampToValueAtTime(0, now + t + 4)
+
+          riser.connect(riserFilter)
+          riserFilter.connect(riserGain)
+          riserGain.connect(compressor)
+          riser.start(now + t)
+          riser.stop(now + t + 4)
+          nodesForCleanup.push(riser)
+        }
+      })
+    }
+
+    // Start all elements
+    createSubBass()
+    createKicks()
+    createHiHats()
+    createSynthPad()
+    createArpeggio()
+    createGlitchEffects()
+    createRisers()
+
+    // Return cleanup function
+    return () => {
+      nodesForCleanup.forEach(node => {
+        try {
+          node.stop()
+        } catch {
+          // Already stopped
+        }
+      })
+    }
   }, [isMuted, masterVolume])
 
   const playTakeoverSequence = useCallback(() => {
@@ -293,6 +545,7 @@ export function AudioEngineProvider({ children }: AudioEngineProviderProps) {
     initialize,
     playEffect,
     playTakeoverSequence,
+    playCinematicSoundtrack,
     startAmbient,
     stopAmbient,
     setMasterVolume,

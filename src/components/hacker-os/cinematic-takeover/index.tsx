@@ -196,10 +196,10 @@ function BootSequence({ onComplete }: { onComplete: () => void }) {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className={`
-              ${line.includes('ERROR') || line.includes('CRITICAL') ? 'text-red-500' : ''}
-              ${line.includes('MILLER') ? 'text-fuchsia-500 font-bold text-lg' : ''}
-              ${line.includes('███') ? 'text-green-500' : ''}
-              ${!line.includes('ERROR') && !line.includes('CRITICAL') && !line.includes('MILLER') && !line.includes('███') ? 'text-green-400' : ''}
+              ${line?.includes('ERROR') || line?.includes('CRITICAL') ? 'text-red-500' : ''}
+              ${line?.includes('MILLER') ? 'text-fuchsia-500 font-bold text-lg' : ''}
+              ${line?.includes('███') ? 'text-green-500' : ''}
+              ${!line?.includes('ERROR') && !line?.includes('CRITICAL') && !line?.includes('MILLER') && !line?.includes('███') ? 'text-green-400' : ''}
             `}
           >
             {line}
@@ -715,13 +715,13 @@ function TerminalTakeoverScene({ onComplete }: { onComplete: () => void }) {
                 <div
                   key={i}
                   className={`leading-relaxed ${
-                    line.startsWith('$') || line.startsWith('msf') || line.startsWith('meterpreter')
+                    line?.startsWith('$') || line?.startsWith('msf') || line?.startsWith('meterpreter')
                       ? 'text-green-400'
-                      : line.startsWith('[+]')
+                      : line?.startsWith('[+]')
                         ? 'text-green-500'
-                        : line.startsWith('[*]')
+                        : line?.startsWith('[*]')
                           ? 'text-cyan-400'
-                          : line.startsWith('[!]')
+                          : line?.startsWith('[!]')
                             ? 'text-red-500'
                             : 'text-neutral-300'
                   }`}

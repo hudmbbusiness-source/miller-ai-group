@@ -507,22 +507,6 @@ function MillerPageContent() {
           </motion.div>
         </motion.div>
 
-        {/* Scroll Indicator */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2"
-        >
-          <motion.div
-            animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="flex flex-col items-center text-neutral-600"
-          >
-            <span className="text-xs mb-2 uppercase tracking-widest">Scroll</span>
-            <ChevronDown className="w-5 h-5" />
-          </motion.div>
-        </motion.div>
       </section>
 
       {/* Stats Section */}

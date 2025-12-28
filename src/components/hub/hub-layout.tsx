@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
@@ -24,7 +23,6 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import {
   AudioEngineProvider,
   useAudioEngine,
-  DataStreamBackground,
 } from '@/components/hacker-os'
 import {
   LayoutDashboard,
@@ -43,117 +41,61 @@ import {
   Volume2,
   VolumeX,
   Terminal,
-  Activity,
-  Cpu,
+  Skull,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import { cn } from '@/lib/utils'
-import { useState, useEffect } from 'react'
 
-const navItems = [
-  { href: '/app', label: 'Dashboard', icon: LayoutDashboard, color: 'cyan' },
-  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket, color: 'purple' },
-  { href: '/app/workspace', label: 'Workspace', icon: FileText, color: 'green' },
-  { href: '/app/settings', label: 'Settings', icon: Settings, color: 'amber' },
-]
-
-const toolItems = [
-  { href: '/app/tools/playground', label: 'Code Playground', icon: Code2, color: 'violet' },
-  { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap, color: 'amber' },
-  { href: '/app/tools/stuntman', label: 'Stuntman AI', icon: BarChart3, color: 'emerald' },
-  { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain, color: 'blue' },
-]
-
-const adminItems = [
-  { href: '/app/admin/verify', label: 'System Verify', icon: Shield, color: 'red' },
-]
-
-const colorClasses: Record<string, { text: string; bg: string; border: string; glow: string }> = {
-  cyan: {
-    text: 'text-cyan-400',
-    bg: 'bg-cyan-500/10',
-    border: 'border-cyan-500/30',
-    glow: '0 0 20px rgba(0, 255, 255, 0.3)',
-  },
-  green: {
-    text: 'text-green-400',
-    bg: 'bg-green-500/10',
-    border: 'border-green-500/30',
-    glow: '0 0 20px rgba(0, 255, 65, 0.3)',
-  },
-  purple: {
-    text: 'text-purple-400',
-    bg: 'bg-purple-500/10',
-    border: 'border-purple-500/30',
-    glow: '0 0 20px rgba(191, 0, 255, 0.3)',
-  },
-  amber: {
-    text: 'text-amber-400',
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/30',
-    glow: '0 0 20px rgba(255, 191, 0, 0.3)',
-  },
-  violet: {
-    text: 'text-violet-400',
-    bg: 'bg-violet-500/10',
-    border: 'border-violet-500/30',
-    glow: '0 0 20px rgba(139, 92, 246, 0.3)',
-  },
-  emerald: {
-    text: 'text-emerald-400',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/30',
-    glow: '0 0 20px rgba(16, 185, 129, 0.3)',
-  },
-  blue: {
-    text: 'text-blue-400',
-    bg: 'bg-blue-500/10',
-    border: 'border-blue-500/30',
-    glow: '0 0 20px rgba(59, 130, 246, 0.3)',
-  },
-  red: {
-    text: 'text-red-400',
-    bg: 'bg-red-500/10',
-    border: 'border-red-500/30',
-    glow: '0 0 20px rgba(239, 68, 68, 0.3)',
-  },
-}
-
-// System status bar component
-function SystemStatusBar() {
-  const [time, setTime] = useState(new Date())
-  const [cpuLoad, setCpuLoad] = useState(23)
-  const [memoryUsage, setMemoryUsage] = useState(47)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTime(new Date())
-      // Simulate fluctuating system metrics
-      setCpuLoad(prev => Math.max(10, Math.min(90, prev + (Math.random() - 0.5) * 10)))
-      setMemoryUsage(prev => Math.max(30, Math.min(80, prev + (Math.random() - 0.5) * 5)))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
+// Dark, minimal background - Kali Linux style
+function DarkBackground() {
   return (
-    <div className="flex items-center gap-4 text-xs font-mono text-neutral-500">
-      <div className="flex items-center gap-1.5">
-        <Activity className="w-3 h-3 text-cyan-400" />
-        <span className="text-cyan-400">{cpuLoad.toFixed(0)}%</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Cpu className="w-3 h-3 text-green-400" />
-        <span className="text-green-400">{memoryUsage.toFixed(0)}%</span>
-      </div>
-      <div className="hidden sm:flex items-center gap-1.5">
-        <Terminal className="w-3 h-3 text-purple-400" />
-        <span className="text-purple-400">
-          {time.toLocaleTimeString('en-US', { hour12: false })}
-        </span>
-      </div>
+    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+      {/* Subtle grid */}
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px',
+        }}
+      />
+      {/* Vignette */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: 'radial-gradient(circle at center, transparent 20%, rgba(0,0,0,0.5) 100%)'
+        }}
+      />
+      {/* Noise */}
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`
+        }}
+      />
     </div>
   )
 }
+
+const navItems = [
+  { href: '/app', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket },
+  { href: '/app/workspace', label: 'Workspace', icon: FileText },
+  { href: '/app/settings', label: 'Settings', icon: Settings },
+]
+
+const toolItems = [
+  { href: '/app/tools/playground', label: 'Code Playground', icon: Code2 },
+  { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },
+  { href: '/app/tools/stuntman', label: 'Stuntman AI', icon: BarChart3 },
+  { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain },
+]
+
+const adminItems = [
+  { href: '/app/admin/verify', label: 'System Verify', icon: Shield },
+]
 
 // Audio control component
 function AudioControl() {
@@ -179,8 +121,8 @@ function AudioControl() {
       className={cn(
         "min-w-[44px] min-h-[44px] transition-all duration-200",
         isMuted
-          ? "text-neutral-500 hover:text-neutral-300"
-          : "text-cyan-400 hover:text-cyan-300"
+          ? "text-gray-600 hover:text-gray-400"
+          : "text-green-500 hover:text-green-400"
       )}
     >
       {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
@@ -223,10 +165,6 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
     audioEngine?.playEffect('button_click')
   }
 
-  const handleNavHover = () => {
-    audioEngine?.playEffect('button_hover')
-  }
-
   const pageTransition = prefersReducedMotion
     ? { duration: 0 }
     : { duration: 0.3, ease: 'easeOut' as const }
@@ -239,129 +177,87 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
         exit: { opacity: 0, y: -12 },
       }
 
-  // Navigation content
+  // Navigation content - Dark, utilitarian
   const NavContent = () => (
     <ScrollArea className="flex-1 py-4">
       <nav className="px-3 space-y-1">
-        {/* Main nav items */}
-        {navItems.map((item, index) => {
+        {navItems.map((item) => {
           const active = isActive(item.href)
-          const colors = colorClasses[item.color]
           return (
-            <motion.div
+            <Link
               key={item.href}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
-              onMouseEnter={handleNavHover}
+              href={item.href}
+              onClick={handleNavClick}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono uppercase tracking-wider',
+                'transition-all duration-150 relative min-h-[44px]',
+                active
+                  ? 'bg-white/10 text-white border border-white/20'
+                  : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
+              )}
             >
-              <Link
-                href={item.href}
-                onClick={handleNavClick}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono',
-                  'transition-all duration-200 relative min-h-[44px]',
-                  'border',
-                  active
-                    ? cn(colors.bg, colors.text, colors.border)
-                    : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-white hover:border-white/10'
-                )}
-                style={{
-                  boxShadow: active ? colors.glow : 'none',
-                }}
-              >
-                {active && (
-                  <motion.div
-                    layoutId="nav-indicator"
-                    className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full", colors.text.replace('text-', 'bg-'))}
-                  />
-                )}
-                <item.icon className={cn("w-5 h-5 flex-shrink-0", active && colors.text)} />
-                <span className="uppercase tracking-wider text-xs">{item.label}</span>
-                {active && (
-                  <motion.div
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className={cn("ml-auto w-2 h-2 rounded-full", colors.text.replace('text-', 'bg-'))}
-                  />
-                )}
-              </Link>
-            </motion.div>
+              {active && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-white" />
+              )}
+              <item.icon className={cn("w-5 h-5 flex-shrink-0", active && "text-white")} />
+              <span className="text-xs">{item.label}</span>
+            </Link>
           )
         })}
 
-        {/* Tools Section */}
-        <div className="pt-4 mt-4 border-t border-white/5">
-          <p className="px-3 mb-2 text-[10px] font-mono text-cyan-500/50 uppercase tracking-widest">
-            [ TOOLS ]
+        <div className="pt-4 mt-4 border-t border-white/10">
+          <p className="px-3 mb-2 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+            {'>'} Tools
           </p>
-          {toolItems.map((item, index) => {
+          {toolItems.map((item) => {
             const active = isActive(item.href)
-            const colors = colorClasses[item.color]
             return (
-              <motion.div
+              <Link
                 key={item.href}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: (navItems.length + index) * 0.05 }}
-                onMouseEnter={handleNavHover}
+                href={item.href}
+                onClick={handleNavClick}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono uppercase tracking-wider',
+                  'transition-all duration-150 relative min-h-[44px]',
+                  active
+                    ? 'bg-white/10 text-white border border-white/20'
+                    : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
+                )}
               >
-                <Link
-                  href={item.href}
-                  onClick={handleNavClick}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono',
-                    'transition-all duration-200 relative min-h-[44px]',
-                    'border',
-                    active
-                      ? cn(colors.bg, colors.text, colors.border)
-                      : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-white hover:border-white/10'
-                  )}
-                  style={{
-                    boxShadow: active ? colors.glow : 'none',
-                  }}
-                >
-                  {active && (
-                    <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full", colors.text.replace('text-', 'bg-'))} />
-                  )}
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  <span className="uppercase tracking-wider text-xs">{item.label}</span>
-                </Link>
-              </motion.div>
+                {active && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-white" />
+                )}
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <span className="text-xs">{item.label}</span>
+              </Link>
             )
           })}
         </div>
 
-        {/* Admin Section */}
-        <div className="pt-4 mt-4 border-t border-white/5">
-          <p className="px-3 mb-2 text-[10px] font-mono text-red-500/50 uppercase tracking-widest">
-            [ ADMIN ]
+        <div className="pt-4 mt-4 border-t border-white/10">
+          <p className="px-3 mb-2 text-[10px] font-mono text-red-500/60 uppercase tracking-widest">
+            {'>'} Admin
           </p>
           {adminItems.map((item) => {
             const active = isActive(item.href)
-            const colors = colorClasses[item.color]
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={handleNavClick}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-mono',
-                  'transition-all duration-200 relative min-h-[44px]',
-                  'border',
+                  'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono uppercase tracking-wider',
+                  'transition-all duration-150 relative min-h-[44px]',
                   active
-                    ? cn(colors.bg, colors.text, colors.border)
-                    : 'border-transparent text-neutral-400 hover:bg-white/5 hover:text-white hover:border-white/10'
+                    ? 'bg-red-500/10 text-red-500 border border-red-500/30'
+                    : 'text-gray-500 hover:bg-red-500/5 hover:text-red-400 border border-transparent'
                 )}
-                style={{
-                  boxShadow: active ? colors.glow : 'none',
-                }}
               >
                 {active && (
-                  <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full", colors.text.replace('text-', 'bg-'))} />
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-red-500" />
                 )}
                 <item.icon className="w-5 h-5 flex-shrink-0" />
-                <span className="uppercase tracking-wider text-xs">{item.label}</span>
+                <span className="text-xs">{item.label}</span>
               </Link>
             )
           })}
@@ -371,101 +267,81 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
   )
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Hacker OS Background */}
-      <DataStreamBackground intensity="low" color="cyan" showPolygons={!prefersReducedMotion} />
-
-      {/* Scanlines overlay */}
-      <div
-        className="fixed inset-0 pointer-events-none z-[1] opacity-[0.015]"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,255,0.03) 2px, rgba(0,255,255,0.03) 4px)',
-        }}
-      />
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      <DarkBackground />
 
       <div className="relative flex flex-col min-h-screen z-10">
-        {/* Header */}
-        <header className="h-14 sm:h-16 border-b border-cyan-500/20 bg-black/80 backdrop-blur-2xl flex items-center justify-between px-3 sm:px-4 lg:px-6 sticky top-0 z-30">
+        {/* Header - Dark, minimal */}
+        <header className="h-14 sm:h-16 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur-sm flex items-center justify-between px-3 sm:px-4 lg:px-6 sticky top-0 z-30">
           <div className="flex items-center gap-3 sm:gap-4">
             <Sheet>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="min-w-[44px] min-h-[44px] text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 border border-cyan-500/30"
+                  className="min-w-[44px] min-h-[44px] text-gray-500 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/20"
                   onClick={handleNavClick}
                 >
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0 flex flex-col bg-black/95 border-r border-cyan-500/30">
-                <SheetHeader className="p-6 border-b border-cyan-500/20 flex-shrink-0">
+              <SheetContent side="left" className="w-72 p-0 flex flex-col bg-[#0a0a0a]/98 border-r border-white/10">
+                <SheetHeader className="p-6 border-b border-white/10 flex-shrink-0">
                   <div className="flex items-center gap-3">
-                    <motion.div
-                      animate={{ y: [0, -2, 0] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                      className="relative"
-                    >
-                      <div className="absolute inset-0 bg-cyan-500/30 rounded-lg blur-lg" />
-                      <Image
-                        src="/logos/miller-ai-group.png"
-                        alt="Miller AI Group"
-                        width={32}
-                        height={32}
-                        className="relative rounded-lg"
-                      />
-                    </motion.div>
-                    <SheetTitle className="text-lg font-mono font-bold text-left text-cyan-400">
-                      MILLER AI GROUP
+                    <div className="p-2 rounded bg-white/5 border border-white/10">
+                      <Skull className="w-5 h-5 text-white" />
+                    </div>
+                    <SheetTitle className="text-lg font-mono font-bold text-left text-white uppercase tracking-wider">
+                      MILLER AI
                     </SheetTitle>
                   </div>
                 </SheetHeader>
                 <div className="flex-1 overflow-y-auto">
                   <NavContent />
                 </div>
-                <div className="p-4 border-t border-cyan-500/20 flex-shrink-0">
+                <div className="p-4 border-t border-white/10 flex-shrink-0">
                   <Button
                     variant="ghost"
-                    className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10 min-h-[44px] font-mono"
+                    className="w-full justify-start text-gray-500 hover:text-red-500 hover:bg-red-500/5 min-h-[44px] font-mono uppercase tracking-wider text-xs"
                     onClick={handleLogout}
                   >
                     <LogOut className="w-5 h-5 mr-3" />
-                    LOGOUT
+                    Terminate Session
                   </Button>
                 </div>
               </SheetContent>
             </Sheet>
 
-            <Link href="/app" className="hidden sm:flex items-center gap-2 group" onClick={handleNavClick}>
-              <motion.div
-                animate={{ y: [0, -2, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                className="relative"
-              >
-                <div className="absolute inset-0 bg-cyan-500/30 rounded-lg blur-lg" />
-                <Image
-                  src="/logos/miller-ai-group.png"
-                  alt="Miller AI Group"
-                  width={28}
-                  height={28}
-                  className="relative rounded-lg"
-                />
-              </motion.div>
-              <span className="text-lg font-mono font-bold text-cyan-400 group-hover:text-cyan-300 transition-colors tracking-wider">
-                MILLER AI
+            <Link href="/app" className="hidden sm:flex items-center gap-3 group" onClick={handleNavClick}>
+              <div className="p-1.5 rounded bg-white/5 border border-white/10">
+                <Skull className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-lg font-mono font-bold text-white uppercase tracking-wider">
+                MILLER AI GROUP
               </span>
             </Link>
 
-            <div className="sm:hidden">
-              <h1 className="font-mono font-semibold text-sm text-cyan-400">
-                {user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'OPERATOR'}
+            <div className="sm:hidden flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <h1 className="font-mono text-xs text-white uppercase tracking-wider">
+                {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'User'}
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            <SystemStatusBar />
-            <div className="w-px h-6 bg-cyan-500/20 mx-2 hidden sm:block" />
+            {/* Status - Minimal */}
+            <div className="hidden md:flex items-center gap-4 mr-4 text-[10px] font-mono text-gray-600">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                <span className="text-green-500">ONLINE</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Terminal className="w-3 h-3" />
+                <span>v2.0</span>
+              </div>
+            </div>
+
             <GlobalSearch />
             <KeyboardShortcutsButton />
             <AudioControl />
@@ -473,7 +349,7 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
               href={SOCIAL_LINKS.instagram}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-cyan-400 transition-colors hidden sm:flex"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-white transition-colors hidden sm:flex"
             >
               <Instagram className="w-5 h-5" />
             </a>
@@ -481,18 +357,18 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
               href={SOCIAL_LINKS.linkedin}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-cyan-400 transition-colors hidden sm:flex"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-white transition-colors hidden sm:flex"
             >
               <Linkedin className="w-5 h-5" />
             </a>
             <Button
               variant="ghost"
               size="sm"
-              className="ml-1 sm:ml-2 hidden lg:flex min-h-[44px] text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 font-mono"
+              className="ml-1 sm:ml-2 hidden lg:flex min-h-[44px] text-gray-500 hover:text-red-500 hover:bg-red-500/5 font-mono uppercase tracking-wider text-xs"
               onClick={handleLogout}
             >
               <LogOut className="w-4 h-4 mr-2" />
-              LOGOUT
+              Exit
             </Button>
           </div>
         </header>
@@ -513,15 +389,15 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
           </AnimatePresence>
         </main>
 
-        {/* Footer status bar */}
-        <footer className="h-8 border-t border-cyan-500/20 bg-black/80 backdrop-blur-xl flex items-center justify-between px-4 text-[10px] font-mono text-neutral-500">
+        {/* Footer - Minimal */}
+        <footer className="h-8 border-t border-white/10 bg-[#0a0a0a]/90 flex items-center justify-between px-4 text-[10px] font-mono text-gray-600">
           <div className="flex items-center gap-4">
-            <span className="text-cyan-400">[SYS]</span>
-            <span>MILLER AI GROUP OS v2.0</span>
+            <span className="text-gray-500">{'>'} SYSTEM v2.0</span>
+            <span className="hidden sm:inline">ENCRYPTED</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-green-400">● ONLINE</span>
-            <span>SESSION: {Date.now().toString(16).slice(-8).toUpperCase()}</span>
+            <span className="text-green-500">● CONNECTED</span>
+            <span className="hidden sm:inline">SESSION: {user.id.slice(0, 8).toUpperCase()}</span>
           </div>
         </footer>
       </div>

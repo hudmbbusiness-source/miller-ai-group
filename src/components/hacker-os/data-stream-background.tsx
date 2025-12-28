@@ -25,8 +25,8 @@ interface Particle {
 const colorMap = {
   cyan: ['#00ffff', '#00cccc', '#0099cc'],
   green: ['#00ff41', '#00cc33', '#00aa22'],
-  purple: ['#bf00ff', '#9900cc', '#7700aa'],
-  mixed: ['#00ffff', '#00ff41', '#bf00ff', '#0080ff'],
+  purple: ['#ff00ff', '#9d00ff', '#ff1493', '#cc00cc'],  // DedSec magenta/purple
+  mixed: ['#ff00ff', '#9d00ff', '#00ff41', '#ffd700'],   // DedSec + money colors
 }
 
 const intensitySettings = {

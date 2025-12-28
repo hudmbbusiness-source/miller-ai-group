@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AudioEngineProvider,
   useAudioEngine,
-  SystemTakeoverSequence,
+  CinematicIntro,
   DataStreamBackground,
   GlitchButton,
   HolographicPanel,
@@ -142,25 +142,25 @@ function LoginContent() {
     )
   }
 
-  // Show takeover sequence
+  // Show cinematic intro sequence
   if (showTakeover) {
     return (
-      <SystemTakeoverSequence
+      <CinematicIntro
         onComplete={handleTakeoverComplete}
-        userName={userName}
+        autoPlay={true}
       />
     )
   }
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
-      <DataStreamBackground intensity="medium" color="cyan" />
+      <DataStreamBackground intensity="medium" color="purple" />
 
-      {/* Scanlines overlay */}
+      {/* Scanlines overlay - DedSec magenta */}
       <div
-        className="fixed inset-0 pointer-events-none z-10 opacity-[0.02]"
+        className="fixed inset-0 pointer-events-none z-10 opacity-[0.03]"
         style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,255,0.03) 2px, rgba(0,255,255,0.03) 4px)',
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,0,255,0.05) 2px, rgba(255,0,255,0.05) 4px)',
         }}
       />
 
@@ -173,11 +173,11 @@ function LoginContent() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/miller" className="flex items-center gap-3 group">
             <motion.div
-              animate={{ y: [0, -2, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              animate={{ rotate: [0, 5, -5, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
               className="relative"
             >
-              <div className="absolute inset-0 bg-cyan-500/30 rounded-lg blur-lg" />
+              <div className="absolute inset-0 bg-fuchsia-500/40 rounded-lg blur-lg" />
               <Image
                 src="/logos/miller-ai-group.png"
                 alt="Miller AI Group"
@@ -186,7 +186,7 @@ function LoginContent() {
                 className="relative w-10 h-10 rounded-lg"
               />
             </motion.div>
-            <span className="text-lg font-bold text-cyan-400 font-mono tracking-wider">
+            <span className="text-lg font-bold font-mono tracking-wider" style={{ color: '#ff00ff' }}>
               MILLER AI GROUP
             </span>
           </Link>
@@ -194,7 +194,7 @@ function LoginContent() {
           <div className="flex items-center gap-4">
             <Link
               href="/miller"
-              className="text-sm text-neutral-400 hover:text-cyan-400 transition-colors font-mono"
+              className="text-sm text-neutral-400 hover:text-fuchsia-400 transition-colors font-mono"
             >
               &lt; BACK
             </Link>
@@ -211,17 +211,22 @@ function LoginContent() {
           className="w-full max-w-md"
         >
           <HolographicPanel
-            variant="cyan"
+            variant="purple"
             glowIntensity="high"
             header={
               <div className="flex items-center justify-between">
-                <span className="font-mono text-sm">SYSTEM ACCESS</span>
+                <span className="font-mono text-sm" style={{ color: '#ff00ff' }}>DEDSEC ACCESS</span>
                 <motion.div
                   animate={{ opacity: [1, 0.5, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
                   className="flex items-center gap-2"
                 >
-                  <div className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <motion.div
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: '#ff00ff' }}
+                  />
                   <span className="text-xs text-neutral-400">ONLINE</span>
                 </motion.div>
               </div>
@@ -233,13 +238,15 @@ function LoginContent() {
                 <motion.div
                   animate={{
                     boxShadow: [
-                      '0 0 30px rgba(0, 255, 255, 0.2)',
-                      '0 0 60px rgba(0, 255, 255, 0.4)',
-                      '0 0 30px rgba(0, 255, 255, 0.2)',
+                      '0 0 30px rgba(255, 0, 255, 0.2)',
+                      '0 0 60px rgba(255, 0, 255, 0.5)',
+                      '0 0 30px rgba(255, 0, 255, 0.2)',
                     ],
+                    rotate: [0, 2, -2, 0],
                   }}
                   transition={{ duration: 3, repeat: Infinity }}
-                  className="inline-block p-4 rounded-2xl bg-black/50 border border-cyan-500/30 mb-4"
+                  className="inline-block p-4 rounded-2xl bg-black/50 border mb-4"
+                  style={{ borderColor: 'rgba(255, 0, 255, 0.3)' }}
                 >
                   <Image
                     src="/logos/miller-ai-group.png"
@@ -314,18 +321,18 @@ function LoginContent() {
                 )}
               </div>
 
-              {/* Terminal-style status */}
-              <div className="pt-4 border-t border-white/5">
+              {/* Terminal-style status - DedSec style */}
+              <div className="pt-4 border-t border-fuchsia-500/10">
                 <div className="font-mono text-xs space-y-1">
                   <p className="text-neutral-500">
-                    <span className="text-cyan-400">[SYS]</span> Connection secure
+                    <span style={{ color: '#ff00ff' }}>[DEDSEC]</span> Connection encrypted
                   </p>
                   <p className="text-neutral-500">
-                    <span className="text-green-400">[NET]</span> Latency: 24ms
+                    <span style={{ color: '#00ff41' }}>[MONEY]</span> Stack ready
                   </p>
                   <p className="text-neutral-500">
-                    <span className="text-purple-400">[AUTH]</span>{' '}
-                    {isAuthenticated ? 'Verified' : 'Awaiting credentials'}
+                    <span style={{ color: '#9d00ff' }}>[AUTH]</span>{' '}
+                    {isAuthenticated ? 'ACCESS GRANTED' : 'Awaiting authentication'}
                   </p>
                 </div>
               </div>
@@ -369,10 +376,13 @@ function LoginContent() {
             </div>
 
             {/* Products Row */}
-            <p className="text-[10px] text-neutral-600 text-center mb-3 font-mono uppercase tracking-wider">Products</p>
+            <p className="text-[10px] text-center mb-3 font-mono uppercase tracking-wider" style={{ color: '#ff00ff' }}>Products</p>
             <div className="flex items-center justify-center gap-4 flex-wrap">
-              <div className="text-center">
-                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-cyan-500/30 p-1.5 flex items-center justify-center">
+              <motion.div
+                className="text-center"
+                whileHover={{ scale: 1.1 }}
+              >
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-fuchsia-500/30 p-1.5 flex items-center justify-center">
                   <Image
                     src="/logos/kachow.png"
                     alt="Kachow AI"
@@ -381,38 +391,47 @@ function LoginContent() {
                     className="w-5 h-5 object-contain"
                   />
                 </div>
-                <p className="text-[9px] text-neutral-500 mt-1 font-mono">KACHOW</p>
-              </div>
-              <div className="text-center">
+                <p className="text-[9px] text-fuchsia-400 mt-1 font-mono">KACHOW</p>
+              </motion.div>
+              <motion.div
+                className="text-center"
+                whileHover={{ scale: 1.1 }}
+              >
                 <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-red-500/30 p-1.5 flex items-center justify-center">
                   <span className="text-red-400 text-xs">🎬</span>
                 </div>
-                <p className="text-[9px] text-neutral-500 mt-1 font-mono">STUNTMAN</p>
-              </div>
-              <div className="text-center">
-                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-pink-500/30 p-1.5 flex items-center justify-center">
-                  <span className="text-pink-400 text-xs">🧠</span>
+                <p className="text-[9px] text-red-400 mt-1 font-mono">STUNTMAN</p>
+              </motion.div>
+              <motion.div
+                className="text-center"
+                whileHover={{ scale: 1.1 }}
+              >
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-purple-500/30 p-1.5 flex items-center justify-center">
+                  <span className="text-purple-400 text-xs">🧠</span>
                 </div>
-                <p className="text-[9px] text-neutral-500 mt-1 font-mono">BRAINBOX</p>
-              </div>
-              <div className="text-center">
-                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border border-green-500/30 p-1.5 flex items-center justify-center">
-                  <span className="text-green-400 text-xs">💻</span>
+                <p className="text-[9px] text-purple-400 mt-1 font-mono">BRAINBOX</p>
+              </motion.div>
+              <motion.div
+                className="text-center"
+                whileHover={{ scale: 1.1 }}
+              >
+                <div className="w-9 h-9 mx-auto rounded-lg bg-black/50 border p-1.5 flex items-center justify-center" style={{ borderColor: 'rgba(0, 255, 65, 0.3)' }}>
+                  <span style={{ color: '#00ff41' }} className="text-xs">💻</span>
                 </div>
-                <p className="text-[9px] text-neutral-500 mt-1 font-mono">CODE</p>
-              </div>
+                <p className="text-[9px] mt-1 font-mono" style={{ color: '#00ff41' }}>CODE</p>
+              </motion.div>
             </div>
           </motion.div>
 
-          {/* Footer - inline instead of fixed */}
+          {/* Footer - DedSec style */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.8 }}
             className="text-center pb-6"
           >
-            <p className="text-xs text-neutral-600 font-mono">
-              © {new Date().getFullYear()} MILLER AI GROUP | SECURE SYSTEM v2.0
+            <p className="text-xs font-mono" style={{ color: 'rgba(255, 0, 255, 0.5)' }}>
+              © {new Date().getFullYear()} MILLER AI GROUP | DEDSEC PROTOCOL v3.0
             </p>
           </motion.div>
         </motion.div>

@@ -392,7 +392,7 @@ function MillerPageContent() {
               </Link>
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <Button asChild size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25">
-                  <Link href="/intro">Enter System</Link>
+                  <Link href="/login">Enter System</Link>
                 </Button>
               </motion.div>
             </div>
@@ -473,7 +473,7 @@ function MillerPageContent() {
                 variant="outline"
                 size="lg"
                 className="min-h-[52px] px-8 text-lg border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20"
-                onClick={() => router.push('/intro')}
+                onClick={() => router.push('/login')}
               >
                 Enter System
                 <ArrowRight className="w-5 h-5 ml-2" />

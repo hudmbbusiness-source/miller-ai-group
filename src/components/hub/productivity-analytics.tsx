@@ -5,6 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts'
+import {
   BarChart3,
   TrendingUp,
   TrendingDown,
@@ -18,6 +33,8 @@ import {
   Zap,
   Trophy,
   Flame,
+  FolderOpen,
+  Grid3X3,
 } from 'lucide-react'
 
 interface AnalyticsData {
@@ -25,6 +42,7 @@ interface AnalyticsData {
     totalNotes: number
     totalLinks: number
     totalBoards: number
+    totalFiles: number
     activeGoals: number
     completedGoals: number
   }
@@ -38,24 +56,15 @@ interface AnalyticsData {
     files: number
     monthlyChange: number
   }
+  streaks: {
+    current: number
+    longest: number
+  }
   activityByDay: Array<{ day: string; count: number }>
-  weeklyTrend: Array<{ week: string; notes: number }>
+  dailyActivity: Array<{ date: string; notes: number; links: number }>
+  weeklyTrend: Array<{ week: string; notes: number; links: number; goals: number }>
+  categoryBreakdown: Array<{ name: string; value: number; color: string }>
   productivityScore: number
-}
-
-function ActivityBar({ count, maxCount }: { count: number; maxCount: number }) {
-  const height = maxCount === 0 ? 0 : Math.max(4, (count / maxCount) * 100)
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="w-8 bg-muted rounded-t relative overflow-hidden" style={{ height: '60px' }}>
-        <div
-          className="absolute bottom-0 left-0 right-0 bg-amber-500 rounded-t transition-all duration-300"
-          style={{ height: `${height}%` }}
-        />
-      </div>
-      <span className="text-xs text-muted-foreground">{count}</span>
-    </div>
-  )
 }
 
 function getProductivityLevel(score: number): { label: string; color: string; icon: typeof Flame } {
@@ -121,168 +130,364 @@ export function ProductivityAnalytics() {
   }
 
   const { label, color, icon: ProductivityIcon } = getProductivityLevel(data.productivityScore)
-  const maxDayCount = Math.max(...data.activityByDay.map(d => d.count), 1)
+  const hasActivity = data.dailyActivity.some(d => d.notes > 0 || d.links > 0)
 
   return (
     <div className="space-y-6">
-      {/* Productivity Score */}
-      <Card className="border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-transparent">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-amber-500" />
-              Productivity Analytics
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-6 mb-6">
-            <div className="relative w-24 h-24">
-              <svg className="w-24 h-24 transform -rotate-90">
-                <circle
-                  cx="48"
-                  cy="48"
-                  r="40"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  fill="none"
-                  className="text-muted/20"
-                />
-                <circle
-                  cx="48"
-                  cy="48"
-                  r="40"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  fill="none"
-                  strokeDasharray={`${(data.productivityScore / 100) * 251.2} 251.2`}
-                  className="text-amber-500 transition-all duration-500"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-2xl font-bold">{data.productivityScore}</span>
-              </div>
-            </div>
-            <div>
-              <div className={`flex items-center gap-2 ${color}`}>
-                <ProductivityIcon className="w-5 h-5" />
-                <span className="font-semibold">{label}</span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Weekly productivity score
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-muted/50 text-center">
-              <FileText className="w-4 h-4 mx-auto mb-1 text-blue-500" />
-              <p className="text-lg font-bold">{data.thisWeek.notes}</p>
-              <p className="text-xs text-muted-foreground">Notes This Week</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/50 text-center">
-              <Link2 className="w-4 h-4 mx-auto mb-1 text-purple-500" />
-              <p className="text-lg font-bold">{data.thisWeek.links}</p>
-              <p className="text-xs text-muted-foreground">Links This Week</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/50 text-center">
-              <Target className="w-4 h-4 mx-auto mb-1 text-green-500" />
-              <p className="text-lg font-bold">{data.overview.activeGoals}</p>
-              <p className="text-xs text-muted-foreground">Active Goals</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/50 text-center">
-              <CheckCircle2 className="w-4 h-4 mx-auto mb-1 text-amber-500" />
-              <p className="text-lg font-bold">{data.overview.completedGoals}</p>
-              <p className="text-xs text-muted-foreground">Goals Done</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Activity Breakdown */}
-      <div className="grid sm:grid-cols-2 gap-6">
-        {/* Activity by Day */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-500" />
-              Activity by Day
-            </CardTitle>
-            <CardDescription>Notes created this month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between items-end gap-2 pt-4">
-              {data.activityByDay.map((day) => (
-                <div key={day.day} className="flex flex-col items-center gap-1">
-                  <ActivityBar count={day.count} maxCount={maxDayCount} />
-                  <span className="text-xs text-muted-foreground">{day.day}</span>
+      {/* Header with Score and Streaks */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Productivity Score */}
+        <Card className="border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-transparent">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="relative w-20 h-20">
+                <svg className="w-20 h-20 transform -rotate-90">
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r="32"
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    fill="none"
+                    className="text-muted/20"
+                  />
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r="32"
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    fill="none"
+                    strokeDasharray={`${(data.productivityScore / 100) * 201} 201`}
+                    className="text-amber-500 transition-all duration-500"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xl font-bold">{data.productivityScore}</span>
                 </div>
-              ))}
+              </div>
+              <div>
+                <div className={`flex items-center gap-1.5 ${color}`}>
+                  <ProductivityIcon className="w-4 h-4" />
+                  <span className="font-semibold text-sm">{label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Productivity Score</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Monthly Summary */}
+        {/* Current Streak */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-500" />
-              Monthly Summary
-            </CardTitle>
-            <CardDescription>Your progress this month</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-500" />
-                <span className="text-sm">Notes Created</span>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
+                <Flame className="w-6 h-6 text-orange-500" />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">{data.thisMonth.notes}</span>
-                {data.thisMonth.monthlyChange !== 0 && (
-                  <Badge
-                    variant="outline"
-                    className={data.thisMonth.monthlyChange > 0 ? 'text-green-500' : 'text-red-500'}
-                  >
-                    {data.thisMonth.monthlyChange > 0 ? (
-                      <TrendingUp className="w-3 h-3 mr-1" />
-                    ) : (
-                      <TrendingDown className="w-3 h-3 mr-1" />
-                    )}
-                    {Math.abs(data.thisMonth.monthlyChange)}%
-                  </Badge>
-                )}
+              <div>
+                <p className="text-2xl font-bold">{data.streaks.current}</p>
+                <p className="text-xs text-muted-foreground">Day Streak</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-purple-500" />
-                <span className="text-sm">Links Saved</span>
+        {/* Longest Streak */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                <Trophy className="w-6 h-6 text-yellow-500" />
               </div>
-              <span className="font-semibold">{data.thisMonth.links}</span>
+              <div>
+                <p className="text-2xl font-bold">{data.streaks.longest}</p>
+                <p className="text-xs text-muted-foreground">Best Streak</p>
+              </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-amber-500" />
-                <span className="text-sm">Files Uploaded</span>
+        {/* This Week Summary */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 h-8 w-8"
+                onClick={handleRefresh}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </Button>
+              <div className="space-y-2 w-full">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> Notes
+                  </span>
+                  <span className="font-semibold">{data.thisWeek.notes}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Link2 className="w-3 h-3" /> Links
+                  </span>
+                  <span className="font-semibold">{data.thisWeek.links}</span>
+                </div>
+                <p className="text-xs text-muted-foreground pt-1 border-t">This Week</p>
               </div>
-              <span className="font-semibold">{data.thisMonth.files}</span>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Daily Activity Chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-blue-500" />
+                Daily Activity
+              </CardTitle>
+              <CardDescription>Notes and links created over the last 30 days</CardDescription>
+            </div>
+            {data.thisMonth.monthlyChange !== 0 && (
+              <Badge
+                variant="outline"
+                className={data.thisMonth.monthlyChange > 0 ? 'text-green-500 border-green-500/30' : 'text-red-500 border-red-500/30'}
+              >
+                {data.thisMonth.monthlyChange > 0 ? (
+                  <TrendingUp className="w-3 h-3 mr-1" />
+                ) : (
+                  <TrendingDown className="w-3 h-3 mr-1" />
+                )}
+                {Math.abs(data.thisMonth.monthlyChange)}% vs last month
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {hasActivity ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data.dailyActivity} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorNotes" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorLinks" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval="preserveStartEnd"
+                    className="text-muted-foreground"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    className="text-muted-foreground"
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
+                  />
+                  <Legend verticalAlign="top" height={36} />
+                  <Area
+                    type="monotone"
+                    dataKey="notes"
+                    stroke="#3b82f6"
+                    fill="url(#colorNotes)"
+                    strokeWidth={2}
+                    name="Notes"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="links"
+                    stroke="#8b5cf6"
+                    fill="url(#colorLinks)"
+                    strokeWidth={2}
+                    name="Links"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <Calendar className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                <p>No activity yet. Start creating notes and saving links!</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Weekly Trend & Category Breakdown */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Weekly Trend */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-green-500" />
+              Weekly Trend
+            </CardTitle>
+            <CardDescription>Activity over the last 12 weeks</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.weeklyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis
+                    dataKey="week"
+                    tick={{ fontSize: 9 }}
+                    tickLine={false}
+                    axisLine={false}
+                    angle={-45}
+                    textAnchor="end"
+                    height={50}
+                    className="text-muted-foreground"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    className="text-muted-foreground"
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
+                  />
+                  <Legend verticalAlign="top" height={36} />
+                  <Bar dataKey="notes" fill="#3b82f6" name="Notes" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="links" fill="#8b5cf6" name="Links" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="goals" fill="#f59e0b" name="Goals" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Category Breakdown */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-500" />
+              Content Breakdown
+            </CardTitle>
+            <CardDescription>Distribution of your content</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data.categoryBreakdown.length > 0 ? (
+              <div className="h-64 flex items-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={data.categoryBreakdown}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {data.categoryBreakdown.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }}
+                      formatter={(value) => [value ?? 0, 'Items']}
+                    />
+                    <Legend
+                      verticalAlign="middle"
+                      align="right"
+                      layout="vertical"
+                      formatter={(value) => <span className="text-sm">{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <Target className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p>No content yet. Start creating!</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Activity by Day of Week */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-500" />
+            Most Active Days
+          </CardTitle>
+          <CardDescription>When you create the most notes</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.activityByDay} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                <XAxis
+                  dataKey="day"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  className="text-muted-foreground"
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                  className="text-muted-foreground"
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    fontSize: '12px'
+                  }}
+                  formatter={(value) => [value ?? 0, 'Notes']}
+                />
+                <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Notes" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Lifetime Stats */}
       <Card>
@@ -293,25 +498,35 @@ export function ProductivityAnalytics() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-blue-500">{data.overview.totalNotes}</p>
-              <p className="text-xs text-muted-foreground">Total Notes</p>
+              <FileText className="w-5 h-5 mx-auto mb-1 text-blue-500" />
+              <p className="text-2xl font-bold">{data.overview.totalNotes}</p>
+              <p className="text-xs text-muted-foreground">Notes</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-purple-500">{data.overview.totalLinks}</p>
-              <p className="text-xs text-muted-foreground">Total Links</p>
+              <Link2 className="w-5 h-5 mx-auto mb-1 text-purple-500" />
+              <p className="text-2xl font-bold">{data.overview.totalLinks}</p>
+              <p className="text-xs text-muted-foreground">Links</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-500">{data.overview.totalBoards}</p>
+              <FolderOpen className="w-5 h-5 mx-auto mb-1 text-green-500" />
+              <p className="text-2xl font-bold">{data.overview.totalFiles}</p>
+              <p className="text-xs text-muted-foreground">Files</p>
+            </div>
+            <div className="text-center">
+              <Grid3X3 className="w-5 h-5 mx-auto mb-1 text-pink-500" />
+              <p className="text-2xl font-bold">{data.overview.totalBoards}</p>
               <p className="text-xs text-muted-foreground">Boards</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-orange-500">{data.overview.activeGoals}</p>
+              <Target className="w-5 h-5 mx-auto mb-1 text-orange-500" />
+              <p className="text-2xl font-bold">{data.overview.activeGoals}</p>
               <p className="text-xs text-muted-foreground">Active Goals</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-amber-500">{data.overview.completedGoals}</p>
+              <CheckCircle2 className="w-5 h-5 mx-auto mb-1 text-amber-500" />
+              <p className="text-2xl font-bold">{data.overview.completedGoals}</p>
               <p className="text-xs text-muted-foreground">Completed</p>
             </div>
           </div>

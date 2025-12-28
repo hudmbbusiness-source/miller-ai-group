@@ -1,9 +1,9 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Github, AlertCircle, Loader2 } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -12,6 +12,36 @@ import {
   CinematicTakeover,
 } from '@/components/hacker-os'
 
+// CRT scanline effect
+function CRTEffect() {
+  return (
+    <>
+      {/* Scanlines */}
+      <div
+        className="fixed inset-0 pointer-events-none z-50"
+        style={{
+          background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px)',
+          backgroundSize: '100% 2px',
+        }}
+      />
+      {/* Screen flicker */}
+      <div
+        className="fixed inset-0 pointer-events-none z-50 animate-pulse"
+        style={{
+          background: 'rgba(0,255,0,0.01)',
+          animation: 'flicker 0.15s infinite',
+        }}
+      />
+      <style jsx>{`
+        @keyframes flicker {
+          0%, 100% { opacity: 0.97; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+    </>
+  )
+}
+
 function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,6 +49,7 @@ function LoginContent() {
   const [showTakeover, setShowTakeover] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userName, setUserName] = useState('Operator')
+  const [bootText, setBootText] = useState<string[]>([])
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -29,6 +60,30 @@ function LoginContent() {
     // Audio engine not available
   }
 
+  // Boot sequence text
+  useEffect(() => {
+    const lines = [
+      '[    0.000000] Linux version 5.15.0-miller-ai',
+      '[    0.000001] Command line: BOOT_IMAGE=/vmlinuz root=/dev/sda1',
+      '[    0.000002] Initializing cgroup subsys cpuset',
+      '[    0.000003] Kernel command line: BOOT_IMAGE=/vmlinuz',
+      '[    0.000004] Miller AI Security Module loaded',
+      '[    0.000005] Awaiting authentication...',
+    ]
+
+    let i = 0
+    const interval = setInterval(() => {
+      if (i < lines.length) {
+        setBootText(prev => [...prev, lines[i]])
+        i++
+      } else {
+        clearInterval(interval)
+      }
+    }, 150)
+
+    return () => clearInterval(interval)
+  }, [])
+
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       setEnvError(true)
@@ -37,14 +92,7 @@ function LoginContent() {
     try {
       const authError = searchParams.get('error')
       if (authError) {
-        const errorMessages: Record<string, string> = {
-          'auth_error': 'Authentication failed. Please try again.',
-          'oauth_error': 'GitHub authentication was cancelled or failed.',
-          'session_error': 'Failed to create session. Please try again.',
-          'callback_error': 'Authentication callback failed. Please try again.',
-          'no_code': 'No authorization code received. Please try again.',
-        }
-        setError(errorMessages[authError] || 'Authentication failed. Please try again.')
+        setError('Authentication failed. Try again.')
       }
 
       const takeover = searchParams.get('takeover')
@@ -109,23 +157,20 @@ function LoginContent() {
       })
 
       if (error) {
-        setError(`GitHub login failed: ${error.message}`)
+        setError(`Auth failed: ${error.message}`)
         setLoading(false)
-        audioEngine?.playEffect('error')
         return
       }
 
       if (data?.url) {
         window.location.href = data.url
       } else {
-        setError('No OAuth URL returned. Check Supabase configuration.')
+        setError('OAuth configuration error')
         setLoading(false)
-        audioEngine?.playEffect('error')
       }
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : String(err)}`)
       setLoading(false)
-      audioEngine?.playEffect('error')
     }
   }
 
@@ -144,13 +189,10 @@ function LoginContent() {
 
   if (envError) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-neutral-900 border border-red-500/30 rounded-lg p-6 max-w-md">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-red-500 mb-2 text-center font-mono">CONFIG ERROR</h2>
-          <p className="text-neutral-400 text-sm text-center">
-            Supabase environment variables not configured.
-          </p>
+      <div className="min-h-screen bg-black flex items-center justify-center p-4 font-mono">
+        <div className="text-red-500 text-sm">
+          <p>[FATAL] Configuration error</p>
+          <p>[FATAL] Missing environment variables</p>
         </div>
       </div>
     )
@@ -166,147 +208,114 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
-      {/* Subtle grid background */}
-      <div
-        className="fixed inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px',
-        }}
-      />
+    <div className="min-h-screen bg-black text-green-500 font-mono overflow-hidden">
+      <CRTEffect />
 
-      {/* Vignette */}
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle at center, transparent 20%, rgba(0,0,0,0.7) 100%)'
-        }}
-      />
-
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 p-4 border-b border-white/5">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/miller" className="flex items-center gap-3">
-            <span className="text-lg font-bold font-mono tracking-wider text-white">
-              MILLER AI GROUP
-            </span>
-          </Link>
-          <Link
-            href="/miller"
-            className="text-sm text-neutral-500 hover:text-white transition-colors font-mono"
-          >
-            &lt; BACK
-          </Link>
+      {/* Terminal container */}
+      <div className="min-h-screen p-4 md:p-8">
+        {/* Header bar */}
+        <div className="flex items-center justify-between mb-6 text-xs text-green-600">
+          <span>miller-ai-group v2.0.0</span>
+          <span>{new Date().toISOString()}</span>
         </div>
-      </header>
 
-      {/* Main content */}
-      <div className="min-h-screen flex items-center justify-center p-4 pt-20 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-md"
-        >
-          {/* Main card */}
-          <div className="bg-neutral-900/80 border border-white/10 rounded-lg overflow-hidden">
-            {/* Terminal header */}
-            <div className="bg-black px-4 py-3 border-b border-white/10 flex items-center gap-2">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-              </div>
-              <span className="text-xs font-mono text-neutral-500 ml-2">root@miller-ai:~/login</span>
-              <motion.span
-                className="ml-auto text-xs text-green-500"
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
-              >
-                ● SECURE
-              </motion.span>
+        {/* Boot log */}
+        <div className="mb-8 text-xs text-green-700 space-y-0.5">
+          {bootText.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+
+        {/* Main terminal */}
+        <div className="max-w-2xl mx-auto">
+          {/* ASCII art header */}
+          <pre className="text-green-500 text-[10px] md:text-xs mb-8 leading-tight">
+{`
+███╗   ███╗██╗██╗     ██╗     ███████╗██████╗      █████╗ ██╗
+████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗    ██╔══██╗██║
+██╔████╔██║██║██║     ██║     █████╗  ██████╔╝    ███████║██║
+██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗    ██╔══██║██║
+██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║    ██║  ██║██║
+╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝
+`}
+          </pre>
+
+          {/* Login prompt */}
+          <div className="space-y-4">
+            <div className="text-sm">
+              <span className="text-green-600">root@miller-ai</span>
+              <span className="text-white">:</span>
+              <span className="text-blue-400">~</span>
+              <span className="text-white"># </span>
+              <span className="text-green-400">./authenticate.sh</span>
             </div>
 
-            {/* Content */}
-            <div className="p-6 space-y-6">
-              {/* Title */}
-              <div className="text-center">
-                <h1 className="text-2xl font-bold font-mono text-white mb-2">
-                  ACCESS TERMINAL
-                </h1>
-                <p className="text-neutral-500 font-mono text-sm">
-                  {isAuthenticated
-                    ? `> Identity verified: ${userName}`
-                    : '> Authenticate to continue'}
-                </p>
-              </div>
-
-              {/* Error display */}
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="bg-red-500/10 border border-red-500/30 rounded p-3 flex items-center gap-3"
-                  >
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                    <span className="text-sm text-red-400 font-mono">{error}</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Action buttons */}
-              <div className="space-y-4">
+            <div className="border border-green-900 bg-black/50 p-6">
+              <div className="text-green-400 text-sm mb-6">
                 {isAuthenticated ? (
-                  <button
-                    onClick={handleEnterSystem}
-                    className="w-full py-4 bg-green-500 hover:bg-green-400 text-black font-mono font-bold rounded transition-all text-lg"
-                  >
-                    ENTER SYSTEM →
-                  </button>
+                  <>
+                    <p>[+] Authentication successful</p>
+                    <p>[+] User: {userName}</p>
+                    <p>[+] Access level: ROOT</p>
+                    <p className="mt-4 text-green-500">System ready. Press ENTER to continue.</p>
+                  </>
                 ) : (
-                  <button
-                    onClick={handleGitHubLogin}
-                    disabled={loading}
-                    className="w-full py-4 bg-white hover:bg-neutral-200 text-black font-mono font-bold rounded transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        AUTHENTICATING...
-                      </>
-                    ) : (
-                      <>
-                        <Github className="w-5 h-5" />
-                        LOGIN WITH GITHUB
-                      </>
-                    )}
-                  </button>
+                  <>
+                    <p>Miller AI Group - Secure Access Terminal</p>
+                    <p className="text-green-600 mt-2">Authentication required.</p>
+                  </>
                 )}
               </div>
 
-              {/* Status */}
-              <div className="pt-4 border-t border-white/10 font-mono text-xs space-y-1">
-                <p className="text-neutral-600">
-                  <span className="text-green-500">[OK]</span> Connection encrypted
-                </p>
-                <p className="text-neutral-600">
-                  <span className="text-green-500">[OK]</span> System ready
-                </p>
-              </div>
+              {/* Error */}
+              {error && (
+                <div className="text-red-500 text-sm mb-4">
+                  <p>[-] ERROR: {error}</p>
+                </div>
+              )}
+
+              {/* Buttons */}
+              {isAuthenticated ? (
+                <button
+                  onClick={handleEnterSystem}
+                  className="w-full py-3 bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors"
+                >
+                  [ ENTER SYSTEM ]
+                </button>
+              ) : (
+                <button
+                  onClick={handleGitHubLogin}
+                  disabled={loading}
+                  className="w-full py-3 bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      AUTHENTICATING...
+                    </>
+                  ) : (
+                    <>
+                      <Github className="w-4 h-4" />
+                      AUTHENTICATE VIA GITHUB
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Status line */}
+            <div className="text-xs text-green-700 flex items-center gap-2">
+              <span className="animate-pulse">●</span>
+              <span>Secure connection established | TLS 1.3 | AES-256-GCM</span>
             </div>
           </div>
 
           {/* Footer */}
-          <p className="text-center mt-6 text-xs font-mono text-neutral-600">
-            MILLER AI GROUP // SECURE ACCESS v2.0
-          </p>
-        </motion.div>
+          <div className="mt-12 text-xs text-green-800 text-center">
+            <p>Connection: 127.0.0.1 → miller-ai.group:443</p>
+            <p className="mt-1">© 2024 Miller AI Group | All systems monitored</p>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -314,16 +323,9 @@ function LoginContent() {
 
 function LoginFallback() {
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="text-center">
-        <motion.div
-          className="w-8 h-8 mx-auto mb-4 border-2 border-white/20 border-t-white rounded-full"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-        />
-        <p className="text-neutral-500 font-mono text-sm">
-          LOADING...
-        </p>
+    <div className="min-h-screen bg-black flex items-center justify-center font-mono">
+      <div className="text-green-500 text-sm">
+        <span className="animate-pulse">█</span> Loading system...
       </div>
     </div>
   )

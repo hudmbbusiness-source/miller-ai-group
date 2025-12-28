@@ -75,7 +75,10 @@ import {
 } from '@/lib/actions/goals'
 
 // Types
-type Note = Tables<'notes'>
+type Note = Tables<'notes'> & {
+  attachments?: { name: string; url: string }[]
+  links?: { title: string; url: string }[]
+}
 type Board = Tables<'boards'>
 
 interface Asset {
@@ -172,8 +175,8 @@ function NotesTab() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data, error } = await supabase
-      .from('notes')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from('notes') as any)
       .select('*')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
@@ -199,8 +202,8 @@ function NotesTab() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data, error } = await supabase
-      .from('notes')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from('notes') as any)
       .insert({
         title: newTitle,
         content: newContent,
@@ -224,8 +227,8 @@ function NotesTab() {
     setSaving(true)
 
     const supabase = createClient()
-    const { error } = await supabase
-      .from('notes')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from('notes') as any)
       .update({
         title: editTitle,
         content: editContent,
@@ -246,7 +249,8 @@ function NotesTab() {
     if (!confirm('Delete this note?')) return
 
     const supabase = createClient()
-    await supabase.from('notes').delete().eq('id', id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('notes') as any).delete().eq('id', id)
 
     const remaining = notes.filter(n => n.id !== id)
     setNotes(remaining)
@@ -379,8 +383,8 @@ function NotesTab() {
         .getPublicUrl(filePath)
 
       const attachments = selectedNote.attachments || []
-      await supabase
-        .from('notes')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('notes') as any)
         .update({
           attachments: [...attachments, { name: file.name, url: publicUrl }],
           updated_at: new Date().toISOString(),
@@ -398,8 +402,8 @@ function NotesTab() {
 
     const supabase = createClient()
     const links = selectedNote.links || []
-    await supabase
-      .from('notes')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('notes') as any)
       .update({
         links: [...links, { title: linkTitle || linkUrl, url: linkUrl }],
         updated_at: new Date().toISOString(),
@@ -799,9 +803,11 @@ function BoardsTab() {
     }
 
     if (editingBoard) {
-      await supabase.from('boards').update(boardData).eq('id', editingBoard.id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('boards') as any).update(boardData).eq('id', editingBoard.id)
     } else {
-      await supabase.from('boards').insert(boardData)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('boards') as any).insert(boardData)
     }
 
     setSaving(false)
@@ -813,8 +819,10 @@ function BoardsTab() {
     if (!confirm('Are you sure you want to delete this board and all its pins?')) return
 
     const supabase = createClient()
-    await supabase.from('pins').delete().eq('board_id', id)
-    await supabase.from('boards').delete().eq('id', id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('pins') as any).delete().eq('board_id', id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('boards') as any).delete().eq('id', id)
     fetchBoards()
   }
 
@@ -1048,9 +1056,11 @@ function AssetsTab() {
     }
 
     if (editingAsset) {
-      await supabase.from('assets').update(assetData).eq('id', editingAsset.id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('assets') as any).update(assetData).eq('id', editingAsset.id)
     } else {
-      await supabase.from('assets').insert(assetData)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('assets') as any).insert(assetData)
     }
 
     setSaving(false)
@@ -1063,7 +1073,8 @@ function AssetsTab() {
     if (!confirm('Delete this item?')) return
 
     const supabase = createClient()
-    await supabase.from('assets').delete().eq('id', id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('assets') as any).delete().eq('id', id)
     fetchAssets()
   }
 

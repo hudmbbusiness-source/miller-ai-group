@@ -391,27 +391,31 @@ export function SystemTakeoverSequence({
           />
 
           {/* Progress indicator */}
-          {phase !== 'idle' && phase !== 'complete' && (
+          {phase !== 'idle' && (
             <motion.div
               className="absolute bottom-8 left-1/2 -translate-x-1/2"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
               <div className="flex gap-2">
-                {['glitch_start', 'hex_grid', 'boot_sequence', 'logo_reveal', 'partners', 'system_online'].map((p, i) => (
-                  <motion.div
-                    key={p}
-                    className={`w-2 h-2 rounded-full ${
-                      phase === p
-                        ? 'bg-cyan-400'
-                        : ['glitch_start', 'hex_grid', 'boot_sequence', 'logo_reveal', 'partners', 'system_online'].indexOf(phase) > i
-                          ? 'bg-cyan-400/50'
-                          : 'bg-neutral-700'
-                    }`}
-                    animate={phase === p ? { scale: [1, 1.5, 1] } : {}}
-                    transition={{ duration: 0.5, repeat: Infinity }}
-                  />
-                ))}
+                {(['glitch_start', 'hex_grid', 'boot_sequence', 'logo_reveal', 'partners', 'system_online'] as const).map((p, i) => {
+                  const phases = ['glitch_start', 'hex_grid', 'boot_sequence', 'logo_reveal', 'partners', 'system_online'] as const
+                  const currentIndex = phases.indexOf(phase as typeof phases[number])
+                  return (
+                    <motion.div
+                      key={p}
+                      className={`w-2 h-2 rounded-full ${
+                        phase === p
+                          ? 'bg-cyan-400'
+                          : currentIndex > i
+                            ? 'bg-cyan-400/50'
+                            : 'bg-neutral-700'
+                      }`}
+                      animate={phase === p ? { scale: [1, 1.5, 1] } : {}}
+                      transition={{ duration: 0.5, repeat: Infinity }}
+                    />
+                  )
+                })}
               </div>
             </motion.div>
           )}

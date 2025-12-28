@@ -172,10 +172,10 @@ export function KeyboardShortcutsButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+        className="px-2 py-1 text-xs font-mono text-green-700 hover:text-green-500 transition-colors"
         title="Keyboard shortcuts (?)"
       >
-        <Keyboard className="w-4 h-4" />
+        [?]
       </button>
       <KeyboardShortcutsDialog open={open} onOpenChange={setOpen} />
     </>

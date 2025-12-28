@@ -215,8 +215,9 @@ function LoginContent() {
       <div className="min-h-screen p-4 md:p-8">
         {/* Header bar */}
         <div className="flex items-center justify-between mb-6 text-xs text-green-600">
-          <span>miller-ai-group v2.0.0</span>
-          <span>{new Date().toISOString()}</span>
+          <span>miller-ai v2.0</span>
+          <span className="hidden sm:inline">{new Date().toISOString()}</span>
+          <span className="sm:hidden">{new Date().toLocaleTimeString()}</span>
         </div>
 
         {/* Boot log */}
@@ -228,17 +229,19 @@ function LoginContent() {
 
         {/* Main terminal */}
         <div className="max-w-2xl mx-auto">
-          {/* ASCII art header */}
-          <pre className="text-green-500 text-[10px] md:text-xs mb-8 leading-tight">
-{`
-███╗   ███╗██╗██╗     ██╗     ███████╗██████╗      █████╗ ██╗
-████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗    ██╔══██╗██║
-██╔████╔██║██║██║     ██║     █████╗  ██████╔╝    ███████║██║
-██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗    ██╔══██║██║
-██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║    ██║  ██║██║
-╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝
-`}
+          {/* ASCII art header - hidden on small mobile */}
+          <pre className="text-green-500 text-[8px] sm:text-[10px] md:text-xs mb-8 leading-tight overflow-x-auto hidden sm:block">
+{`███╗   ███╗██╗██╗     ██╗     ███████╗██████╗
+████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗
+██╔████╔██║██║██║     ██║     █████╗  ██████╔╝
+██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗
+██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║
+╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝`}
           </pre>
+          {/* Mobile simplified header */}
+          <div className="sm:hidden text-green-500 text-xl font-bold mb-6">
+            MILLER AI
+          </div>
 
           {/* Login prompt */}
           <div className="space-y-4">
@@ -274,11 +277,11 @@ function LoginContent() {
                 </div>
               )}
 
-              {/* Buttons */}
+              {/* Buttons - min 44px touch target */}
               {isAuthenticated ? (
                 <button
                   onClick={handleEnterSystem}
-                  className="w-full py-3 bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors"
+                  className="w-full min-h-[48px] py-3 bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors active:bg-green-600"
                 >
                   [ ENTER SYSTEM ]
                 </button>
@@ -286,16 +289,16 @@ function LoginContent() {
                 <button
                   onClick={handleGitHubLogin}
                   disabled={loading}
-                  className="w-full py-3 bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full min-h-[48px] py-3 bg-green-500 text-black font-bold text-sm hover:bg-green-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 active:bg-green-600"
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       AUTHENTICATING...
                     </>
                   ) : (
                     <>
-                      <Github className="w-4 h-4" />
+                      <Github className="w-5 h-5" />
                       AUTHENTICATE VIA GITHUB
                     </>
                   )}

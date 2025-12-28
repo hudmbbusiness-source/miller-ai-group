@@ -150,8 +150,11 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
         <div className="fixed inset-0 z-40 bg-black/95 p-4 overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
             <span className="text-green-500 text-sm">root@miller-ai:~#</span>
-            <button onClick={() => setMenuOpen(false)} className="text-green-500 hover:text-green-400">
-              <X className="w-5 h-5" />
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="text-green-500 hover:text-green-400 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+            >
+              <X className="w-6 h-6" />
             </button>
           </div>
 
@@ -162,9 +165,9 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
                 key={item.href}
                 href={item.href}
                 onClick={handleNavClick}
-                className={`block py-2 ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400'}`}
+                className={`block py-3 min-h-[44px] ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400 active:text-green-300'}`}
               >
-                $ {item.cmd} {isActive(item.href) && '<-- current'}
+                $ {item.cmd} {isActive(item.href) && '<--'}
               </Link>
             ))}
 
@@ -174,9 +177,9 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
                 key={item.href}
                 href={item.href}
                 onClick={handleNavClick}
-                className={`block py-2 ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400'}`}
+                className={`block py-3 min-h-[44px] ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400 active:text-green-300'}`}
               >
-                $ ./tools/{item.label} {isActive(item.href) && '<-- current'}
+                $ ./tools/{item.label} {isActive(item.href) && '<--'}
               </Link>
             ))}
 
@@ -186,16 +189,16 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
                 key={item.href}
                 href={item.href}
                 onClick={handleNavClick}
-                className={`block py-2 ${isActive(item.href) ? 'text-red-400' : 'text-red-600 hover:text-red-400'}`}
+                className={`block py-3 min-h-[44px] ${isActive(item.href) ? 'text-red-400' : 'text-red-600 hover:text-red-400 active:text-red-300'}`}
               >
-                # ./admin/{item.label} {isActive(item.href) && '<-- current'}
+                # ./admin/{item.label} {isActive(item.href) && '<--'}
               </Link>
             ))}
 
             <div className="mt-8 pt-4 border-t border-green-900">
               <button
                 onClick={handleLogout}
-                className="text-red-500 hover:text-red-400"
+                className="text-red-500 hover:text-red-400 py-3 min-h-[44px] active:text-red-300"
               >
                 $ logout --force
               </button>
@@ -228,10 +231,10 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
           {/* Main header */}
           <div className="flex items-center justify-between px-4 py-2">
             <div className="flex items-center gap-4">
-              {/* Menu button */}
+              {/* Menu button - min 44px touch target */}
               <button
                 onClick={() => setMenuOpen(true)}
-                className="text-green-500 hover:text-green-400 p-1"
+                className="text-green-500 hover:text-green-400 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
                 <Menu className="w-5 h-5" />
               </button>

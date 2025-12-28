@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useRef, useCallback } from 'react'
+import { useState, useEffect, Suspense, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -21,7 +21,6 @@ import {
   Film,
   ChevronDown,
   Newspaper,
-  Loader2,
   Sparkles,
   Code2,
   Cpu,
@@ -31,103 +30,66 @@ import {
   Rocket,
 } from 'lucide-react'
 
-// Animated background particles
-function ParticleField() {
+// Stripe-style animated gradient mesh
+function StripeMesh() {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(50)].map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute w-1 h-1 bg-violet-500/30 rounded-full"
-          initial={{
-            x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
-            y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080),
-          }}
-          animate={{
-            x: [null, Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920)],
-            y: [null, Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080)],
-            opacity: [0, 1, 0],
-          }}
-          transition={{
-            duration: Math.random() * 20 + 10,
-            repeat: Infinity,
-            ease: 'linear',
-          }}
-        />
-      ))}
-    </div>
-  )
-}
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      <motion.div
+        className="absolute w-[1200px] h-[1200px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(139, 92, 246, 0.18) 0%, transparent 50%)',
+          top: '-35%',
+          left: '-20%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, 120, 60, 0],
+          y: [0, 80, 40, 0],
+          scale: [1, 1.15, 1.05, 1],
+        }}
+        transition={{ duration: 35, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute w-[900px] h-[900px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 50%)',
+          top: '30%',
+          right: '-25%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, -100, -50, 0],
+          y: [0, 100, 50, 0],
+          scale: [1, 0.95, 1.1, 1],
+        }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'easeInOut', delay: 8 }}
+      />
+      <motion.div
+        className="absolute w-[700px] h-[700px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(236, 72, 153, 0.12) 0%, transparent 50%)',
+          bottom: '-15%',
+          left: '30%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, 60, -30, 0],
+          y: [0, -60, 30, 0],
+          scale: [1, 1.2, 0.95, 1],
+        }}
+        transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut', delay: 12 }}
+      />
 
-// Animated gradient orbs
-function GradientOrbs() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <motion.div
-        className="absolute w-[800px] h-[800px] rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
-          top: '-20%',
-          left: '-10%',
-        }}
-        animate={{
-          x: [0, 100, 0],
-          y: [0, 50, 0],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute w-[600px] h-[600px] rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)',
-          bottom: '-10%',
-          right: '-5%',
-        }}
-        animate={{
-          x: [0, -80, 0],
-          y: [0, -40, 0],
-          scale: [1, 1.15, 1],
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-      />
-      <motion.div
-        className="absolute w-[500px] h-[500px] rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(236,72,153,0.1) 0%, transparent 70%)',
-          top: '40%',
-          left: '50%',
-        }}
-        animate={{
-          x: [0, 60, 0],
-          y: [0, -60, 0],
-          scale: [1, 1.2, 1],
-        }}
-        transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut', delay: 4 }}
-      />
-    </div>
-  )
-}
-
-// 3D grid background with perspective
-function GridBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ perspective: '1000px' }}>
-      <motion.div
-        className="absolute inset-0"
+      {/* Grid */}
+      <div
+        className="absolute inset-0 opacity-[0.012]"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(139,92,246,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(139,92,246,0.03) 1px, transparent 1px)
+            linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)
           `,
-          backgroundSize: '60px 60px',
-          transformStyle: 'preserve-3d',
+          backgroundSize: '80px 80px',
         }}
-        animate={{
-          rotateX: [0, 2, 0],
-          translateY: [0, -20, 0],
-        }}
-        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
       />
     </div>
   )
@@ -152,14 +114,14 @@ function AnimatedCounter({ value, suffix = '', className }: { value: number; suf
   }, [display])
 
   return (
-    <span ref={ref} className={className}>
+    <span ref={ref} className={cn('stat-counter', className)}>
       {displayValue}{suffix}
     </span>
   )
 }
 
 // Venture card with 3D hover effect
-function VentureCard3D({
+function VentureCard({
   venture,
   Icon,
   status,
@@ -180,8 +142,8 @@ function VentureCard3D({
     const centerY = rect.top + rect.height / 2
     const x = e.clientX - centerX
     const y = e.clientY - centerY
-    setRotateY(x / 20)
-    setRotateX(-y / 20)
+    setRotateY(x / 25)
+    setRotateX(-y / 25)
   }
 
   const handleMouseLeave = () => {
@@ -191,10 +153,10 @@ function VentureCard3D({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 50 }}
+      initial={{ opacity: 0, y: 40 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ delay: index * 0.1, duration: 0.5 }}
+      transition={{ delay: index * 0.1, duration: 0.6 }}
     >
       <Link href={`/projects/${venture.slug}`}>
         <motion.div
@@ -202,30 +164,34 @@ function VentureCard3D({
           style={{
             transformStyle: 'preserve-3d',
             transform: `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`,
+            transition: 'transform 0.15s ease',
           }}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           whileHover={{ scale: 1.02 }}
-          transition={{ type: 'spring', stiffness: 300 }}
         >
           {/* Glow effect */}
           <div className="absolute -inset-1 bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-fuchsia-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
           <div className={cn(
             'relative overflow-hidden rounded-2xl p-6 h-full',
-            'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
-            'border border-border/50 group-hover:border-violet-500/50',
+            'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+            'backdrop-blur-xl border border-white/5',
+            'shadow-2xl shadow-black/20',
             'transition-all duration-500',
-            'shadow-lg group-hover:shadow-violet-500/10'
+            'group-hover:border-violet-500/30 group-hover:shadow-violet-500/10'
           )}>
             {/* Shimmer effect */}
-            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
               <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.03] to-transparent"
                 animate={{ x: ['-100%', '100%'] }}
                 transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 2 }}
               />
             </div>
+
+            {/* Top line */}
+            <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
             <div className="relative">
               <div className="flex items-start justify-between mb-4">
@@ -236,14 +202,14 @@ function VentureCard3D({
                 >
                   <Icon className="w-6 h-6 text-white" />
                 </motion.div>
-                <Badge variant="outline" className={cn('backdrop-blur-sm', status.color)}>
+                <Badge variant="outline" className={cn('border', status.color)}>
                   {status.label}
                 </Badge>
               </div>
-              <h3 className="text-xl font-semibold mb-2 group-hover:text-violet-400 transition-colors">
+              <h3 className="text-xl font-semibold mb-2 text-white group-hover:text-violet-300 transition-colors">
                 {venture.name}
               </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="text-sm text-neutral-400 leading-relaxed">
                 {venture.description}
               </p>
 
@@ -262,7 +228,7 @@ function VentureCard3D({
   )
 }
 
-// Stats with animated reveal
+// Stats section
 function StatsSection() {
   const stats = [
     { value: 5, suffix: '+', label: 'Ventures Built', icon: Rocket },
@@ -272,7 +238,7 @@ function StatsSection() {
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats.map((stat, index) => (
         <motion.div
           key={stat.label}
@@ -280,11 +246,12 @@ function StatsSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: index * 0.1 }}
-          whileHover={{ y: -5, scale: 1.02 }}
+          whileHover={{ y: -4, scale: 1.02 }}
           className={cn(
             'relative overflow-hidden rounded-2xl p-6 text-center',
-            'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
-            'border border-border/50 hover:border-violet-500/30',
+            'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+            'backdrop-blur-xl border border-white/5',
+            'shadow-xl hover:border-violet-500/20 hover:shadow-violet-500/5',
             'transition-all duration-300'
           )}
         >
@@ -293,12 +260,12 @@ function StatsSection() {
             transition={{ duration: 0.5 }}
             className="w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 flex items-center justify-center"
           >
-            <stat.icon className="w-6 h-6 text-violet-500" />
+            <stat.icon className="w-6 h-6 text-violet-400" />
           </motion.div>
           <div className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
             <AnimatedCounter value={stat.value} suffix={stat.suffix} />
           </div>
-          <div className="text-sm text-muted-foreground mt-1">{stat.label}</div>
+          <div className="text-sm text-neutral-500 mt-1">{stat.label}</div>
         </motion.div>
       ))}
     </div>
@@ -309,7 +276,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   'active': { label: 'Active', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
   'development': { label: 'In Development', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
   'coming-soon': { label: 'Coming Soon', color: 'bg-violet-500/10 text-violet-400 border-violet-500/30' },
-  'past': { label: 'Past Venture', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
+  'past': { label: 'Past Venture', color: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/30' },
 }
 
 const ventureIcons: Record<string, typeof Zap> = {
@@ -336,11 +303,9 @@ function MillerPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { scrollYProgress } = useScroll()
-  const heroRef = useRef<HTMLDivElement>(null)
 
   // Parallax effects
   const y1 = useTransform(scrollYProgress, [0, 1], [0, -100])
-  const y2 = useTransform(scrollYProgress, [0, 1], [0, -200])
   const opacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
 
   useEffect(() => {
@@ -369,201 +334,207 @@ function MillerPageContent() {
 
   if (isProcessingAuth) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          >
-            <Sparkles className="w-12 h-12 text-violet-500 mx-auto mb-4" />
-          </motion.div>
-          <p className="text-muted-foreground">Completing login...</p>
-        </div>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+        >
+          <Sparkles className="w-10 h-10 text-violet-500" />
+        </motion.div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background overflow-hidden">
-      {/* Hero Section */}
-      <section ref={heroRef} className="min-h-screen flex flex-col relative">
-        <GradientOrbs />
-        <GridBackground />
-        <ParticleField />
+    <div className="min-h-screen bg-black text-white antialiased overflow-x-hidden">
+      <StripeMesh />
 
-        {/* Navigation */}
-        <motion.header
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-20 border-b border-border/30 backdrop-blur-xl bg-background/50"
-        >
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
+      {/* Navigation */}
+      <motion.nav
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="fixed top-0 left-0 right-0 z-50"
+      >
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-2xl border-b border-white/5" />
+        <div className="relative max-w-7xl mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/miller" className="flex items-center gap-3 group">
               <motion.div
-                className="flex items-center gap-3"
-                whileHover={{ scale: 1.02 }}
+                animate={{ y: [0, -2, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
               >
                 <motion.div
-                  whileHover={{ rotate: 360 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <Image
-                    src="/logos/miller-ai-group.svg"
-                    alt="Miller AI Group"
-                    width={40}
-                    height={40}
-                    className="w-10 h-10"
-                  />
-                </motion.div>
-                <span className="font-bold text-lg tracking-wide bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
-                  MILLER AI GROUP
-                </span>
+                  className="absolute inset-0 bg-violet-500/30 rounded-lg blur-lg"
+                  animate={{ opacity: [0.3, 0.5, 0.3], scale: [1, 1.1, 1] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                />
+                <Image
+                  src="/logos/miller-ai-group.svg"
+                  alt="Miller AI Group"
+                  width={36}
+                  height={36}
+                  className="relative w-9 h-9"
+                />
               </motion.div>
+              <span className="font-semibold text-lg tracking-tight bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+                MILLER AI GROUP
+              </span>
+            </Link>
 
-              <div className="flex items-center gap-2">
-                <Button asChild variant="ghost" size="sm" className="hover:bg-violet-500/10 hover:text-violet-400">
-                  <Link href="/resume">Resume</Link>
-                </Button>
-                <Button asChild variant="ghost" size="sm" className="hover:bg-violet-500/10 hover:text-violet-400">
-                  <Link href="/press">Press</Link>
-                </Button>
-                <Button asChild size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-violet-500/25">
+            <div className="flex items-center gap-3">
+              <Link href="/resume" className="hidden sm:block text-sm text-neutral-400 hover:text-white transition-colors relative group px-3 py-2">
+                Resume
+                <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-gradient-to-r from-violet-500 to-fuchsia-500 group-hover:w-full transition-all duration-300" />
+              </Link>
+              <Link href="/press" className="hidden sm:block text-sm text-neutral-400 hover:text-white transition-colors relative group px-3 py-2">
+                Press
+                <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-gradient-to-r from-violet-500 to-fuchsia-500 group-hover:w-full transition-all duration-300" />
+              </Link>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25">
                   <Link href="/intro">Enter System</Link>
                 </Button>
-              </div>
+              </motion.div>
             </div>
           </div>
-        </motion.header>
+        </div>
+      </motion.nav>
 
-        {/* Hero Content */}
+      {/* Hero */}
+      <section className="min-h-screen flex flex-col justify-center relative pt-16">
         <motion.div
-          className="flex-1 flex items-center justify-center relative z-10"
+          className="relative z-10 max-w-4xl mx-auto px-6 text-center"
           style={{ y: y1, opacity }}
         >
-          <div className="container mx-auto px-4 py-16">
-            <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-xl mb-10 shadow-lg shadow-violet-500/10"
+            >
               <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.8, type: 'spring' }}
+                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
               >
-                <motion.div
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 text-sm font-medium mb-8"
-                  animate={{ y: [0, -5, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Building the Future with AI
-                </motion.div>
-
-                <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6">
-                  <span className="bg-gradient-to-r from-white via-violet-100 to-purple-200 bg-clip-text text-transparent">
-                    Hudson Barnes
-                  </span>
-                </h1>
+                <Sparkles className="w-4 h-4 text-violet-400" />
               </motion.div>
+              <span className="text-xs font-medium text-violet-300 uppercase tracking-widest">Building the Future with AI</span>
+            </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-8">
+              <span className="bg-gradient-to-r from-white via-white to-neutral-300 bg-clip-text text-transparent">
+                Hudson Barnes
+              </span>
+            </h1>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <p className="text-xl md:text-2xl mb-4">
+              <span className="text-violet-400 font-medium">Founder</span>
+              {' '}&bull;{' '}
+              <span className="text-purple-400 font-medium">AI Engineer</span>
+              {' '}&bull;{' '}
+              <span className="text-fuchsia-400 font-medium">Innovator</span>
+            </p>
+            <p className="text-lg text-neutral-400 max-w-2xl mx-auto mb-10">
+              Building technology ventures under{' '}
+              <span className="text-violet-400 font-semibold">Miller AI Group</span>.
+              Focused on systems that compound, execution that scales, and leverage that multiplies.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="flex flex-col sm:flex-row gap-4 justify-center"
+          >
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <Button
+                size="lg"
+                className="min-h-[52px] px-8 text-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-2xl shadow-violet-500/25 border-0"
+                onClick={() => router.push('/resume')}
               >
-                <p className="text-xl md:text-2xl text-muted-foreground mb-4">
-                  <span className="text-violet-400 font-medium">Founder</span> | <span className="text-purple-400 font-medium">AI Engineer</span> | <span className="text-fuchsia-400 font-medium">Innovator</span>
-                </p>
-                <p className="text-lg text-muted-foreground/80 max-w-2xl mx-auto mb-8">
-                  Building technology ventures under{' '}
-                  <span className="text-violet-400 font-semibold">Miller AI Group</span>.
-                  Focused on systems that compound, execution that scales, and leverage that multiplies.
-                </p>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className="flex flex-col sm:flex-row gap-4 justify-center"
+                View Resume
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <Button
+                variant="outline"
+                size="lg"
+                className="min-h-[52px] px-8 text-lg border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20"
+                onClick={() => router.push('/intro')}
               >
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    size="lg"
-                    className="min-h-[52px] px-8 text-lg bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white shadow-lg shadow-violet-500/25 border-0"
-                    onClick={() => router.push('/resume')}
-                  >
-                    View Resume
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                </motion.div>
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="min-h-[52px] px-8 text-lg border-violet-500/30 hover:bg-violet-500/10 hover:border-violet-500/50 hover:text-violet-400"
-                    onClick={() => router.push('/intro')}
-                  >
-                    Enter System
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                </motion.div>
-              </motion.div>
+                Enter System
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </motion.div>
+          </motion.div>
 
-              {/* Social Links */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.7 }}
-                className="flex justify-center gap-4 mt-8"
+          {/* Social Links */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            className="flex justify-center gap-4 mt-10"
+          >
+            {[
+              { href: SOCIAL_LINKS.instagram, icon: Instagram },
+              { href: SOCIAL_LINKS.linkedin, icon: Linkedin },
+            ].map((social, i) => (
+              <motion.a
+                key={i}
+                href={social.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                whileHover={{ scale: 1.1, y: -2 }}
+                whileTap={{ scale: 0.9 }}
+                className="p-3 rounded-full bg-white/5 border border-white/10 hover:bg-violet-500/20 hover:border-violet-500/30 text-neutral-400 hover:text-violet-400 transition-all"
               >
-                {[
-                  { href: SOCIAL_LINKS.instagram, icon: Instagram },
-                  { href: SOCIAL_LINKS.linkedin, icon: Linkedin },
-                ].map((social, i) => (
-                  <motion.a
-                    key={i}
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    whileHover={{ scale: 1.1, y: -2 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="p-3 rounded-full bg-violet-500/10 border border-violet-500/30 hover:bg-violet-500/20 hover:border-violet-500/50 text-violet-400 transition-all"
-                  >
-                    <social.icon className="w-5 h-5" />
-                  </motion.a>
-                ))}
-              </motion.div>
-            </div>
-          </div>
+                <social.icon className="w-5 h-5" />
+              </motion.a>
+            ))}
+          </motion.div>
         </motion.div>
 
         {/* Scroll Indicator */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.5 }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10"
+          transition={{ delay: 1.2 }}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2"
         >
           <motion.div
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="flex flex-col items-center text-violet-400/50"
+            animate={{ y: [0, 8, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="flex flex-col items-center text-neutral-600"
           >
-            <span className="text-xs mb-2">Scroll</span>
+            <span className="text-xs mb-2 uppercase tracking-widest">Scroll</span>
             <ChevronDown className="w-5 h-5" />
           </motion.div>
         </motion.div>
       </section>
 
       {/* Stats Section */}
-      <section className="py-20 relative">
-        <div className="container mx-auto px-4">
+      <section className="py-28 relative">
+        <div className="max-w-5xl mx-auto px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-14"
           >
-            <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
               Track Record
             </h2>
           </motion.div>
@@ -572,9 +543,8 @@ function MillerPageContent() {
       </section>
 
       {/* Technology Ventures Section */}
-      <section className="py-20 md:py-32 relative">
-        <GradientOrbs />
-        <div className="container mx-auto px-4 relative z-10">
+      <section className="py-28 relative">
+        <div className="max-w-6xl mx-auto px-6 relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -582,25 +552,28 @@ function MillerPageContent() {
             className="text-center mb-16"
           >
             <motion.div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 text-sm font-medium mb-4"
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-xl mb-6"
             >
-              <Code2 className="w-4 h-4" />
-              Technology Portfolio
+              <Code2 className="w-4 h-4 text-violet-400" />
+              <span className="text-xs font-medium text-violet-300 uppercase tracking-widest">Technology Portfolio</span>
             </motion.div>
             <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
               Technology Ventures
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-lg text-neutral-400 max-w-2xl mx-auto">
               AI-powered systems focused on automation, trading, and intelligent infrastructure.
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-6">
             {techVentures.map((venture, index) => {
               const Icon = ventureIcons[venture.slug] || Zap
               const status = statusConfig[venture.status] || statusConfig.active
               return (
-                <VentureCard3D
+                <VentureCard
                   key={venture.slug}
                   venture={venture}
                   Icon={Icon}
@@ -614,8 +587,8 @@ function MillerPageContent() {
       </section>
 
       {/* Other Ventures */}
-      <section className="py-20 md:py-32 relative bg-muted/20">
-        <div className="container mx-auto px-4 relative z-10">
+      <section className="py-28 relative">
+        <div className="max-w-5xl mx-auto px-6 relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -623,20 +596,20 @@ function MillerPageContent() {
             className="text-center mb-16"
           >
             <motion.div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-sm font-medium mb-4"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-purple-500/30 bg-purple-500/10 backdrop-blur-xl mb-6"
             >
-              <Rocket className="w-4 h-4" />
-              Entrepreneurial Journey
+              <Rocket className="w-4 h-4 text-purple-400" />
+              <span className="text-xs font-medium text-purple-300 uppercase tracking-widest">Entrepreneurial Journey</span>
             </motion.div>
             <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
               Ventures & Experience
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-lg text-neutral-400 max-w-2xl mx-auto">
               Entrepreneurial ventures that shaped my journey as a founder.
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-6">
             {otherVentures.map((venture, index) => {
               const Icon = ventureIcons[venture.slug] || Zap
               const status = statusConfig[venture.status] || statusConfig.active
@@ -646,12 +619,13 @@ function MillerPageContent() {
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ delay: index * 0.15 }}
-                  whileHover={{ y: -5 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ y: -4 }}
                   className={cn(
                     'relative overflow-hidden rounded-2xl p-6',
-                    'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
-                    'border border-border/50 hover:border-purple-500/30',
+                    'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+                    'backdrop-blur-xl border border-white/5',
+                    'shadow-xl hover:border-purple-500/20',
                     'transition-all duration-300 group'
                   )}
                 >
@@ -670,24 +644,24 @@ function MillerPageContent() {
                           {status.label}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                      <p className="text-sm text-neutral-400 leading-relaxed mb-4">
                         {venture.description}
                       </p>
 
                       {venture.slug === 'cozyfilmz' && (
                         <div className="space-y-3 mb-4">
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-neutral-500">
                             As CEO & Co-Founder, learned invaluable lessons in operations, real estate, and pivoting under pressure.
                           </p>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-3">
                             {venture.instagram && (
                               <a
                                 href={venture.instagram}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-purple-400 hover:underline"
+                                className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 transition-colors"
                               >
-                                <Instagram className="w-3 h-3" />
+                                <Instagram className="w-3.5 h-3.5" />
                                 Instagram
                               </a>
                             )}
@@ -697,9 +671,9 @@ function MillerPageContent() {
                                 href={link.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-purple-400 hover:underline"
+                                className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 transition-colors"
                               >
-                                <Newspaper className="w-3 h-3" />
+                                <Newspaper className="w-3.5 h-3.5" />
                                 Press
                               </a>
                             ))}
@@ -709,7 +683,7 @@ function MillerPageContent() {
 
                       <Link
                         href={`/projects/${venture.slug}`}
-                        className="inline-flex items-center gap-1 text-sm text-purple-400 hover:underline group/link"
+                        className="inline-flex items-center gap-1.5 text-sm text-purple-400 hover:text-purple-300 transition-colors group/link"
                       >
                         Learn More
                         <ArrowRight className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
@@ -724,24 +698,24 @@ function MillerPageContent() {
       </section>
 
       {/* Target Companies */}
-      <section className="py-20 md:py-32 relative">
-        <div className="container mx-auto px-4">
+      <section className="py-28 relative">
+        <div className="max-w-5xl mx-auto px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-14"
           >
             <motion.div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-400 text-sm font-medium mb-4"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-xl mb-6"
             >
-              <Globe2 className="w-4 h-4" />
-              Career Trajectory
+              <Globe2 className="w-4 h-4 text-violet-400" />
+              <span className="text-xs font-medium text-violet-300 uppercase tracking-widest">Career Trajectory</span>
             </motion.div>
             <h2 className="text-2xl md:text-3xl font-bold mb-3 bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
               Target Companies
             </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
+            <p className="text-neutral-400 max-w-xl mx-auto">
               Developing skills and building projects aligned with the frontier of AI development.
             </p>
           </motion.div>
@@ -750,7 +724,7 @@ function MillerPageContent() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="flex flex-wrap justify-center items-center gap-8 md:gap-12 max-w-4xl mx-auto"
+            className="flex flex-wrap justify-center items-center gap-8 md:gap-10"
           >
             {targetCompanies.map((company, index) => (
               <motion.div
@@ -759,14 +733,15 @@ function MillerPageContent() {
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.05 }}
-                whileHover={{ scale: 1.1, y: -5 }}
+                whileHover={{ scale: 1.1, y: -4 }}
                 className="group flex flex-col items-center"
               >
                 <div className={cn(
                   'w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center p-4',
-                  'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
-                  'border border-border/50 group-hover:border-violet-500/50',
-                  'transition-all duration-300 shadow-lg group-hover:shadow-violet-500/20'
+                  'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+                  'backdrop-blur-xl border border-white/5',
+                  'transition-all duration-300 shadow-lg',
+                  'group-hover:border-violet-500/30 group-hover:shadow-violet-500/10'
                 )}>
                   <Image
                     src={company.logo}
@@ -776,7 +751,7 @@ function MillerPageContent() {
                     className="w-full h-full object-contain"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2 group-hover:text-violet-400 transition-colors">
+                <p className="text-xs text-neutral-500 mt-2 group-hover:text-violet-400 transition-colors">
                   {company.name}
                 </p>
               </motion.div>
@@ -786,100 +761,97 @@ function MillerPageContent() {
       </section>
 
       {/* Philosophy Section */}
-      <section className="py-20 md:py-32 relative bg-muted/20">
-        <GradientOrbs />
-        <div className="container mx-auto px-4 relative z-10">
+      <section className="py-28 relative">
+        <div className="max-w-5xl mx-auto px-6 relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="max-w-4xl mx-auto"
+            className="text-center mb-14"
           >
-            <div className="text-center mb-12">
-              <motion.div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-400 text-sm font-medium mb-4"
-              >
-                <Brain className="w-4 h-4" />
-                Mindset
-              </motion.div>
-              <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-fuchsia-400 to-purple-400 bg-clip-text text-transparent">
-                Founder Philosophy
-              </h2>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-8">
-              {[
-                {
-                  title: 'Systems Over Goals',
-                  description: 'Building scalable systems that compound over time. Every project is designed with long-term leverage in mind.',
-                  icon: Cpu,
-                },
-                {
-                  title: 'Execution First',
-                  description: 'Ideas without execution are worthless. Shipping working software and iterating based on real feedback.',
-                  icon: Rocket,
-                },
-                {
-                  title: 'Compounding Returns',
-                  description: 'Building assets that appreciate. Skills, systems, and relationships that grow stronger with time.',
-                  icon: TrendingUp,
-                },
-              ].map((point, index) => (
-                <motion.div
-                  key={point.title}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.15 }}
-                  whileHover={{ y: -5 }}
-                  className={cn(
-                    'relative overflow-hidden rounded-2xl p-6 text-center',
-                    'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
-                    'border border-border/50 hover:border-fuchsia-500/30',
-                    'transition-all duration-300'
-                  )}
-                >
-                  <motion.div
-                    whileHover={{ rotate: 360, scale: 1.1 }}
-                    transition={{ duration: 0.5 }}
-                    className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-purple-500/20 flex items-center justify-center"
-                  >
-                    <point.icon className="w-7 h-7 text-fuchsia-400" />
-                  </motion.div>
-                  <h3 className="text-lg font-semibold mb-2">{point.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {point.description}
-                  </p>
-                </motion.div>
-              ))}
-            </div>
+            <motion.div
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 backdrop-blur-xl mb-6"
+            >
+              <Brain className="w-4 h-4 text-fuchsia-400" />
+              <span className="text-xs font-medium text-fuchsia-300 uppercase tracking-widest">Mindset</span>
+            </motion.div>
+            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-fuchsia-400 to-purple-400 bg-clip-text text-transparent">
+              Founder Philosophy
+            </h2>
           </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                title: 'Systems Over Goals',
+                description: 'Building scalable systems that compound over time. Every project is designed with long-term leverage in mind.',
+                icon: Cpu,
+              },
+              {
+                title: 'Execution First',
+                description: 'Ideas without execution are worthless. Shipping working software and iterating based on real feedback.',
+                icon: Rocket,
+              },
+              {
+                title: 'Compounding Returns',
+                description: 'Building assets that appreciate. Skills, systems, and relationships that grow stronger with time.',
+                icon: TrendingUp,
+              },
+            ].map((point, index) => (
+              <motion.div
+                key={point.title}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ y: -4, scale: 1.02 }}
+                className={cn(
+                  'relative overflow-hidden rounded-2xl p-6 text-center',
+                  'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+                  'backdrop-blur-xl border border-white/5',
+                  'shadow-xl hover:border-fuchsia-500/20 hover:shadow-fuchsia-500/5',
+                  'transition-all duration-300'
+                )}
+              >
+                <motion.div
+                  whileHover={{ rotate: 360, scale: 1.1 }}
+                  transition={{ duration: 0.5 }}
+                  className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-purple-500/20 flex items-center justify-center"
+                >
+                  <point.icon className="w-7 h-7 text-fuchsia-400" />
+                </motion.div>
+                <h3 className="text-lg font-semibold mb-2">{point.title}</h3>
+                <p className="text-sm text-neutral-400 leading-relaxed">
+                  {point.description}
+                </p>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 md:py-32 relative">
-        <div className="container mx-auto px-4">
+      <section className="py-28 relative">
+        <div className="max-w-2xl mx-auto px-6 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="max-w-2xl mx-auto text-center"
           >
             <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
               Want to learn more?
             </h2>
-            <p className="text-lg text-muted-foreground mb-8">
+            <p className="text-lg text-neutral-400 mb-10">
               Check out my resume, explore the ventures, or connect directly.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button asChild size="lg" className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white shadow-lg shadow-violet-500/25 border-0">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild size="lg" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-2xl shadow-violet-500/25 border-0">
                   <Link href="/resume">View Full Resume</Link>
                 </Button>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button asChild variant="outline" size="lg" className="border-violet-500/30 hover:bg-violet-500/10 hover:border-violet-500/50 hover:text-violet-400">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild variant="outline" size="lg" className="border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20">
                   <Link href="/press">Press & Accomplishments</Link>
                 </Button>
               </motion.div>
@@ -889,36 +861,28 @@ function MillerPageContent() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border/30 py-12 bg-muted/10">
-        <div className="container mx-auto px-4">
+      <footer className="relative border-t border-white/5 py-12">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <Image
                 src="/logos/miller-ai-group.svg"
                 alt="Miller AI Group"
-                width={32}
-                height={32}
-                className="w-8 h-8"
+                width={28}
+                height={28}
+                className="w-7 h-7"
               />
               <div>
                 <p className="font-medium">Hudson Barnes</p>
-                <p className="text-sm text-muted-foreground">Miller AI Group</p>
+                <p className="text-sm text-neutral-500">Miller AI Group</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
-              <Link href="/resume" className="text-sm text-muted-foreground hover:text-violet-400 transition-colors">
-                Resume
-              </Link>
-              <Link href="/press" className="text-sm text-muted-foreground hover:text-violet-400 transition-colors">
-                Press
-              </Link>
-              <Link href="/privacy" className="text-sm text-muted-foreground hover:text-violet-400 transition-colors">
-                Privacy
-              </Link>
-              <Link href="/terms" className="text-sm text-muted-foreground hover:text-violet-400 transition-colors">
-                Terms
-              </Link>
+            <div className="flex items-center gap-6 text-sm text-neutral-500">
+              <Link href="/resume" className="hover:text-white transition-colors">Resume</Link>
+              <Link href="/press" className="hover:text-white transition-colors">Press</Link>
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
             </div>
 
             <div className="flex items-center gap-4">
@@ -926,7 +890,7 @@ function MillerPageContent() {
                 href={SOCIAL_LINKS.instagram}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2 text-muted-foreground hover:text-violet-400 transition-colors"
+                className="p-2 text-neutral-500 hover:text-white transition-colors"
               >
                 <Instagram className="w-5 h-5" />
               </a>
@@ -934,15 +898,15 @@ function MillerPageContent() {
                 href={SOCIAL_LINKS.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2 text-muted-foreground hover:text-violet-400 transition-colors"
+                className="p-2 text-neutral-500 hover:text-white transition-colors"
               >
                 <Linkedin className="w-5 h-5" />
               </a>
             </div>
           </div>
 
-          <div className="mt-8 pt-8 border-t border-border/30 text-center">
-            <p className="text-sm text-muted-foreground">
+          <div className="mt-8 pt-8 border-t border-white/5 text-center">
+            <p className="text-sm text-neutral-500">
               © {new Date().getFullYear()} Miller AI Group. All rights reserved.
             </p>
           </div>
@@ -954,7 +918,7 @@ function MillerPageContent() {
 
 function MillerPageFallback() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="min-h-screen bg-black flex items-center justify-center">
       <motion.div
         animate={{ rotate: 360 }}
         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}

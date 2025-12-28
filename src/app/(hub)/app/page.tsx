@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -252,10 +253,13 @@ export default async function DashboardPage() {
                     className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                   >
                     {item.image_url ? (
-                      <img
+                      <Image
                         src={item.image_url}
                         alt={item.name}
+                        width={40}
+                        height={40}
                         className="w-10 h-10 rounded object-cover"
+                        unoptimized
                       />
                     ) : (
                       <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">

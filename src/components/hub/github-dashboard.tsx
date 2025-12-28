@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -329,10 +330,13 @@ export function GitHubDashboard() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4 mb-6">
-            <img
+            <Image
               src={stats.user.avatar_url}
               alt={stats.user.name}
+              width={64}
+              height={64}
               className="w-16 h-16 rounded-full border-2 border-primary/20"
+              unoptimized
             />
             <div>
               <h3 className="font-semibold text-lg">{stats.user.name}</h3>

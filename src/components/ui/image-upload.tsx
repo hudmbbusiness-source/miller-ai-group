@@ -101,6 +101,7 @@ export function ImageUpload({
       {value ? (
         <div className="relative group">
           <div className="aspect-video rounded-lg overflow-hidden bg-muted">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={value}
               alt="Preview"

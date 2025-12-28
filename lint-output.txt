@@ -1,0 +1,141 @@
+
+> miller-ai-group@0.1.0 lint
+> eslint
+
+
+C:\Users\hudmb\miller-ai-group\scripts\add-countdown.js
+  1:12  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:14  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+C:\Users\hudmb\miller-ai-group\scripts\check-signups.js
+  1:26  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:1   error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+C:\Users\hudmb\miller-ai-group\scripts\check-tables.js
+  1:26  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:1   error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+C:\Users\hudmb\miller-ai-group\scripts\run-launch-pad-migration.js
+  1:26  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:1   error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\assets\page.tsx
+   4:29  warning  'CardHeader' is defined but never used  @typescript-eslint/no-unused-vars
+   4:41  warning  'CardTitle' is defined but never used   @typescript-eslint/no-unused-vars
+  45:3   warning  'PlusCircle' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\boards\[id]\page.tsx
+   42:6   warning  'PinInsert' is defined but never used                                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+   43:6   warning  'PinUpdate' is defined but never used                                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+   47:9   warning  'router' is assigned a value but never used                                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+  250:19  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  384:21  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\boards\page.tsx
+  157:21  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\files\page.tsx
+  167:19  warning  'error' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\goals\page.tsx
+   4:29  warning  'CardHeader' is defined but never used  @typescript-eslint/no-unused-vars
+   4:41  warning  'CardTitle' is defined but never used   @typescript-eslint/no-unused-vars
+  30:3   warning  'Clock' is defined but never used       @typescript-eslint/no-unused-vars
+  35:3   warning  'X' is defined but never used           @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\launch-pad\page.tsx
+   5:10  warning  'motion' is defined but never used               @typescript-eslint/no-unused-vars
+  16:3   warning  'AlertCircle' is defined but never used          @typescript-eslint/no-unused-vars
+  26:3   warning  'Code' is defined but never used                 @typescript-eslint/no-unused-vars
+  27:3   warning  'Brain' is defined but never used                @typescript-eslint/no-unused-vars
+  40:3   warning  'DialogTrigger' is defined but never used        @typescript-eslint/no-unused-vars
+  67:3   warning  'upsertCareerProfile' is defined but never used  @typescript-eslint/no-unused-vars
+  93:10  warning  'profile' is assigned a value but never used     @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\links\page.tsx
+  150:6   warning  React Hook useEffect has a missing dependency: 'openNewDialog'. Either include it or remove the dependency array                                                                                                                                                                         react-hooks/exhaustive-deps
+  300:21  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\notes\page.tsx
+  26:184  warning  'FileText' is defined but never used  @typescript-eslint/no-unused-vars
+  26:194  warning  'Download' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\page.tsx
+   19:3   warning  'AlertCircle' is defined but never used                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+  256:23  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\settings\page.tsx
+  110:10  warning  'resumeSummary' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\(hub)\app\tools\kachow\page.tsx
+  22:3   warning  'Play' is defined but never used                                                                                         @typescript-eslint/no-unused-vars
+  25:3   warning  'AlertCircle' is defined but never used                                                                                  @typescript-eslint/no-unused-vars
+  57:27  warning  'user' is defined but never used                                                                                         @typescript-eslint/no-unused-vars
+  94:6   warning  React Hook useEffect has a missing dependency: 'loadEarlyAccessStats'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\hudmb\miller-ai-group\src\app\api\ai\career\route.ts
+  132:11  warning  'CareerStage' is defined but never used                @typescript-eslint/no-unused-vars
+  987:9   warning  'jobSkillKeywords' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\api\ai\chat\route.ts
+  173:16  warning  'callLLMWithFallback' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\api\analytics\route.ts
+  5:27  warning  'request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\api\early-access\route.ts
+  212:12  warning  'error' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\api\metadata\route.ts
+  66:14  warning  'fetchError' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\intro\page.tsx
+  51:9  warning  'handleEnter' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\app\login\page.tsx
+  16:9  warning  'router' is assigned a value but never used                                                         @typescript-eslint/no-unused-vars
+  36:7  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+
+C:\Users\hudmb\miller-ai-group\src\app\page.tsx
+  15:3  warning  'DollarSign' is defined but never used  @typescript-eslint/no-unused-vars
+  16:3  warning  'BarChart3' is defined but never used   @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\ai-chatbot.tsx
+  42:3  warning  'Settings' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\career-planning.tsx
+   8:10  warning  'ScrollArea' is defined but never used  @typescript-eslint/no-unused-vars
+  30:3   warning  'Calendar' is defined but never used    @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\github-dashboard.tsx
+   28:3   warning  'MapPin' is defined but never used                                                                                                                                                                                                                                                       @typescript-eslint/no-unused-vars
+   29:3   warning  'Building2' is defined but never used                                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+   30:3   warning  'Twitter' is defined but never used                                                                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+   31:3   warning  'Globe' is defined but never used                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   32:3   warning  'Lock' is defined but never used                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+  206:6   warning  React Hook useEffect has a missing dependency: 'fetchGitHubStats'. Either include it or remove the dependency array                                                                                                                                                                      react-hooks/exhaustive-deps
+  337:13  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\global-search.tsx
+  120:6  warning  React Hook useCallback has a missing dependency: 'navigateToResult'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\hub-layout.tsx
+  27:3  warning  'Link2' is defined but never used       @typescript-eslint/no-unused-vars
+  28:3  warning  'FolderOpen' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\keyboard-shortcuts.tsx
+  10:10  warning  'Badge' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\components\hub\mobile-nav.tsx
+  14:3  warning  'Link2' is defined but never used       @typescript-eslint/no-unused-vars
+  15:3  warning  'FolderOpen' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\hudmb\miller-ai-group\src\components\ui\image-upload.tsx
+  104:13  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\hudmb\miller-ai-group\src\lib\supabase\middleware.ts
+  38:9  warning  '_isPublicRoute' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 69 problems (8 errors, 61 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -247,10 +248,13 @@ export default function BoardDetailPage() {
             <Card key={pin.id} className="break-inside-avoid group hover:border-primary/50 transition-colors">
               {pin.type === 'image' && pin.image_path && (
                 <div className="relative">
-                  <img
+                  <Image
                     src={pin.image_path}
                     alt={pin.title}
+                    width={400}
+                    height={300}
                     className="w-full rounded-t-lg"
+                    unoptimized
                   />
                 </div>
               )}
@@ -381,6 +385,7 @@ export default function BoardDetailPage() {
                 />
                 {previewUrl ? (
                   <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={previewUrl}
                       alt="Preview"

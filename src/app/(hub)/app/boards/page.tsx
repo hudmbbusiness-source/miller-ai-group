@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -152,12 +153,14 @@ export default function BoardsPage() {
           {boards.map(board => (
             <Card key={board.id} className="group hover:border-primary/50 transition-colors">
               <Link href={`/app/boards/${board.id}`}>
-                <div className="aspect-video bg-muted rounded-t-lg flex items-center justify-center">
+                <div className="aspect-video bg-muted rounded-t-lg flex items-center justify-center relative">
                   {board.cover_image ? (
-                    <img
+                    <Image
                       src={board.cover_image}
                       alt={board.name}
-                      className="w-full h-full object-cover rounded-t-lg"
+                      fill
+                      className="object-cover rounded-t-lg"
+                      unoptimized
                     />
                   ) : (
                     <ImageIcon className="w-12 h-12 text-muted-foreground/50" />

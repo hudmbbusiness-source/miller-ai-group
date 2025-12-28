@@ -297,6 +297,7 @@ function LinksContent() {
               <CardContent className="p-4 flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {link.favicon ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img
                       src={link.favicon}
                       alt=""

@@ -1,10 +1,12 @@
+'use client'
+
 import Link from 'next/link'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/server'
+import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { SOCIAL_LINKS } from '@/types'
+import { cn } from '@/lib/utils'
 import {
   Download,
   Linkedin,
@@ -19,452 +21,553 @@ import {
   Code2,
   Rocket,
   ArrowLeft,
-  Calendar
+  Calendar,
+  Sparkles,
 } from 'lucide-react'
-import type { ResumeItem } from '@/lib/actions/resume'
 
-interface ResumeSummary {
-  id: string
-  summary: string | null
-  headline: string | null
-  location: string | null
-  email: string | null
-  phone: string | null
-  website: string | null
+// Stripe-style animated gradient mesh
+function StripeMesh() {
+  return (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      <motion.div
+        className="absolute w-[1000px] h-[1000px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 50%)',
+          top: '-30%',
+          left: '-15%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, 100, 50, 0],
+          y: [0, 50, 100, 0],
+          scale: [1, 1.1, 0.95, 1],
+        }}
+        transition={{ duration: 35, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute w-[800px] h-[800px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, transparent 50%)',
+          top: '30%',
+          right: '-20%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, -80, -40, 0],
+          y: [0, 80, 40, 0],
+          scale: [1, 0.95, 1.1, 1],
+        }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'easeInOut', delay: 5 }}
+      />
+    </div>
+  )
 }
 
-// Default resume data based on Hudson's actual resume
-const DEFAULT_SUMMARY: ResumeSummary = {
-  id: 'default',
+// Resume data
+const summary = {
   headline: 'Founder & Entrepreneur | Business & Computer Science Student at BYU',
   summary: `Ambitious entrepreneur and student at Brigham Young University, pursuing dual studies in Business at the Marriott School of Business and Computer Science. Currently building multiple AI-powered ventures through Miller AI Group. Proven track record of leadership as former CEO of CozyFilmz, with experience in strategic planning, partnership negotiations, and brand development. Fluent in Spanish with a strong foundation in operational excellence and customer-focused decision making.`,
   location: 'Provo, Utah',
   email: 'Hudmbbusiness@gmail.com',
   phone: '(385)-405-5829',
-  website: 'https://miller-ai-group.vercel.app',
+  website: 'https://kachow.app/miller',
 }
 
-const DEFAULT_ITEMS: ResumeItem[] = [
-  // Education
-  {
-    id: '1',
-    title: 'Brigham Young University - Marriott School of Business',
-    description: `Bachelor's in Business with Computer Science emphasis
+const resumeData = {
+  education: [
+    {
+      title: 'Brigham Young University - Marriott School of Business',
+      description: `Bachelor's in Business with Computer Science emphasis
 • 3.55 GPA
 • Marriott School of Business Student
 • Spanish Fluent Certified
 • Focus: Entrepreneurship, AI/ML, Software Engineering`,
-    category: 'education',
-    start_date: '2024-09-01',
-    end_date: null,
-    is_current: true,
-    visible: true,
-    order_index: 0,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '2',
-    title: 'Davis High School',
-    description: `High School Diploma - Kaysville, UT
+      startDate: 'Sep 2024',
+      endDate: null,
+      isCurrent: true,
+    },
+    {
+      title: 'Davis High School',
+      description: `High School Diploma - Kaysville, UT
 • 3.7 GPA
 • Honor Roll 2022
 • Strong foundation in academics and leadership`,
-    category: 'education',
-    start_date: '2018-08-01',
-    end_date: '2022-05-01',
-    is_current: false,
-    visible: true,
-    order_index: 1,
-    created_at: '2024-01-01',
-  },
-  // Experience / Startups
-  {
-    id: '3',
-    title: 'Founder & CEO - Miller AI Group',
-    description: `Leading AI-focused venture studio building multiple products:
-• Kachow - Investor sentiment analysis platform
+      startDate: 'Aug 2018',
+      endDate: 'May 2022',
+      isCurrent: false,
+    },
+  ],
+  startup: [
+    {
+      title: 'Founder & CEO - Miller AI Group',
+      description: `Leading AI-focused venture studio building multiple products:
+• Kachow - AI video editing for YouTube monetization
 • StuntMan AI - Cryptocurrency trading bot
 • BrainBox AI - Intelligent note-taking with AI insights
 • Building full-stack applications with Next.js, TypeScript, and AI integrations`,
-    category: 'startup',
-    start_date: '2024-06-01',
-    end_date: null,
-    is_current: true,
-    visible: true,
-    order_index: 2,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '4',
-    title: 'CEO - CozyFilmz',
-    description: `Led company operations and growth strategy
+      startDate: 'Jun 2024',
+      endDate: null,
+      isCurrent: true,
+    },
+  ],
+  experience: [
+    {
+      title: 'CEO - CozyFilmz',
+      description: `Led company operations and growth strategy
 • Achieved company growth by implementing strategic plans and streamlining operations
 • Managed and negotiated partnerships by creating contracts and deals
 • Implemented cost-saving initiatives to increase company profits
 • Marketed and advertised to achieve brand recognition
 • Organized local sponsors to cover event costs and support the business`,
-    category: 'experience',
-    start_date: '2025-01-01',
-    end_date: '2025-06-01',
-    is_current: false,
-    visible: true,
-    order_index: 3,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '5',
-    title: 'Warehouse Worker - BadFlag',
-    description: `Operations and logistics experience
+      startDate: 'Jan 2025',
+      endDate: 'Jun 2025',
+      isCurrent: false,
+    },
+    {
+      title: 'Warehouse Worker - BadFlag',
+      description: `Operations and logistics experience
 • Loaded, unloaded and moved material to and from storage to production areas
 • Maintained a clean workspace by enforcing housekeeping guidelines
 • Reduced order processing time by implementing effective manufacturing and boxing techniques`,
-    category: 'experience',
-    start_date: '2019-09-01',
-    end_date: '2021-09-01',
-    is_current: false,
-    visible: true,
-    order_index: 4,
-    created_at: '2024-01-01',
-  },
-  // Skills
-  {
-    id: '6',
-    title: 'Technical Skills',
-    description: `• Full-Stack Development (Next.js, React, TypeScript, Node.js)
-• AI/ML Integration (Groq, OpenAI, Replicate)
-• Database Management (Supabase, PostgreSQL)
-• Cloud Deployment (Vercel, AWS)
-• Version Control (Git, GitHub)`,
-    category: 'skill',
-    start_date: null,
-    end_date: null,
-    is_current: false,
-    visible: true,
-    order_index: 5,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '7',
-    title: 'Business & Leadership',
-    description: `• Effective Decision Making
-• Customer Focus
-• Entrepreneurial Mindset
-• Operational Excellence
-• Strategic Planning
-• Partnership Negotiations`,
-    category: 'skill',
-    start_date: null,
-    end_date: null,
-    is_current: false,
-    visible: true,
-    order_index: 6,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '8',
-    title: 'Languages',
-    description: `• English (Native)
-• Spanish (Fluent) - Certified`,
-    category: 'skill',
-    start_date: null,
-    end_date: null,
-    is_current: false,
-    visible: true,
-    order_index: 7,
-    created_at: '2024-01-01',
-  },
-  // Achievements
-  {
-    id: '9',
-    title: 'Founded Miller AI Group',
-    description: 'Launched AI-focused venture studio with multiple products in development, including investor sentiment analysis and crypto trading platforms.',
-    category: 'achievement',
-    start_date: '2024-06-01',
-    end_date: null,
-    is_current: true,
-    visible: true,
-    order_index: 8,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '10',
-    title: 'BYU Marriott School of Business Admission',
-    description: 'Accepted into one of the top-ranked business schools in the nation, known for producing successful entrepreneurs and business leaders.',
-    category: 'achievement',
-    start_date: '2024-09-01',
-    end_date: null,
-    is_current: false,
-    visible: true,
-    order_index: 9,
-    created_at: '2024-01-01',
-  },
-  {
-    id: '11',
-    title: 'Spanish Fluency Certification',
-    description: 'Achieved certified fluency in Spanish, enabling communication with Spanish-speaking clients and partners.',
-    category: 'achievement',
-    start_date: null,
-    end_date: null,
-    is_current: false,
-    visible: true,
-    order_index: 10,
-    created_at: '2024-01-01',
-  },
-]
-
-const categoryConfig: Record<string, { label: string; icon: typeof GraduationCap; color: string }> = {
-  education: { label: 'Education', icon: GraduationCap, color: 'text-blue-500' },
-  experience: { label: 'Experience', icon: Briefcase, color: 'text-green-500' },
-  startup: { label: 'Ventures', icon: Rocket, color: 'text-purple-500' },
-  achievement: { label: 'Achievements', icon: Award, color: 'text-yellow-500' },
-  skill: { label: 'Skills', icon: Code2, color: 'text-cyan-500' },
-  certification: { label: 'Certifications', icon: Award, color: 'text-orange-500' },
+      startDate: 'Sep 2019',
+      endDate: 'Sep 2021',
+      isCurrent: false,
+    },
+  ],
+  skills: [
+    {
+      title: 'Technical Skills',
+      items: ['Next.js', 'React', 'TypeScript', 'Node.js', 'Supabase', 'PostgreSQL', 'Vercel', 'AWS', 'Git', 'GitHub'],
+    },
+    {
+      title: 'AI/ML',
+      items: ['Groq', 'OpenAI', 'Anthropic', 'Replicate', 'LangChain'],
+    },
+    {
+      title: 'Business & Leadership',
+      items: ['Strategic Planning', 'Partnership Negotiations', 'Operations', 'Customer Focus', 'Decision Making'],
+    },
+    {
+      title: 'Languages',
+      items: ['English (Native)', 'Spanish (Fluent)'],
+    },
+  ],
+  achievements: [
+    { title: 'Founded Miller AI Group', description: 'Launched AI-focused venture studio with multiple products in development' },
+    { title: 'BYU Marriott School of Business', description: 'Accepted into one of the top-ranked business schools in the nation' },
+    { title: 'Spanish Fluency Certification', description: 'Achieved certified fluency enabling communication with Spanish-speaking partners' },
+  ],
 }
 
-export const metadata = {
-  title: 'Resume - Hudson Barnes',
-  description: 'View Hudson Barnes\' professional resume, experience, education, and accomplishments.',
+const categoryConfig: Record<string, { label: string; icon: typeof GraduationCap; gradient: string }> = {
+  education: { label: 'Education', icon: GraduationCap, gradient: 'from-blue-500 to-cyan-500' },
+  experience: { label: 'Experience', icon: Briefcase, gradient: 'from-emerald-500 to-green-500' },
+  startup: { label: 'Ventures', icon: Rocket, gradient: 'from-violet-500 to-purple-500' },
+  skills: { label: 'Skills', icon: Code2, gradient: 'from-amber-500 to-orange-500' },
+  achievements: { label: 'Achievements', icon: Award, gradient: 'from-rose-500 to-pink-500' },
 }
 
-export default async function ResumePage() {
-  const supabase = await createClient()
-
-  // Fetch resume summary
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: summaryData } = await (supabase.from('resume_summary') as any)
-    .select('*')
-    .limit(1)
-    .single()
-
-  // Fetch resume items
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: itemsData } = await (supabase.from('resume_items') as any)
-    .select('*')
-    .eq('visible', true)
-    .order('order_index')
-
-  // Use database data if available, otherwise use defaults
-  const summary = (summaryData as ResumeSummary | null) || DEFAULT_SUMMARY
-  const items = ((itemsData && itemsData.length > 0 ? itemsData : DEFAULT_ITEMS) as ResumeItem[])
-
-  // Group items by category
-  const groupedItems = items.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = []
-    }
-    acc[item.category].push(item)
-    return acc
-  }, {} as Record<string, ResumeItem[]>)
-
-  // Order of sections
-  const sectionOrder = ['education', 'startup', 'experience', 'skill', 'achievement', 'certification']
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return null
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-  }
+// Section component with animations
+function Section({
+  category,
+  children,
+  delay = 0,
+}: {
+  category: string
+  children: React.ReactNode
+  delay?: number
+}) {
+  const config = categoryConfig[category]
+  const Icon = config?.icon || Award
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border/50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-semibold hover:text-primary transition-colors">
-            <Image
-              src="/logos/miller-ai-group.svg"
-              alt="Miller AI Group"
-              width={28}
-              height={28}
-              className="w-7 h-7"
-            />
-            Miller AI Group
-          </Link>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/projects">Projects</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/accomplishments">Accomplishments</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/login">Enter System</Link>
-            </Button>
+    <motion.section
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-50px' }}
+      transition={{ duration: 0.6, delay }}
+      className="relative"
+    >
+      <div className="flex items-center gap-3 mb-6">
+        <motion.div
+          whileHover={{ scale: 1.1, rotate: 360 }}
+          transition={{ duration: 0.5 }}
+          className={cn(
+            'p-2.5 rounded-xl bg-gradient-to-br shadow-lg',
+            config?.gradient,
+            'shadow-violet-500/20'
+          )}
+        >
+          <Icon className="w-5 h-5 text-white" />
+        </motion.div>
+        <h2 className="text-xl font-semibold tracking-tight">{config?.label}</h2>
+      </div>
+      {children}
+    </motion.section>
+  )
+}
+
+// Card component
+function ResumeCard({
+  title,
+  description,
+  startDate,
+  endDate,
+  isCurrent,
+  index = 0,
+}: {
+  title: string
+  description: string
+  startDate?: string | null
+  endDate?: string | null
+  isCurrent?: boolean
+  index?: number
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, delay: index * 0.1 }}
+      whileHover={{ y: -2 }}
+      className={cn(
+        'relative overflow-hidden rounded-2xl p-6',
+        'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+        'backdrop-blur-xl border border-white/5',
+        'shadow-xl shadow-black/20',
+        'transition-all duration-300',
+        'hover:border-violet-500/20 hover:shadow-violet-500/5'
+      )}
+    >
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <h3 className="text-lg font-semibold text-white">{title}</h3>
+        {isCurrent && (
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+            Current
+          </Badge>
+        )}
+      </div>
+      {(startDate || endDate || isCurrent) && (
+        <div className="flex items-center gap-2 text-sm text-neutral-500 mb-4">
+          <Calendar className="w-4 h-4" />
+          <span>
+            {startDate} {(endDate || isCurrent) && '—'} {isCurrent ? 'Present' : endDate}
+          </span>
+        </div>
+      )}
+      <p className="text-sm text-neutral-400 leading-relaxed whitespace-pre-wrap">
+        {description}
+      </p>
+    </motion.div>
+  )
+}
+
+export default function ResumePage() {
+  return (
+    <div className="min-h-screen bg-black text-white antialiased">
+      <StripeMesh />
+
+      {/* Navigation */}
+      <motion.header
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="fixed top-0 left-0 right-0 z-50"
+      >
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-2xl border-b border-white/5" />
+        <div className="relative max-w-5xl mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/miller" className="flex items-center gap-3 group">
+              <motion.div
+                animate={{ y: [0, -2, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Image
+                  src="/logos/miller-ai-group.svg"
+                  alt="Miller AI Group"
+                  width={32}
+                  height={32}
+                  className="w-8 h-8"
+                />
+              </motion.div>
+              <span className="font-semibold tracking-tight group-hover:text-violet-300 transition-colors">
+                Miller AI Group
+              </span>
+            </Link>
+            <div className="flex items-center gap-3">
+              <Button asChild variant="ghost" size="sm" className="text-neutral-400 hover:text-white hover:bg-white/5">
+                <Link href="/press">Press</Link>
+              </Button>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25">
+                  <Link href="/intro">Enter System</Link>
+                </Button>
+              </motion.div>
+            </div>
           </div>
         </div>
-      </header>
+      </motion.header>
 
-      <main className="container mx-auto px-4 py-12">
+      {/* Main Content */}
+      <main className="relative pt-24 pb-20 px-6">
         <div className="max-w-4xl mx-auto">
-          <Button asChild variant="ghost" size="sm" className="mb-6">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-2" />
+          {/* Back Link */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Link
+              href="/miller"
+              className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors mb-8 group"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
               Back to Home
             </Link>
-          </Button>
+          </motion.div>
 
-          {/* Header Section */}
-          <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold mb-3">Hudson Barnes</h1>
-            <p className="text-xl text-muted-foreground mb-4">
-              {summary?.headline || 'Founder | Innovator'}
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-center mb-16"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-xl mb-6"
+            >
+              <Sparkles className="w-4 h-4 text-violet-400" />
+              <span className="text-xs font-medium text-violet-300 uppercase tracking-widest">Resume</span>
+            </motion.div>
+
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4">
+              <span className="bg-gradient-to-r from-white via-neutral-100 to-neutral-300 bg-clip-text text-transparent">
+                Hudson Barnes
+              </span>
+            </h1>
+            <p className="text-lg md:text-xl text-neutral-400 mb-6 max-w-2xl mx-auto">
+              {summary.headline}
             </p>
 
             {/* Contact Info */}
-            <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground mb-6">
-              {summary?.location && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-4 h-4" />
-                  {summary.location}
-                </span>
-              )}
-              {summary?.email && (
-                <a href={`mailto:${summary.email}`} className="flex items-center gap-1 hover:text-foreground transition-colors">
-                  <Mail className="w-4 h-4" />
-                  {summary.email}
-                </a>
-              )}
-              {summary?.website && (
-                <a href={summary.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-foreground transition-colors">
-                  <Globe className="w-4 h-4" />
-                  {summary.website.replace(/^https?:\/\//, '')}
-                </a>
-              )}
+            <div className="flex flex-wrap justify-center gap-4 text-sm text-neutral-500 mb-8">
+              <span className="flex items-center gap-2 hover:text-violet-400 transition-colors">
+                <MapPin className="w-4 h-4" />
+                {summary.location}
+              </span>
+              <a href={`mailto:${summary.email}`} className="flex items-center gap-2 hover:text-violet-400 transition-colors">
+                <Mail className="w-4 h-4" />
+                {summary.email}
+              </a>
+              <a href={summary.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-violet-400 transition-colors">
+                <Globe className="w-4 h-4" />
+                {summary.website.replace(/^https?:\/\//, '')}
+              </a>
             </div>
 
             {/* Action Buttons */}
             <div className="flex flex-wrap justify-center gap-3">
-              <Button asChild>
-                <a href="/resume.pdf" download>
-                  <Download className="w-4 h-4 mr-2" />
-                  Download PDF
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a href={SOCIAL_LINKS.linkedin} target="_blank" rel="noopener noreferrer">
-                  <Linkedin className="w-4 h-4 mr-2" />
-                  LinkedIn
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer">
-                  <Instagram className="w-4 h-4 mr-2" />
-                  Instagram
-                </a>
-              </Button>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25">
+                  <a href="/resume.pdf" download>
+                    <Download className="w-4 h-4 mr-2" />
+                    Download PDF
+                  </a>
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20">
+                  <a href={SOCIAL_LINKS.linkedin} target="_blank" rel="noopener noreferrer">
+                    <Linkedin className="w-4 h-4 mr-2" />
+                    LinkedIn
+                  </a>
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20">
+                  <a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer">
+                    <Instagram className="w-4 h-4 mr-2" />
+                    Instagram
+                  </a>
+                </Button>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
 
           {/* Summary */}
-          {summary?.summary && (
-            <Card className="mb-8">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">About</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground leading-relaxed">
-                  {summary.summary}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.1 }}
+            className={cn(
+              'relative overflow-hidden rounded-2xl p-6 mb-12',
+              'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+              'backdrop-blur-xl border border-white/5',
+              'shadow-xl'
+            )}
+          >
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <span className="w-1 h-6 bg-gradient-to-b from-violet-500 to-fuchsia-500 rounded-full" />
+              About
+            </h3>
+            <p className="text-neutral-400 leading-relaxed">
+              {summary.summary}
+            </p>
+          </motion.div>
 
           {/* Resume Sections */}
-          <div className="space-y-8">
-            {sectionOrder.map((category) => {
-              const categoryItems = groupedItems[category]
-              if (!categoryItems || categoryItems.length === 0) return null
+          <div className="space-y-12">
+            {/* Education */}
+            <Section category="education" delay={0.1}>
+              <div className="space-y-4">
+                {resumeData.education.map((item, index) => (
+                  <ResumeCard key={item.title} {...item} index={index} />
+                ))}
+              </div>
+            </Section>
 
-              const config = categoryConfig[category] || categoryConfig.achievement
-              const Icon = config.icon
+            {/* Ventures */}
+            <Section category="startup" delay={0.15}>
+              <div className="space-y-4">
+                {resumeData.startup.map((item, index) => (
+                  <ResumeCard key={item.title} {...item} index={index} />
+                ))}
+              </div>
+            </Section>
 
-              return (
-                <section key={category}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className={`p-2 rounded-lg bg-muted ${config.color}`}>
-                      <Icon className="w-5 h-5" />
+            {/* Experience */}
+            <Section category="experience" delay={0.2}>
+              <div className="space-y-4">
+                {resumeData.experience.map((item, index) => (
+                  <ResumeCard key={item.title} {...item} index={index} />
+                ))}
+              </div>
+            </Section>
+
+            {/* Skills */}
+            <Section category="skills" delay={0.25}>
+              <div className="grid md:grid-cols-2 gap-4">
+                {resumeData.skills.map((skill, index) => (
+                  <motion.div
+                    key={skill.title}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    className={cn(
+                      'relative overflow-hidden rounded-2xl p-5',
+                      'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+                      'backdrop-blur-xl border border-white/5',
+                      'shadow-xl'
+                    )}
+                  >
+                    <h3 className="text-sm font-semibold text-neutral-300 mb-3">{skill.title}</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {skill.items.map((item) => (
+                        <Badge key={item} variant="secondary" className="bg-white/5 text-neutral-300 border-white/10 hover:bg-violet-500/20 hover:text-violet-300 hover:border-violet-500/30 transition-colors cursor-default">
+                          {item}
+                        </Badge>
+                      ))}
                     </div>
-                    <h2 className="text-xl font-semibold">{config.label}</h2>
-                    <Badge variant="outline" className="ml-2">
-                      {categoryItems.length}
-                    </Badge>
-                  </div>
+                  </motion.div>
+                ))}
+              </div>
+            </Section>
 
-                  <div className="space-y-4">
-                    {categoryItems.map((item) => (
-                      <Card key={item.id}>
-                        <CardHeader className="pb-2">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <CardTitle className="text-lg">{item.title}</CardTitle>
-                              {(item.start_date || item.end_date || item.is_current) && (
-                                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  {formatDate(item.start_date)}
-                                  {(item.end_date || item.is_current) && ' - '}
-                                  {item.is_current ? 'Present' : formatDate(item.end_date)}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardHeader>
-                        {item.description && (
-                          <CardContent className="pt-0">
-                            <CardDescription className="text-sm leading-relaxed whitespace-pre-wrap">
-                              {item.description}
-                            </CardDescription>
-                          </CardContent>
-                        )}
-                      </Card>
-                    ))}
-                  </div>
-                </section>
-              )
-            })}
+            {/* Achievements */}
+            <Section category="achievements" delay={0.3}>
+              <div className="grid md:grid-cols-3 gap-4">
+                {resumeData.achievements.map((item, index) => (
+                  <motion.div
+                    key={item.title}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    whileHover={{ y: -4, scale: 1.02 }}
+                    className={cn(
+                      'relative overflow-hidden rounded-2xl p-5 text-center',
+                      'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+                      'backdrop-blur-xl border border-white/5',
+                      'shadow-xl hover:border-violet-500/20 hover:shadow-violet-500/5',
+                      'transition-all duration-300'
+                    )}
+                  >
+                    <motion.div
+                      whileHover={{ rotate: 360, scale: 1.1 }}
+                      transition={{ duration: 0.5 }}
+                      className="w-12 h-12 mx-auto mb-4 rounded-xl bg-gradient-to-br from-rose-500/20 to-pink-500/20 flex items-center justify-center"
+                    >
+                      <Award className="w-6 h-6 text-rose-400" />
+                    </motion.div>
+                    <h3 className="font-semibold text-white mb-2">{item.title}</h3>
+                    <p className="text-sm text-neutral-500">{item.description}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </Section>
           </div>
 
           {/* Connect Section */}
-          <Card className="mt-12">
-            <CardHeader>
-              <CardTitle>Let&apos;s Connect</CardTitle>
-              <CardDescription>
-                Interested in working together or learning more?
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-3">
-                <Button asChild variant="outline">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
+            className={cn(
+              'relative overflow-hidden rounded-2xl p-8 mt-16 text-center',
+              'bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-fuchsia-500/10',
+              'backdrop-blur-xl border border-violet-500/20',
+              'shadow-xl'
+            )}
+          >
+            <h3 className="text-2xl font-bold mb-3">
+              <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+                Let&apos;s Connect
+              </span>
+            </h3>
+            <p className="text-neutral-400 mb-6">
+              Interested in working together or learning more?
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10">
                   <a href={SOCIAL_LINKS.linkedin} target="_blank" rel="noopener noreferrer">
                     <Linkedin className="w-4 h-4 mr-2" />
                     Connect on LinkedIn
                     <ExternalLink className="w-3 h-3 ml-2" />
                   </a>
                 </Button>
-                <Button asChild variant="outline">
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10">
                   <a href={SOCIAL_LINKS.instagram} target="_blank" rel="noopener noreferrer">
                     <Instagram className="w-4 h-4 mr-2" />
                     Follow on Instagram
                     <ExternalLink className="w-3 h-3 ml-2" />
                   </a>
                 </Button>
-                {summary?.email && (
-                  <Button asChild variant="outline">
-                    <a href={`mailto:${summary.email}`}>
-                      <Mail className="w-4 h-4 mr-2" />
-                      Send Email
-                    </a>
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10">
+                  <a href={`mailto:${summary.email}`}>
+                    <Mail className="w-4 h-4 mr-2" />
+                    Send Email
+                  </a>
+                </Button>
+              </motion.div>
+            </div>
+          </motion.div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border/50 mt-auto">
-        <div className="container mx-auto px-4 py-6">
-          <p className="text-center text-sm text-muted-foreground">
+      <footer className="relative border-t border-white/5 py-8">
+        <div className="max-w-5xl mx-auto px-6">
+          <p className="text-center text-sm text-neutral-500">
             © {new Date().getFullYear()} Hudson Barnes. All rights reserved.
           </p>
         </div>

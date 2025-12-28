@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback } from 'react'
+import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useInView } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
 import {
   Zap,
@@ -22,70 +22,69 @@ import {
   Sparkles,
   Play,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
-// Animated gradient orbs for background
-function GradientOrbs() {
+// Stripe-style animated gradient mesh
+function StripeMesh() {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      <motion.div
+        className="absolute w-[1200px] h-[1200px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 50%)',
+          top: '-40%',
+          left: '-20%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, 150, 80, 0],
+          y: [0, 100, 50, 0],
+          scale: [1, 1.15, 1.05, 1],
+        }}
+        transition={{ duration: 40, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute w-[1000px] h-[1000px] rounded-full"
+        style={{
+          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.18) 0%, transparent 50%)',
+          top: '20%',
+          right: '-25%',
+          filter: 'blur(80px)',
+        }}
+        animate={{
+          x: [0, -120, -60, 0],
+          y: [0, 120, 60, 0],
+          scale: [1, 0.95, 1.1, 1],
+        }}
+        transition={{ duration: 35, repeat: Infinity, ease: 'easeInOut', delay: 8 }}
+      />
       <motion.div
         className="absolute w-[800px] h-[800px] rounded-full"
         style={{
-          background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
-          top: '-20%',
-          left: '-10%',
+          background: 'radial-gradient(circle, rgba(236, 72, 153, 0.15) 0%, transparent 50%)',
+          bottom: '-20%',
+          left: '30%',
+          filter: 'blur(80px)',
         }}
         animate={{
-          x: [0, 100, 0],
-          y: [0, 50, 0],
+          x: [0, 80, -40, 0],
+          y: [0, -80, 40, 0],
+          scale: [1, 1.2, 0.95, 1],
         }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'easeInOut', delay: 15 }}
       />
-      <motion.div
-        className="absolute w-[600px] h-[600px] rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%)',
-          top: '20%',
-          right: '-15%',
-        }}
-        animate={{
-          x: [0, -80, 0],
-          y: [0, 80, 0],
-        }}
-        transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute w-[500px] h-[500px] rounded-full"
-        style={{
-          background: 'radial-gradient(circle, rgba(236,72,153,0.1) 0%, transparent 70%)',
-          bottom: '10%',
-          left: '20%',
-        }}
-        animate={{
-          x: [0, 60, 0],
-          y: [0, -40, 0],
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-      />
-    </div>
-  )
-}
 
-// Animated grid background
-function GridBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* Grid */}
       <div
-        className="absolute inset-0 opacity-[0.02]"
+        className="absolute inset-0 opacity-[0.012]"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+            linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)
           `,
-          backgroundSize: '60px 60px',
+          backgroundSize: '80px 80px',
         }}
       />
-      {/* Gradient fade */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black" />
     </div>
   )
 }
@@ -104,19 +103,19 @@ function CountdownTimer({ countdown }: { countdown: { hours: number; minutes: nu
         <div key={item.label} className="flex items-center gap-3">
           <motion.div
             className="relative"
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ scale: 1.03 }}
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-xl blur-xl" />
-            <div className="relative bg-neutral-900/80 backdrop-blur-sm border border-neutral-700/50 rounded-xl px-5 py-4 min-w-[80px]">
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-2xl blur-xl" />
+            <div className="relative bg-neutral-900/80 backdrop-blur-xl border border-white/10 rounded-2xl px-5 py-4 min-w-[80px] shadow-2xl">
               <motion.div
                 key={item.value}
-                initial={{ y: -10, opacity: 0 }}
+                initial={{ y: -8, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="text-3xl font-bold text-white font-mono text-center bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent"
+                className="text-3xl font-bold text-white font-mono text-center stat-counter"
               >
                 {formatTime(item.value)}
               </motion.div>
-              <div className="text-[10px] text-neutral-500 uppercase tracking-wider text-center mt-1">
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest text-center mt-1 font-medium">
                 {item.label}
               </div>
             </div>
@@ -130,35 +129,97 @@ function CountdownTimer({ countdown }: { countdown: { hours: number; minutes: nu
   )
 }
 
-// Feature card with premium hover
+// Feature card with Stripe-style design
 function FeatureCard({ icon: Icon, title, description, index }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
   description: string
   index: number
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const isInView = useInView(ref, { once: true })
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ delay: index * 0.1 }}
-      whileHover={{ y: -5, transition: { duration: 0.2 } }}
+      ref={ref}
+      initial={{ opacity: 0, y: 30 }}
+      animate={isInView ? { opacity: 1, y: 0 } : {}}
+      transition={{ delay: index * 0.1, duration: 0.6 }}
       className="group relative"
     >
-      {/* Glow effect on hover */}
-      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 via-purple-500/10 to-fuchsia-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-      <div className="relative p-6 rounded-2xl border border-neutral-800/50 bg-neutral-900/50 backdrop-blur-sm hover:border-neutral-700/50 transition-all duration-300 h-full">
-        {/* Gradient line at top */}
-        <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 flex items-center justify-center mb-4 group-hover:shadow-lg group-hover:shadow-violet-500/20 transition-shadow">
-          <Icon className="w-6 h-6 text-violet-400" />
+      <motion.div
+        whileHover={{ y: -6, scale: 1.02 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        className={cn(
+          'relative overflow-hidden rounded-2xl p-6 h-full cursor-default',
+          'bg-gradient-to-br from-neutral-900/90 to-neutral-900/50',
+          'backdrop-blur-xl border border-white/5',
+          'shadow-2xl shadow-black/20',
+          'transition-all duration-500',
+          'hover:border-violet-500/30 hover:shadow-violet-500/10'
+        )}
+      >
+        {/* Gradient shine on hover */}
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.03] to-transparent"
+            animate={{ x: ['-200%', '200%'] }}
+            transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+          />
         </div>
-        <h3 className="text-lg font-semibold mb-2 text-white group-hover:text-violet-200 transition-colors">{title}</h3>
-        <p className="text-sm text-neutral-400 leading-relaxed">{description}</p>
-      </div>
+
+        {/* Top gradient line */}
+        <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+        <div className="relative">
+          <motion.div
+            whileHover={{ rotate: [0, -10, 10, 0], scale: 1.1 }}
+            transition={{ duration: 0.5 }}
+            className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 flex items-center justify-center mb-5 shadow-lg shadow-violet-500/10 group-hover:shadow-violet-500/25 transition-shadow"
+          >
+            <Icon className="w-7 h-7 text-violet-400" />
+          </motion.div>
+          <h3 className="text-lg font-semibold mb-2 text-white group-hover:text-violet-100 transition-colors tracking-tight">{title}</h3>
+          <p className="text-sm text-neutral-400 leading-relaxed">{description}</p>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// Animated logo
+function AnimatedLogo() {
+  return (
+    <motion.div
+      className="relative"
+      animate={{
+        y: [0, -3, 0],
+      }}
+      transition={{
+        duration: 4,
+        repeat: Infinity,
+        ease: 'easeInOut',
+      }}
+    >
+      <motion.div
+        className="absolute inset-0 bg-violet-500/40 rounded-xl blur-xl"
+        animate={{
+          opacity: [0.3, 0.6, 0.3],
+          scale: [1, 1.2, 1],
+        }}
+        transition={{
+          duration: 3,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+      <Image
+        src="/logos/kachow.png"
+        alt="Kachow"
+        width={36}
+        height={36}
+        className="relative w-9 h-9 rounded-xl"
+      />
     </motion.div>
   )
 }
@@ -176,7 +237,6 @@ function KachowLandingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Mouse position for subtle parallax
   const mouseX = useMotionValue(0)
   const mouseY = useMotionValue(0)
 
@@ -310,30 +370,17 @@ function KachowLandingContent() {
 
   return (
     <div className="min-h-screen bg-black text-white antialiased overflow-x-hidden">
-      <GradientOrbs />
-      <GridBackground />
+      <StripeMesh />
 
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50">
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-xl border-b border-white/5" />
-        <div className="relative max-w-6xl mx-auto px-6">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-2xl border-b border-white/5" />
+        <div className="relative max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
-            <motion.div
-              className="flex items-center gap-2.5"
-              whileHover={{ scale: 1.02 }}
-            >
-              <div className="relative">
-                <div className="absolute inset-0 bg-violet-500/30 rounded-lg blur-lg" />
-                <Image
-                  src="/logos/kachow.png"
-                  alt="Kachow"
-                  width={32}
-                  height={32}
-                  className="relative w-8 h-8 rounded-lg"
-                />
-              </div>
-              <span className="text-lg font-semibold tracking-tight">Kachow</span>
-            </motion.div>
+            <Link href="/" className="flex items-center gap-3 group">
+              <AnimatedLogo />
+              <span className="text-lg font-semibold tracking-tight group-hover:text-violet-300 transition-colors">Kachow</span>
+            </Link>
 
             <div className="hidden md:flex items-center gap-8">
               {['Capabilities', 'Early Access'].map((item) => (
@@ -375,7 +422,7 @@ function KachowLandingContent() {
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-32 pb-24 md:pt-44 md:pb-32">
+      <section className="relative pt-32 pb-24 md:pt-48 md:pb-36">
         <div className="relative max-w-4xl mx-auto px-6 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -387,19 +434,19 @@ function KachowLandingContent() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2 }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-sm mb-8"
+              className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-xl mb-10 shadow-lg shadow-violet-500/10"
             >
               <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
+                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
                 transition={{ duration: 2, repeat: Infinity }}
                 className="w-2 h-2 rounded-full bg-violet-400"
               />
-              <span className="text-xs font-medium text-violet-300 uppercase tracking-wider">Coming 2026</span>
+              <span className="text-xs font-medium text-violet-300 uppercase tracking-widest">Coming 2026</span>
             </motion.div>
 
             {/* Headline */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-              <span className="bg-gradient-to-r from-white via-white to-neutral-400 bg-clip-text text-transparent">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-8">
+              <span className="bg-gradient-to-r from-white via-white to-neutral-300 bg-clip-text text-transparent">
                 AI Video Editing
               </span>
               <br />
@@ -408,7 +455,7 @@ function KachowLandingContent() {
               </span>
             </h1>
 
-            <p className="text-lg md:text-xl text-neutral-400 leading-relaxed max-w-2xl mx-auto mb-10">
+            <p className="text-lg md:text-xl text-neutral-400 leading-relaxed max-w-2xl mx-auto mb-12">
               Kachow analyzes what&apos;s working on YouTube right now and applies those patterns
               to your content. We&apos;re building editing software designed to help creators
               reach YouTube Partner Program requirements and earn revenue.
@@ -419,7 +466,7 @@ function KachowLandingContent() {
                 onClick={() => setShowSignup(true)}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="relative group w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl overflow-hidden"
+                className="relative group w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl overflow-hidden shadow-2xl shadow-violet-500/20"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500" />
                 <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -430,7 +477,7 @@ function KachowLandingContent() {
                 href="#capabilities"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-neutral-700/50 bg-neutral-900/50 backdrop-blur-sm text-white font-medium hover:bg-neutral-800/50 transition-colors"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl text-white font-medium hover:bg-white/10 hover:border-white/20 transition-all"
               >
                 <Play className="w-4 h-4" />
                 See How It Works
@@ -445,10 +492,10 @@ function KachowLandingContent() {
           animate={{ y: [0, 8, 0] }}
           transition={{ duration: 2, repeat: Infinity }}
         >
-          <div className="w-6 h-10 rounded-full border-2 border-neutral-700 flex items-start justify-center p-2">
+          <div className="w-7 h-11 rounded-full border-2 border-neutral-700/50 flex items-start justify-center p-2 backdrop-blur-sm">
             <motion.div
-              className="w-1.5 h-1.5 rounded-full bg-violet-400"
-              animate={{ y: [0, 12, 0] }}
+              className="w-1.5 h-1.5 rounded-full bg-gradient-to-b from-violet-400 to-purple-500"
+              animate={{ y: [0, 14, 0], opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 2, repeat: Infinity }}
             />
           </div>
@@ -456,23 +503,23 @@ function KachowLandingContent() {
       </section>
 
       {/* Value Proposition */}
-      <section className="relative py-24">
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-violet-950/10 to-black" />
-        <div className="relative max-w-6xl mx-auto px-6">
+      <section className="relative py-28">
+        <div className="relative max-w-7xl mx-auto px-6">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <motion.div
-              initial={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
+              transition={{ duration: 0.7 }}
             >
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-8 leading-tight">
                 <span className="text-white">Edit for the algorithm,</span>
                 <br />
                 <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
                   not for aesthetics
                 </span>
               </h2>
-              <div className="space-y-4 text-neutral-400">
+              <div className="space-y-5 text-neutral-400 text-lg leading-relaxed">
                 <p>
                   Most editing tools optimize for how videos look. Kachow will optimize
                   for how videos perform.
@@ -490,15 +537,27 @@ function KachowLandingContent() {
             </motion.div>
 
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
+              initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
+              transition={{ duration: 0.7 }}
               className="relative"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 rounded-3xl blur-2xl" />
-              <div className="relative bg-neutral-900/80 backdrop-blur-sm border border-neutral-800/50 rounded-3xl p-8">
-                <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-violet-400" />
+              <div className="absolute -inset-4 bg-gradient-to-br from-violet-500/20 via-purple-500/10 to-fuchsia-500/20 rounded-3xl blur-3xl" />
+              <div className={cn(
+                'relative rounded-3xl p-8',
+                'bg-gradient-to-br from-neutral-900/95 to-neutral-900/80',
+                'backdrop-blur-xl border border-white/10',
+                'shadow-2xl'
+              )}>
+                <h3 className="text-lg font-semibold mb-6 flex items-center gap-3">
+                  <motion.div
+                    animate={{ rotate: [0, 360] }}
+                    transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                    className="p-2 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/20"
+                  >
+                    <Sparkles className="w-5 h-5 text-violet-400" />
+                  </motion.div>
                   What we&apos;re building
                 </h3>
                 <ul className="space-y-4">
@@ -511,16 +570,20 @@ function KachowLandingContent() {
                   ].map((item, index) => (
                     <motion.li
                       key={item}
-                      initial={{ opacity: 0, x: -10 }}
+                      initial={{ opacity: 0, x: -15 }}
                       whileInView={{ opacity: 1, x: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.1 }}
-                      className="flex items-start gap-3"
+                      className="flex items-start gap-4"
                     >
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <motion.div
+                        whileHover={{ scale: 1.1, rotate: 360 }}
+                        transition={{ duration: 0.3 }}
+                        className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-lg shadow-violet-500/30"
+                      >
                         <Check className="w-3.5 h-3.5 text-white" />
-                      </div>
-                      <span className="text-neutral-300 text-sm">{item}</span>
+                      </motion.div>
+                      <span className="text-neutral-300">{item}</span>
                     </motion.li>
                   ))}
                 </ul>
@@ -531,20 +594,29 @@ function KachowLandingContent() {
       </section>
 
       {/* Capabilities */}
-      <section id="capabilities" className="relative py-24">
-        <div className="max-w-6xl mx-auto px-6">
+      <section id="capabilities" className="relative py-28">
+        <div className="max-w-7xl mx-auto px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-              <span className="bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-blue-500/30 bg-blue-500/10 backdrop-blur-xl mb-6"
+            >
+              <Zap className="w-4 h-4 text-blue-400" />
+              <span className="text-xs font-medium text-blue-300 uppercase tracking-widest">Features</span>
+            </motion.div>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-5">
+              <span className="bg-gradient-to-r from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent">
                 Planned Capabilities
               </span>
             </h2>
-            <p className="text-neutral-400 max-w-xl mx-auto">
+            <p className="text-lg text-neutral-400 max-w-xl mx-auto">
               Features we&apos;re developing to help creators produce algorithm-friendly content.
             </p>
           </motion.div>
@@ -558,30 +630,34 @@ function KachowLandingContent() {
       </section>
 
       {/* Early Access */}
-      <section id="early-access" className="relative py-24">
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-violet-950/10 to-black" />
+      <section id="early-access" className="relative py-28">
         <div className="relative max-w-xl mx-auto px-6 text-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-sm mb-6"
+            className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-xl mb-6"
           >
-            <Zap className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-medium text-emerald-300 uppercase tracking-wider">Early Access</span>
+            <motion.div
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              <Zap className="w-4 h-4 text-emerald-400" />
+            </motion.div>
+            <span className="text-xs font-medium text-emerald-300 uppercase tracking-widest">Early Access</span>
           </motion.div>
 
           <motion.h2
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-3xl md:text-4xl font-bold tracking-tight mb-4"
+            className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-5"
           >
-            <span className="bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent">
               Get free lifetime access
             </span>
           </motion.h2>
-          <p className="text-neutral-400 mb-8">
+          <p className="text-lg text-neutral-400 mb-10">
             Early supporters will receive free access when we launch.
             Standard pricing will be $23.99/month.
           </p>
@@ -591,14 +667,19 @@ function KachowLandingContent() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="mb-10"
+            className="mb-12"
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-rose-500/30 bg-rose-500/10 backdrop-blur-sm mb-6">
-              <Clock className="w-4 h-4 text-rose-400" />
+            <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-rose-500/30 bg-rose-500/10 backdrop-blur-xl mb-6">
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              >
+                <Clock className="w-4 h-4 text-rose-400" />
+              </motion.div>
               <span className="text-sm font-medium text-rose-300">Limited Time Offer</span>
             </div>
             <CountdownTimer countdown={countdown} />
-            <p className="text-xs text-neutral-500 mt-4">Offer resets daily at midnight</p>
+            <p className="text-xs text-neutral-500 mt-5">Offer resets daily at midnight</p>
           </motion.div>
 
           <motion.div
@@ -607,15 +688,20 @@ function KachowLandingContent() {
             viewport={{ once: true }}
             className="relative"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 via-purple-500/10 to-fuchsia-500/20 rounded-3xl blur-2xl" />
-            <div className="relative bg-neutral-900/80 backdrop-blur-sm border border-neutral-800/50 rounded-3xl p-8">
-              <div className="flex items-baseline justify-center gap-3 mb-2">
-                <span className="text-5xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">$0</span>
-                <span className="text-neutral-500 line-through text-lg">$23.99/mo</span>
+            <div className="absolute -inset-4 bg-gradient-to-br from-violet-500/20 via-purple-500/15 to-fuchsia-500/20 rounded-[2rem] blur-3xl" />
+            <div className={cn(
+              'relative rounded-3xl p-8',
+              'bg-gradient-to-br from-neutral-900/95 to-neutral-900/80',
+              'backdrop-blur-xl border border-white/10',
+              'shadow-2xl'
+            )}>
+              <div className="flex items-baseline justify-center gap-3 mb-3">
+                <span className="text-6xl font-bold text-white stat-counter">$0</span>
+                <span className="text-neutral-500 line-through text-xl">$23.99/mo</span>
               </div>
-              <p className="text-sm text-violet-400 mb-8">Forever free with early access code</p>
+              <p className="text-sm text-violet-400 mb-10 font-medium">Forever free with early access code</p>
 
-              <ul className="space-y-3 text-left mb-8">
+              <ul className="space-y-4 text-left mb-10">
                 {[
                   'Full access to all features at launch',
                   'Priority support',
@@ -624,16 +710,19 @@ function KachowLandingContent() {
                 ].map((item, index) => (
                   <motion.li
                     key={item}
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={{ opacity: 0, x: -15 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 }}
-                    className="flex items-center gap-3"
+                    className="flex items-center gap-4"
                   >
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center flex-shrink-0">
-                      <Check className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-sm text-neutral-300">{item}</span>
+                    <motion.div
+                      whileHover={{ scale: 1.1 }}
+                      className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-500/30"
+                    >
+                      <Check className="w-3.5 h-3.5 text-white" />
+                    </motion.div>
+                    <span className="text-neutral-300">{item}</span>
                   </motion.li>
                 ))}
               </ul>
@@ -642,11 +731,11 @@ function KachowLandingContent() {
                 onClick={() => setShowSignup(true)}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="relative group w-full py-4 rounded-xl overflow-hidden"
+                className="relative group w-full py-4 rounded-2xl overflow-hidden shadow-2xl shadow-violet-500/20"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500" />
                 <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <span className="relative text-white font-semibold">Claim Your Spot</span>
+                <span className="relative text-white font-semibold text-lg">Claim Your Spot</span>
               </motion.button>
             </div>
           </motion.div>
@@ -654,10 +743,10 @@ function KachowLandingContent() {
       </section>
 
       {/* Footer */}
-      <footer className="relative py-12 border-t border-neutral-900/50">
-        <div className="max-w-6xl mx-auto px-6">
+      <footer className="relative py-14 border-t border-white/5">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <Image
                 src="/logos/kachow.png"
                 alt="Kachow"
@@ -690,7 +779,7 @@ function KachowLandingContent() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/90 backdrop-blur-md z-50"
+              className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50"
               onClick={() => setShowSignup(false)}
             />
             <motion.div
@@ -700,28 +789,32 @@ function KachowLandingContent() {
               className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
             >
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-3xl blur-xl" />
-                <div className="relative bg-neutral-900/95 backdrop-blur-xl border border-neutral-800/50 rounded-3xl p-6 shadow-2xl">
+                <div className="absolute -inset-2 bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 rounded-3xl blur-2xl" />
+                <div className={cn(
+                  'relative rounded-3xl p-6',
+                  'bg-neutral-900/98 backdrop-blur-2xl border border-white/10',
+                  'shadow-2xl'
+                )}>
                   <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                       <div className="relative">
-                        <div className="absolute inset-0 bg-violet-500/30 rounded-xl blur-lg" />
+                        <div className="absolute inset-0 bg-violet-500/40 rounded-xl blur-lg" />
                         <Image
                           src="/logos/kachow.png"
                           alt="Kachow"
-                          width={40}
-                          height={40}
-                          className="relative w-10 h-10 rounded-xl"
+                          width={44}
+                          height={44}
+                          className="relative w-11 h-11 rounded-xl"
                         />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-white">Early Access</h3>
+                        <h3 className="font-semibold text-white text-lg">Early Access</h3>
                         <p className="text-xs text-neutral-500">Free lifetime access</p>
                       </div>
                     </div>
                     <button
                       onClick={() => setShowSignup(false)}
-                      className="p-2 hover:bg-neutral-800 rounded-xl transition-colors"
+                      className="p-2 hover:bg-white/5 rounded-xl transition-colors"
                     >
                       <X className="w-5 h-5 text-neutral-400" />
                     </button>
@@ -733,7 +826,7 @@ function KachowLandingContent() {
                       animate={{ opacity: 1, scale: 1 }}
                       className="text-center py-8"
                     >
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center mx-auto mb-4">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
                         <Check className="w-8 h-8 text-white" />
                       </div>
                       <h4 className="text-xl font-semibold mb-2 text-white">You&apos;re on the list!</h4>
@@ -762,7 +855,7 @@ function KachowLandingContent() {
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
                           placeholder="Your name"
-                          className="w-full px-4 py-3 rounded-xl bg-neutral-800/50 border border-neutral-700/50 text-white placeholder-neutral-500 text-sm focus:outline-none focus:border-violet-500/50 transition-colors"
+                          className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all"
                         />
                       </div>
 
@@ -777,7 +870,7 @@ function KachowLandingContent() {
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="you@example.com"
                           required
-                          className="w-full px-4 py-3 rounded-xl bg-neutral-800/50 border border-neutral-700/50 text-white placeholder-neutral-500 text-sm focus:outline-none focus:border-violet-500/50 transition-colors"
+                          className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all"
                         />
                       </div>
 
@@ -792,15 +885,15 @@ function KachowLandingContent() {
                           onChange={(e) => setAccessCode(e.target.value)}
                           placeholder="Enter your code"
                           required
-                          className="w-full px-4 py-3 rounded-xl bg-neutral-800/50 border border-neutral-700/50 text-white placeholder-neutral-500 text-sm focus:outline-none focus:border-violet-500/50 transition-colors"
+                          className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all"
                         />
-                        <p className="mt-1.5 text-xs text-neutral-500">
+                        <p className="mt-2 text-xs text-neutral-500">
                           Share our Instagram post to receive a code.
                         </p>
                       </div>
 
                       {submitStatus === 'error' && (
-                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+                        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
                           {errorMessage}
                         </div>
                       )}
@@ -810,7 +903,7 @@ function KachowLandingContent() {
                         disabled={isSubmitting}
                         whileHover={{ scale: 1.01 }}
                         whileTap={{ scale: 0.99 }}
-                        className="relative group w-full py-4 rounded-xl overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="relative group w-full py-4 rounded-xl overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-violet-500/20"
                       >
                         <div className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500" />
                         <span className="relative text-white font-semibold flex items-center justify-center gap-2">
@@ -825,7 +918,7 @@ function KachowLandingContent() {
                         </span>
                       </motion.button>
 
-                      <p className="text-center text-xs text-neutral-500">
+                      <p className="text-center text-xs text-neutral-500 pt-2">
                         By signing up, you agree to our{' '}
                         <Link href="/terms" className="text-violet-400 hover:underline">Terms</Link>
                         {' '}and{' '}

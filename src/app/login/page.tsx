@@ -4,11 +4,7 @@ import { Suspense, useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Github, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import {
-  AudioEngineProvider,
-  useAudioEngine,
-  CinematicTakeover,
-} from '@/components/hacker-os'
+import { CinematicTakeover } from '@/components/hacker-os/cinematic-takeover'
 
 function LoginContent() {
   const [loading, setLoading] = useState(false)
@@ -20,18 +16,12 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  let audioEngine: ReturnType<typeof useAudioEngine> | null = null
-  try {
-    audioEngine = useAudioEngine()
-  } catch {
-    // Audio engine not available
-  }
-
-  // Only render dynamic content after mount to avoid hydration issues
+  // Mount effect
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  // Auth check effect
   useEffect(() => {
     if (!mounted) return
 
@@ -48,8 +38,6 @@ function LoginContent() {
         if (user) {
           setIsAuthenticated(true)
           setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
-          await audioEngine?.initialize()
-          await audioEngine?.playIntroSong()
           setShowTakeover(true)
         }
       }
@@ -70,9 +58,6 @@ function LoginContent() {
   const handleGitHubLogin = async () => {
     setLoading(true)
     setError(null)
-
-    await audioEngine?.initialize()
-    audioEngine?.playEffect('button_click')
 
     localStorage.clear()
     sessionStorage.clear()
@@ -105,19 +90,15 @@ function LoginContent() {
     }
   }
 
-  const handleEnterSystem = async () => {
-    await audioEngine?.initialize()
-    audioEngine?.playEffect('button_click')
-    await audioEngine?.playIntroSong()
+  const handleEnterSystem = () => {
     setShowTakeover(true)
   }
 
   const handleTakeoverComplete = useCallback(() => {
-    audioEngine?.stopIntroSong()
-    audioEngine?.startAmbient('system_idle')
     router.push('/app')
-  }, [audioEngine, router])
+  }, [router])
 
+  // Show cinematic takeover
   if (showTakeover) {
     return (
       <CinematicTakeover
@@ -127,9 +108,9 @@ function LoginContent() {
     )
   }
 
+  // Show login form
   return (
     <div className="min-h-screen bg-black text-green-500 font-mono p-6">
-      {/* Header */}
       <div className="max-w-md mx-auto pt-20">
         <h1 className="text-2xl md:text-3xl font-bold text-center mb-2">
           MILLER AI GROUP
@@ -138,7 +119,6 @@ function LoginContent() {
           [ SECURE ACCESS TERMINAL ]
         </p>
 
-        {/* Terminal box */}
         <div className="border border-green-900 bg-black p-6">
           <div className="text-sm mb-6">
             <span className="text-green-600">root@miller-ai</span>
@@ -197,7 +177,6 @@ function LoginContent() {
           )}
         </div>
 
-        {/* Footer */}
         <p className="text-green-800 text-xs text-center mt-8">
           Secure connection | TLS 1.3
         </p>
@@ -213,9 +192,7 @@ export default function LoginPage() {
         <p className="text-green-500 font-mono">Loading...</p>
       </div>
     }>
-      <AudioEngineProvider>
-        <LoginContent />
-      </AudioEngineProvider>
+      <LoginContent />
     </Suspense>
   )
 }

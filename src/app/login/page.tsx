@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Github, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -112,11 +112,11 @@ function LoginContent() {
     setShowTakeover(true)
   }
 
-  const handleTakeoverComplete = () => {
+  const handleTakeoverComplete = useCallback(() => {
     audioEngine?.stopIntroSong()
     audioEngine?.startAmbient('system_idle')
     router.push('/app')
-  }
+  }, [audioEngine, router])
 
   if (showTakeover) {
     return (

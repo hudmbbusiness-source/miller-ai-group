@@ -238,18 +238,14 @@ function LoginContent() {
 
         {/* Main terminal */}
         <div className="max-w-2xl mx-auto">
-          {/* ASCII art header - hidden on small mobile */}
-          <pre className="text-green-500 text-[8px] sm:text-[10px] md:text-xs mb-8 leading-tight overflow-x-auto hidden sm:block">
-{`███╗   ███╗██╗██╗     ██╗     ███████╗██████╗
-████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗
-██╔████╔██║██║██║     ██║     █████╗  ██████╔╝
-██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗
-██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║
-╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝`}
-          </pre>
-          {/* Mobile simplified header */}
-          <div className="sm:hidden text-green-500 text-xl font-bold mb-6">
-            MILLER AI GROUP
+          {/* Header */}
+          <div className="mb-8 text-center">
+            <h1 className="text-green-500 text-2xl md:text-3xl font-bold mb-2">
+              MILLER AI GROUP
+            </h1>
+            <p className="text-green-700 text-xs">
+              [ SECURE ACCESS TERMINAL ]
+            </p>
           </div>
 
           {/* Login prompt */}

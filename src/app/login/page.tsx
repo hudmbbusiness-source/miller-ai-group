@@ -249,7 +249,7 @@ function LoginContent() {
           </pre>
           {/* Mobile simplified header */}
           <div className="sm:hidden text-green-500 text-xl font-bold mb-6">
-            MILLER AI
+            MILLER AI GROUP
           </div>
 
           {/* Login prompt */}

@@ -101,10 +101,16 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
   const prefersReducedMotion = usePrefersReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
   const [currentTime, setCurrentTime] = useState('')
+  const [systemStats, setSystemStats] = useState({ pid: '----', mem: '--', cpu: '--' })
 
-  // Client-side time to avoid hydration mismatch
+  // Client-side values to avoid hydration mismatch
   useEffect(() => {
     setCurrentTime(new Date().toLocaleTimeString())
+    setSystemStats({
+      pid: String(Math.floor(Math.random() * 9000 + 1000)),
+      mem: String(Math.floor(Math.random() * 30 + 10)),
+      cpu: String(Math.floor(Math.random() * 20 + 5)),
+    })
     const interval = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString())
     }, 1000)
@@ -359,9 +365,9 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
         {/* Footer - Terminal status bar */}
         <footer className="border-t border-green-900 bg-black px-4 py-1 flex items-center justify-between text-[10px] text-green-700">
           <div className="flex items-center gap-4">
-            <span>PID: {Math.floor(Math.random() * 9000 + 1000)}</span>
-            <span className="hidden sm:inline">MEM: {Math.floor(Math.random() * 30 + 10)}%</span>
-            <span className="hidden sm:inline">CPU: {Math.floor(Math.random() * 20 + 5)}%</span>
+            <span>PID: {systemStats.pid}</span>
+            <span className="hidden sm:inline">MEM: {systemStats.mem}%</span>
+            <span className="hidden sm:inline">CPU: {systemStats.cpu}%</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-green-500">● CONNECTED</span>

@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useRef, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Code2,
@@ -11,38 +10,24 @@ import {
   Check,
   Play,
   Save,
-  Trash2,
   Download,
   Loader2,
   Sparkles,
-  RefreshCw,
-  Zap,
-  FileCode,
-  FileText,
-  Palette,
-  X,
   Plus,
   Maximize2,
   Minimize2,
-  ExternalLink,
   Send,
   Bot,
   User,
   FolderOpen,
   Eye,
+  FileCode,
+  FileText,
+  Palette,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-
-interface SavedProject {
-  id: string
-  name: string
-  html: string
-  css: string
-  js: string
-  created_at: string
-  updated_at: string
-}
+import Link from 'next/link'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -50,11 +35,10 @@ interface ChatMessage {
 }
 
 type EditorTab = 'html' | 'css' | 'js'
-type RightTab = 'preview' | 'saved'
 
 const DEFAULT_HTML = `<div class="container">
   <h1 class="title">Welcome</h1>
-  <p class="subtitle">Click the button to start</p>
+  <p class="subtitle">Start building something amazing</p>
   <button class="btn" id="startBtn">Get Started</button>
   <div id="content"></div>
 </div>`
@@ -122,7 +106,7 @@ let count = 0;
 btn?.addEventListener('click', () => {
   count++;
   content.innerHTML = \`
-    <div style="padding: 2rem; background: rgba(255,255,255,0.1); border-radius: 16px;">
+    <div style="padding: 2rem; background: rgba(255,255,255,0.1); border-radius: 16px; margin-top: 1rem;">
       <p style="font-size: 1.5rem;">Clicked \${count} time\${count > 1 ? 's' : ''}!</p>
     </div>
   \`;
@@ -135,10 +119,8 @@ export default function PlaygroundPage() {
   const [css, setCss] = useState(DEFAULT_CSS)
   const [js, setJs] = useState(DEFAULT_JS)
   const [editorTab, setEditorTab] = useState<EditorTab>('html')
-  const [rightTab, setRightTab] = useState<RightTab>('preview')
   const [projectName, setProjectName] = useState('Untitled Project')
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -146,50 +128,41 @@ export default function PlaygroundPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: "I'm your code assistant. Tell me what to build and I'll create the HTML, CSS, and JS for you. Try: \"Create a bouncing ball animation\" or \"Build a neon button with hover effects\""
+      content: "Hey! I'm your code assistant. Tell me what you want to build - games, animations, UI components, whatever. I'll create the code for you."
     }
   ])
   const [isGenerating, setIsGenerating] = useState(false)
-  const [autoRun, setAutoRun] = useState(true)
-  const [consoleOutput, setConsoleOutput] = useState<string[]>([])
-  const iframeRef = useRef<HTMLIFrameElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const runTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Save current code to localStorage for preview page
   useEffect(() => {
-    loadProjects()
-  }, [])
-
-  useEffect(() => {
-    if (autoRun) {
-      if (runTimeoutRef.current) clearTimeout(runTimeoutRef.current)
-      runTimeoutRef.current = setTimeout(() => runCode(), 300)
-    }
-    return () => { if (runTimeoutRef.current) clearTimeout(runTimeoutRef.current) }
-  }, [html, css, js, autoRun])
+    localStorage.setItem('playground_code', JSON.stringify({ html, css, js, projectName }))
+  }, [html, css, js, projectName])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
-  const loadProjects = async () => {
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase.from('playground_projects') as any)
-        .select('*').eq('user_id', user.id).order('updated_at', { ascending: false })
-      if (data) setSavedProjects(data)
-    } catch (err) { console.error('Load failed:', err) }
-  }
+  // Load from localStorage on mount (for returning from preview/saved)
+  useEffect(() => {
+    const saved = localStorage.getItem('playground_code')
+    if (saved) {
+      try {
+        const { html: h, css: c, js: j, projectName: n } = JSON.parse(saved)
+        if (h) setHtml(h)
+        if (c) setCss(c)
+        if (j) setJs(j)
+        if (n) setProjectName(n)
+      } catch {}
+    }
+  }, [])
 
   const saveProject = async () => {
     setIsSaving(true)
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { alert('Sign in to save'); return }
+      if (!user) { alert('Sign in to save projects'); setIsSaving(false); return }
 
       const projectData = { user_id: user.id, name: projectName, html, css, js, updated_at: new Date().toISOString() }
 
@@ -202,30 +175,12 @@ export default function PlaygroundPage() {
           .insert({ ...projectData, created_at: new Date().toISOString() }).select().single()
         if (data) setProjectId(data.id)
       }
-      await loadProjects()
-    } catch (err) { console.error('Save failed:', err) }
+      setChatMessages(p => [...p, { role: 'assistant', content: `Saved "${projectName}"! You can find it in the Saved tab.` }])
+    } catch (err) {
+      console.error('Save failed:', err)
+      setChatMessages(p => [...p, { role: 'assistant', content: 'Failed to save. Please try again.' }])
+    }
     finally { setIsSaving(false) }
-  }
-
-  const loadProject = (project: SavedProject) => {
-    setProjectId(project.id)
-    setProjectName(project.name)
-    setHtml(project.html)
-    setCss(project.css)
-    setJs(project.js)
-    setRightTab('preview')
-    setChatMessages([{ role: 'assistant', content: `Loaded "${project.name}". What changes would you like?` }])
-  }
-
-  const deleteProject = async (id: string) => {
-    if (!confirm('Delete this project?')) return
-    try {
-      const supabase = createClient()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('playground_projects') as any).delete().eq('id', id)
-      if (projectId === id) newProject()
-      await loadProjects()
-    } catch (err) { console.error('Delete failed:', err) }
   }
 
   const newProject = () => {
@@ -234,30 +189,8 @@ export default function PlaygroundPage() {
     setHtml(DEFAULT_HTML)
     setCss(DEFAULT_CSS)
     setJs(DEFAULT_JS)
-    setConsoleOutput([])
     setChatMessages([{ role: 'assistant', content: "New project started! What would you like to build?" }])
   }
-
-  const runCode = useCallback(() => {
-    if (!iframeRef.current) return
-    setConsoleOutput([])
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body>${html}<script>
-const _c=console;window.console={log:(...a)=>{parent.postMessage({t:'log',m:a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')},'*');_c.log(...a)},error:(...a)=>{parent.postMessage({t:'err',m:a.map(x=>String(x)).join(' ')},'*');_c.error(...a)},warn:(...a)=>{parent.postMessage({t:'warn',m:a.map(x=>String(x)).join(' ')},'*');_c.warn(...a)}};
-window.onerror=(m,u,l)=>parent.postMessage({t:'err',m:m+' (line '+l+')'},'*');
-try{${js}}catch(e){console.error(e.message)}</script></body></html>`
-    iframeRef.current.srcdoc = fullHtml
-  }, [html, css, js])
-
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.t) {
-        const prefix = e.data.t === 'err' ? '× ' : e.data.t === 'warn' ? '! ' : '› '
-        setConsoleOutput(p => [...p.slice(-30), prefix + e.data.m])
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [])
 
   const handleChat = async () => {
     if (!chatInput.trim() || isGenerating) return
@@ -267,9 +200,9 @@ try{${js}}catch(e){console.error(e.message)}</script></body></html>`
     setIsGenerating(true)
 
     try {
-      const systemPrompt = `You are an expert web developer. The user wants you to create or modify HTML/CSS/JS code.
+      const systemPrompt = `You are an expert web developer. Create HTML, CSS, and JavaScript code based on user requests.
 
-CURRENT CODE:
+CURRENT CODE STATE:
 HTML:
 ${html}
 
@@ -279,23 +212,26 @@ ${css}
 JS:
 ${js}
 
-RESPOND WITH THIS EXACT FORMAT:
-[Your brief explanation - 1-2 sentences max]
+ALWAYS RESPOND IN THIS EXACT FORMAT:
+[Brief 1-2 sentence description of what you created/changed]
 
 ===HTML===
-[complete HTML code here]
+[Your complete HTML code - just the body content, no doctype/html/head tags]
 ===CSS===
-[complete CSS code here]
+[Your complete CSS code]
 ===JS===
-[complete JavaScript code here]
+[Your complete JavaScript code]
 
-REQUIREMENTS:
-- Always include all 3 sections (===HTML===, ===CSS===, ===JS===)
-- Make visually impressive code with animations, gradients, modern effects
-- For games: use canvas, smooth animations, particle effects
-- For UI: glassmorphism, gradients, hover effects, transitions
-- Code must be complete and working - no placeholders
-- Keep explanations very brief`
+IMPORTANT RULES:
+1. ALWAYS include all three sections: ===HTML===, ===CSS===, ===JS===
+2. Create visually impressive, modern code with:
+   - Smooth animations and transitions
+   - Gradients and modern color schemes
+   - Glassmorphism, shadows, hover effects
+   - For games: use canvas, particle effects, smooth physics
+3. Code must be COMPLETE and WORKING - no placeholders or TODOs
+4. Keep explanation brief - focus on the code
+5. If user asks to modify existing code, preserve what works and change only what's needed`
 
       const res = await fetch('/api/ai/code', {
         method: 'POST',
@@ -303,21 +239,19 @@ REQUIREMENTS:
         body: JSON.stringify({
           prompt: userMsg,
           systemPrompt,
-          conversationHistory: chatMessages.slice(-4),
+          conversationHistory: chatMessages.slice(-6),
           action: 'chat',
         }),
       })
 
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) throw new Error('Failed to generate')
       const data = await res.json()
       const response = data.code || data.response || ''
 
-      // Parse response with === markers
+      // Parse response
       const htmlMatch = response.match(/===HTML===([\s\S]*?)(?====CSS===|===JS===|$)/i)
       const cssMatch = response.match(/===CSS===([\s\S]*?)(?====HTML===|===JS===|$)/i)
       const jsMatch = response.match(/===JS===([\s\S]*?)(?====HTML===|===CSS===|$)/i)
-
-      // Get explanation (text before first ===)
       const explMatch = response.match(/^([\s\S]*?)(?====)/i)
       const explanation = explMatch ? explMatch[1].trim() : ''
 
@@ -325,14 +259,13 @@ REQUIREMENTS:
         if (htmlMatch) setHtml(htmlMatch[1].trim())
         if (cssMatch) setCss(cssMatch[1].trim())
         if (jsMatch) setJs(jsMatch[1].trim())
-        setChatMessages(p => [...p, { role: 'assistant', content: explanation || "Done! Check the Preview tab." }])
-        setRightTab('preview')
+        setChatMessages(p => [...p, { role: 'assistant', content: explanation || "Done! Click Preview to see it in action." }])
       } else {
-        setChatMessages(p => [...p, { role: 'assistant', content: response || "Could you be more specific?" }])
+        setChatMessages(p => [...p, { role: 'assistant', content: response || "I need more details. What would you like me to create?" }])
       }
     } catch (err) {
       console.error('Chat error:', err)
-      setChatMessages(p => [...p, { role: 'assistant', content: "Error generating code. Please try again." }])
+      setChatMessages(p => [...p, { role: 'assistant', content: "Something went wrong. Please try again." }])
     } finally {
       setIsGenerating(false)
     }
@@ -352,7 +285,7 @@ REQUIREMENTS:
   }
 
   const handleDownload = () => {
-    const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName}</title><style>${css}</style></head><body>${html}<script>${js}</script></body></html>`
+    const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName}</title><style>${css}</style></head><body>${html}<script>${js}<\/script></body></html>`
     const blob = new Blob([full], { type: 'text/html' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -360,251 +293,195 @@ REQUIREMENTS:
     a.click()
   }
 
-  const openExternal = () => {
-    const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName}</title><style>${css}</style></head><body>${html}<script>${js}</script></body></html>`
-    const win = window.open('', '_blank')
-    if (win) { win.document.write(full); win.document.close() }
-  }
-
   return (
-    <div className={cn(
-      "flex flex-col rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900",
-      isFullscreen ? "fixed inset-4 z-50" : "h-[calc(100vh-160px)] min-h-[600px]"
-    )}>
+    <div className="min-h-screen p-6">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-950">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600">
-            <Code2 className="w-4 h-4 text-white" />
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25">
+              <Code2 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Code Playground</h1>
+              <p className="text-neutral-400 text-sm">Build, test, and save your creations</p>
+            </div>
           </div>
-          <Input
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            className="bg-transparent border-none text-sm font-semibold text-white p-0 h-auto w-40 focus-visible:ring-0"
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={newProject} className="text-neutral-400 hover:text-white h-7 px-2">
-            <Plus className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={saveProject} disabled={isSaving} className="text-violet-400 hover:text-violet-300 h-7 px-2">
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleDownload} className="text-neutral-400 hover:text-white h-7 px-2">
-            <Download className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setIsFullscreen(!isFullscreen)} className="text-neutral-400 hover:text-white h-7 px-2">
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </Button>
+
+          {/* Navigation Buttons */}
+          <div className="flex items-center gap-3">
+            <Link href="/app/tools/playground/preview">
+              <Button className="bg-green-600 hover:bg-green-700 text-white gap-2 px-6">
+                <Eye className="w-4 h-4" />
+                Preview
+              </Button>
+            </Link>
+            <Link href="/app/tools/playground/saved">
+              <Button variant="outline" className="border-violet-500/50 text-violet-400 hover:bg-violet-500/10 gap-2 px-6">
+                <FolderOpen className="w-4 h-4" />
+                Saved
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Chat + Editor */}
-        <div className="w-1/2 flex flex-col border-r border-neutral-800">
-          {/* Chat Section */}
-          <div className="h-48 flex flex-col border-b border-neutral-800 bg-neutral-950">
-            <div className="px-3 py-1.5 border-b border-neutral-800 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-400" />
-              <span className="text-xs font-medium text-neutral-300">AI Assistant</span>
+      {/* Main Content */}
+      <div className={cn(
+        "max-w-7xl mx-auto rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-900/50 backdrop-blur",
+        isFullscreen && "fixed inset-4 z-50 max-w-none"
+      )}>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-800 bg-neutral-900">
+          <div className="flex items-center gap-4">
+            <Input
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              className="bg-neutral-800 border-neutral-700 text-white font-medium w-56 focus-visible:ring-violet-500"
+              placeholder="Project name..."
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={newProject} className="text-neutral-400 hover:text-white gap-2">
+              <Plus className="w-4 h-4" />
+              New
+            </Button>
+            <Button variant="ghost" size="sm" onClick={saveProject} disabled={isSaving} className="text-violet-400 hover:text-violet-300 gap-2">
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleDownload} className="text-neutral-400 hover:text-white gap-2">
+              <Download className="w-4 h-4" />
+              Download
+            </Button>
+            <div className="w-px h-6 bg-neutral-700 mx-2" />
+            <Button variant="ghost" size="icon" onClick={() => setIsFullscreen(!isFullscreen)} className="text-neutral-400 hover:text-white">
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex" style={{ height: isFullscreen ? 'calc(100vh - 120px)' : '70vh' }}>
+          {/* AI Chat Panel */}
+          <div className="w-80 flex flex-col border-r border-neutral-800 bg-neutral-950/50">
+            <div className="px-4 py-3 border-b border-neutral-800 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-violet-400" />
+              <span className="font-semibold text-white">AI Assistant</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {chatMessages.map((msg, i) => (
-                <div key={i} className={cn("flex gap-2", msg.role === 'user' ? "justify-end" : "")}>
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn("flex gap-3", msg.role === 'user' ? "justify-end" : "")}
+                >
                   {msg.role === 'assistant' && (
-                    <Bot className="w-5 h-5 text-violet-400 flex-shrink-0 mt-0.5" />
+                    <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
+                      <Bot className="w-4 h-4 text-violet-400" />
+                    </div>
                   )}
                   <div className={cn(
-                    "max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs",
-                    msg.role === 'user' ? "bg-violet-600 text-white" : "bg-neutral-800 text-neutral-200"
+                    "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
+                    msg.role === 'user'
+                      ? "bg-violet-600 text-white rounded-br-md"
+                      : "bg-neutral-800 text-neutral-200 rounded-bl-md"
                   )}>
                     {msg.content}
                   </div>
                   {msg.role === 'user' && (
-                    <User className="w-5 h-5 text-neutral-400 flex-shrink-0 mt-0.5" />
+                    <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
+                      <User className="w-4 h-4 text-neutral-300" />
+                    </div>
                   )}
-                </div>
+                </motion.div>
               ))}
               {isGenerating && (
-                <div className="flex gap-2">
-                  <Loader2 className="w-5 h-5 text-violet-400 animate-spin" />
-                  <span className="text-xs text-neutral-400">Generating...</span>
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                  </div>
+                  <div className="bg-neutral-800 rounded-2xl rounded-bl-md px-4 py-2.5">
+                    <span className="text-sm text-neutral-400">Creating your code...</span>
+                  </div>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
-            <div className="p-2 border-t border-neutral-800">
+
+            {/* Input */}
+            <div className="p-4 border-t border-neutral-800">
               <div className="flex gap-2">
                 <Input
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Describe what to build..."
-                  className="flex-1 bg-neutral-900 border-neutral-700 text-xs h-7"
-                  onKeyDown={(e) => e.key === 'Enter' && handleChat()}
+                  placeholder="What should I build?"
+                  className="flex-1 bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500 focus-visible:ring-violet-500"
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChat()}
                   disabled={isGenerating}
                 />
-                <Button size="sm" onClick={handleChat} disabled={isGenerating || !chatInput.trim()} className="bg-violet-600 hover:bg-violet-700 h-7 px-2">
-                  <Send className="w-3.5 h-3.5" />
+                <Button
+                  onClick={handleChat}
+                  disabled={isGenerating || !chatInput.trim()}
+                  className="bg-violet-600 hover:bg-violet-700 px-4"
+                >
+                  <Send className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Editor Section */}
+          {/* Code Editor */}
           <div className="flex-1 flex flex-col">
             {/* Editor Tabs */}
-            <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-950">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
               {[
                 { id: 'html' as EditorTab, label: 'HTML', icon: FileCode, color: '#f97316' },
                 { id: 'css' as EditorTab, label: 'CSS', icon: Palette, color: '#3b82f6' },
-                { id: 'js' as EditorTab, label: 'JS', icon: FileText, color: '#eab308' },
+                { id: 'js' as EditorTab, label: 'JavaScript', icon: FileText, color: '#eab308' },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setEditorTab(tab.id)}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all",
-                    editorTab === tab.id ? "text-white" : "text-neutral-500 hover:text-neutral-300"
+                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    editorTab === tab.id
+                      ? "text-white shadow-lg"
+                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
                   )}
                   style={editorTab === tab.id ? { backgroundColor: `${tab.color}22`, color: tab.color } : {}}
                 >
-                  <tab.icon className="w-3.5 h-3.5" />
+                  <tab.icon className="w-4 h-4" />
                   {tab.label}
                 </button>
               ))}
-              <div className="ml-auto flex items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={handleCopy} className="text-neutral-500 hover:text-white h-6 px-1">
-                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={handleCopy} className="text-neutral-500 hover:text-white gap-2">
+                  {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Copied' : 'Copy'}
                 </Button>
               </div>
             </div>
 
-            {/* Code Editor */}
-            <div className="flex-1 relative">
+            {/* Code Area */}
+            <div className="flex-1 relative bg-neutral-950">
               <textarea
                 value={getCurrentCode()}
                 onChange={(e) => setCurrentCode(e.target.value)}
                 className={cn(
-                  "absolute inset-0 bg-neutral-950 border-0 font-mono text-xs resize-none p-3 focus:outline-none leading-relaxed",
+                  "absolute inset-0 w-full h-full bg-transparent border-0 font-mono text-sm resize-none p-6 focus:outline-none leading-relaxed",
                   editorTab === 'html' && "text-orange-300",
                   editorTab === 'css' && "text-blue-300",
                   editorTab === 'js' && "text-yellow-300"
                 )}
                 spellCheck={false}
+                placeholder={`Write your ${editorTab.toUpperCase()} code here...`}
               />
             </div>
           </div>
-        </div>
-
-        {/* Right: Preview / Saved Tabs */}
-        <div className="w-1/2 flex flex-col">
-          {/* Right Tabs */}
-          <div className="flex items-center gap-1 px-2 py-1 border-b border-neutral-800 bg-neutral-950">
-            <button
-              onClick={() => setRightTab('preview')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all",
-                rightTab === 'preview' ? "bg-green-500/20 text-green-400" : "text-neutral-500 hover:text-neutral-300"
-              )}
-            >
-              <Eye className="w-3.5 h-3.5" />
-              Preview
-            </button>
-            <button
-              onClick={() => { setRightTab('saved'); loadProjects() }}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all",
-                rightTab === 'saved' ? "bg-violet-500/20 text-violet-400" : "text-neutral-500 hover:text-neutral-300"
-              )}
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              Saved
-            </button>
-            {rightTab === 'preview' && (
-              <div className="ml-auto flex items-center gap-1">
-                <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer mr-2">
-                  <input type="checkbox" checked={autoRun} onChange={(e) => setAutoRun(e.target.checked)} className="w-3 h-3" />
-                  Auto
-                </label>
-                {!autoRun && (
-                  <Button size="sm" onClick={runCode} className="bg-green-600 hover:bg-green-700 h-6 px-2 text-xs">
-                    <Play className="w-3 h-3 mr-1" />Run
-                  </Button>
-                )}
-                <Button variant="ghost" size="sm" onClick={runCode} className="text-neutral-500 hover:text-white h-6 px-1">
-                  <RefreshCw className="w-3 h-3" />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={openExternal} className="text-neutral-500 hover:text-white h-6 px-1">
-                  <ExternalLink className="w-3 h-3" />
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Tab Content */}
-          {rightTab === 'preview' ? (
-            <div className="flex-1 flex flex-col">
-              {/* Preview iframe */}
-              <div className="flex-1 bg-white">
-                <iframe ref={iframeRef} className="w-full h-full border-0" sandbox="allow-scripts allow-modals allow-forms" title="Preview" />
-              </div>
-              {/* Console */}
-              <div className="h-20 border-t border-neutral-800 bg-neutral-950 flex flex-col">
-                <div className="flex items-center justify-between px-2 py-0.5 border-b border-neutral-800">
-                  <span className="text-xs text-neutral-500">Console</span>
-                  <Button variant="ghost" size="sm" onClick={() => setConsoleOutput([])} className="text-neutral-600 hover:text-white h-4 px-1">
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 font-mono text-xs">
-                  {consoleOutput.length === 0 ? (
-                    <span className="text-neutral-600">Console output appears here...</span>
-                  ) : consoleOutput.map((log, i) => (
-                    <div key={i} className={cn("py-0.5", log.startsWith('×') ? "text-red-400" : log.startsWith('!') ? "text-yellow-400" : "text-green-400")}>{log}</div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto p-3 bg-neutral-950">
-              <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-3">Saved Projects</h3>
-              {savedProjects.length === 0 ? (
-                <p className="text-neutral-600 text-sm">No saved projects yet. Create something and click Save!</p>
-              ) : (
-                <div className="space-y-2">
-                  {savedProjects.map((p) => (
-                    <div
-                      key={p.id}
-                      className={cn(
-                        "p-3 rounded-lg cursor-pointer group transition-all border",
-                        projectId === p.id
-                          ? "bg-violet-500/20 border-violet-500/30 text-violet-300"
-                          : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:border-neutral-700"
-                      )}
-                      onClick={() => loadProject(p)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-sm">{p.name}</p>
-                          <p className="text-xs text-neutral-500 mt-0.5">
-                            {new Date(p.updated_at).toLocaleDateString()} · {new Date(p.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); deleteProject(p.id) }}
-                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 h-7 w-7 p-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

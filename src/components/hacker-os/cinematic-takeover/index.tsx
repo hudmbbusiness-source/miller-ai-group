@@ -93,36 +93,19 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
     }
   }, [phase, onComplete])
 
-  // Pre-computed random values to avoid hydration mismatch
-  const glitchLines = Array.from({ length: 20 }, (_, i) => ({
-    top: (i * 5) % 100,
-    delay: (i * 0.1) % 2,
-    repeatDelay: (i * 0.15) % 3,
-  }))
-
   if (phase === 'pwned') {
     return (
       <div className="fixed inset-0 bg-black z-50 flex items-center justify-center font-mono overflow-hidden">
-        {/* Glitch background */}
-        <div className="absolute inset-0">
-          {glitchLines.map((line, i) => (
-            <motion.div
+        {/* Glitch lines - using CSS animation */}
+        <div className="absolute inset-0 overflow-hidden">
+          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95].map((top, i) => (
+            <div
               key={i}
-              className="absolute h-px bg-red-500/30"
+              className="absolute h-px bg-red-500/30 left-0 right-0 animate-pulse"
               style={{
-                top: `${line.top}%`,
-                left: 0,
-                right: 0,
-              }}
-              animate={{
-                opacity: [0, 1, 0],
-                scaleX: [0, 1, 0],
-              }}
-              transition={{
-                duration: 0.3,
-                repeat: Infinity,
-                delay: line.delay,
-                repeatDelay: line.repeatDelay,
+                top: `${top}%`,
+                animationDelay: `${i * 0.1}s`,
+                animationDuration: `${0.3 + (i % 3) * 0.1}s`,
               }}
             />
           ))}
@@ -139,19 +122,17 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         <div className="relative z-10 text-center px-4">
           {/* PWNED ASCII */}
           <motion.pre
-            className="text-red-500 text-xs md:text-sm mb-6"
+            className="text-red-500 text-[10px] sm:text-xs md:text-sm mb-6 overflow-x-auto"
             style={{ textShadow: '0 0 10px rgba(255,0,0,0.8)' }}
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-{`
-██████╗ ██╗    ██╗███╗   ██╗███████╗██████╗
+{`██████╗ ██╗    ██╗███╗   ██╗███████╗██████╗
 ██╔══██╗██║    ██║████╗  ██║██╔════╝██╔══██╗
 ██████╔╝██║ █╗ ██║██╔██╗ ██║█████╗  ██║  ██║
 ██╔═══╝ ██║███╗██║██║╚██╗██║██╔══╝  ██║  ██║
 ██║     ╚███╔███╔╝██║ ╚████║███████╗██████╔╝
-╚═╝      ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝╚═════╝
-`}
+╚═╝      ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝╚═════╝ `}
           </motion.pre>
 
           {/* Main text */}
@@ -177,13 +158,9 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
           </motion.div>
 
           {/* Blinking cursor */}
-          <motion.div
-            className="mt-8 text-green-500 text-sm"
-            animate={{ opacity: [1, 0, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          >
+          <div className="mt-8 text-green-500 text-sm animate-pulse">
             root@miller-ai:~# █
-          </motion.div>
+          </div>
 
           {/* Stats */}
           <motion.div
@@ -208,13 +185,11 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         </div>
 
         {/* Corner info */}
-        <div className="absolute top-4 left-4 text-xs text-red-500/60 font-mono">
-          <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.5, repeat: Infinity }}>
-            ● REC
-          </motion.span>
+        <div className="absolute top-4 left-4 text-xs text-red-500/60 font-mono animate-pulse">
+          ● REC
         </div>
         <div className="absolute top-4 right-4 text-xs text-green-600 font-mono">
-          {timestamp}
+          {timestamp || 'LIVE'}
         </div>
         <div className="absolute bottom-4 left-4 text-xs text-green-800 font-mono">
           Session: {sessionId}

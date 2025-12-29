@@ -94,108 +94,14 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
   }, [phase, onComplete])
 
   if (phase === 'pwned') {
+    // Ultra-minimal to isolate crash
     return (
-      <div className="fixed inset-0 bg-black z-50 flex items-center justify-center font-mono overflow-hidden">
-        {/* Glitch lines - using CSS animation */}
-        <div className="absolute inset-0 overflow-hidden">
-          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95].map((top, i) => (
-            <div
-              key={i}
-              className="absolute h-px bg-red-500/30 left-0 right-0 animate-pulse"
-              style={{
-                top: `${top}%`,
-                animationDelay: `${i * 0.1}s`,
-                animationDuration: `${0.3 + (i % 3) * 0.1}s`,
-              }}
-            />
-          ))}
-        </div>
-
-        {/* CRT scanlines */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.2) 0px, rgba(0,0,0,0.2) 1px, transparent 1px, transparent 2px)',
-          }}
-        />
-
-        <div className="relative z-10 text-center px-4">
-          {/* PWNED ASCII */}
-          <motion.pre
-            className="text-red-500 text-[10px] sm:text-xs md:text-sm mb-6 overflow-x-auto"
-            style={{ textShadow: '0 0 10px rgba(255,0,0,0.8)' }}
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-{`██████╗ ██╗    ██╗███╗   ██╗███████╗██████╗
-██╔══██╗██║    ██║████╗  ██║██╔════╝██╔══██╗
-██████╔╝██║ █╗ ██║██╔██╗ ██║█████╗  ██║  ██║
-██╔═══╝ ██║███╗██║██║╚██╗██║██╔══╝  ██║  ██║
-██║     ╚███╔███╔╝██║ ╚████║███████╗██████╔╝
-╚═╝      ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝╚═════╝ `}
-          </motion.pre>
-
-          {/* Main text */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            <h1
-              className="text-4xl md:text-6xl font-bold text-red-500 mb-4"
-              style={{ textShadow: '0 0 20px rgba(255,0,0,0.5), 2px 2px 0 #000' }}
-            >
-              SYSTEM OWNED
-            </h1>
-
-            <div className="text-green-500 text-lg md:text-xl mb-2">
-              MILLER AI GROUP
-            </div>
-
-            <div className="text-green-600 text-sm">
-              Welcome, {userName}
-            </div>
-          </motion.div>
-
-          {/* Blinking cursor */}
-          <div className="mt-8 text-green-500 text-sm animate-pulse">
-            root@miller-ai:~# █
-          </div>
-
-          {/* Stats */}
-          <motion.div
-            className="mt-8 flex justify-center gap-8 text-xs text-green-700"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-          >
-            <div>
-              <div className="text-green-500 text-lg">3</div>
-              <div>PORTS</div>
-            </div>
-            <div>
-              <div className="text-green-500 text-lg">ROOT</div>
-              <div>ACCESS</div>
-            </div>
-            <div>
-              <div className="text-green-500 text-lg">OK</div>
-              <div>C2</div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Corner info */}
-        <div className="absolute top-4 left-4 text-xs text-red-500/60 font-mono animate-pulse">
-          ● REC
-        </div>
-        <div className="absolute top-4 right-4 text-xs text-green-600 font-mono">
-          {timestamp || 'LIVE'}
-        </div>
-        <div className="absolute bottom-4 left-4 text-xs text-green-800 font-mono">
-          Session: {sessionId}
-        </div>
-        <div className="absolute bottom-4 right-4 text-xs text-green-800 font-mono">
-          miller-ai v2.0
+      <div className="fixed inset-0 bg-black z-50 flex items-center justify-center font-mono">
+        <div className="text-center">
+          <h1 className="text-6xl font-bold text-red-500 mb-4">PWNED</h1>
+          <p className="text-green-500 text-xl">SYSTEM OWNED</p>
+          <p className="text-green-600 mt-2">Welcome, {userName}</p>
+          <p className="text-green-700 mt-4 text-sm">Redirecting...</p>
         </div>
       </div>
     )

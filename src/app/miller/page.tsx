@@ -302,6 +302,7 @@ const targetCompanies = [
 function MillerPageContent() {
   const [isProcessingAuth, setIsProcessingAuth] = useState(false)
   const [showCinematic, setShowCinematic] = useState(false)
+  const [isNavigating, setIsNavigating] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { scrollYProgress } = useScroll()
@@ -315,9 +316,10 @@ function MillerPageContent() {
     setShowCinematic(true)
   }, [])
 
-  // Handle cinematic completion - redirect directly to app (will redirect to login if not authenticated)
+  // Handle cinematic completion - always go to login page first
   const handleCinematicComplete = useCallback(() => {
-    router.push('/app')
+    setIsNavigating(true)
+    router.push('/login')
   }, [router])
 
   useEffect(() => {
@@ -368,6 +370,11 @@ function MillerPageContent() {
           />
         )}
       </AnimatePresence>
+
+      {/* Navigation overlay - keeps screen black during transition */}
+      {isNavigating && (
+        <div className="fixed inset-0 z-[9998] bg-black" />
+      )}
 
       <div className="min-h-screen bg-black text-white antialiased overflow-x-hidden">
         <StripeMesh />

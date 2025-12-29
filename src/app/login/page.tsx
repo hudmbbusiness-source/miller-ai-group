@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Github, Loader2 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CinematicTakeover } from '@/components/hacker-os/cinematic-takeover'
+import { AudioEngineProvider, useAudioEngine } from '@/components/hacker-os'
 
 function LoginContent() {
   const [loading, setLoading] = useState(false)
@@ -15,6 +16,7 @@ function LoginContent() {
   const [mounted, setMounted] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const audioEngine = useAudioEngine()
 
   // Mount effect
   useEffect(() => {
@@ -38,6 +40,8 @@ function LoginContent() {
         if (user) {
           setIsAuthenticated(true)
           setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
+          await audioEngine.initialize()
+          await audioEngine.playIntroSong()
           setShowTakeover(true)
         }
       }
@@ -58,6 +62,9 @@ function LoginContent() {
   const handleGitHubLogin = async () => {
     setLoading(true)
     setError(null)
+
+    await audioEngine.initialize()
+    audioEngine.playEffect('button_click')
 
     localStorage.clear()
     sessionStorage.clear()
@@ -90,13 +97,17 @@ function LoginContent() {
     }
   }
 
-  const handleEnterSystem = () => {
+  const handleEnterSystem = async () => {
+    await audioEngine.initialize()
+    audioEngine.playEffect('button_click')
+    await audioEngine.playIntroSong()
     setShowTakeover(true)
   }
 
   const handleTakeoverComplete = useCallback(() => {
+    audioEngine.stopIntroSong()
     router.push('/app')
-  }, [router])
+  }, [router, audioEngine])
 
   // Show cinematic takeover
   if (showTakeover) {
@@ -192,7 +203,9 @@ export default function LoginPage() {
         <p className="text-green-500 font-mono">Loading...</p>
       </div>
     }>
-      <LoginContent />
+      <AudioEngineProvider>
+        <LoginContent />
+      </AudioEngineProvider>
     </Suspense>
   )
 }

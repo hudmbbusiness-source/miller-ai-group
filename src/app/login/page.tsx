@@ -124,14 +124,9 @@ function LoginContent() {
   const handleEnterSystem = async () => {
     await audioEngine.initialize()
     audioEngine.playEffect('button_click')
-    // Try MP3 first, fall back to Web Audio API
-    try {
-      await audioEngine.playIntroSong()
-    } catch {
-      // Fall back to generated soundtrack
-      soundtrackCleanupRef.current = audioEngine.playCinematicSoundtrack(45)
-    }
-    setShowTakeover(true)
+    // Skip the second cinematic - user already saw one on /miller
+    // Go directly to the app
+    router.push('/app')
   }
 
   const handleTakeoverComplete = useCallback(() => {

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
@@ -30,38 +31,32 @@ import {
   Volume2,
   VolumeX,
   X,
+  ChevronRight,
+  Search,
+  Bell,
+  User,
+  Command,
 } from 'lucide-react'
-import type { User } from '@supabase/supabase-js'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { useState, useEffect } from 'react'
-
-// CRT scanline effect
-function CRTEffect() {
-  return (
-    <div
-      className="fixed inset-0 pointer-events-none z-50"
-      style={{
-        background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px)',
-      }}
-    />
-  )
-}
+import { cn } from '@/lib/utils'
 
 const navItems = [
-  { href: '/app', label: 'dashboard', icon: LayoutDashboard, cmd: 'cd /dashboard' },
-  { href: '/app/launch-pad', label: 'launch-pad', icon: Rocket, cmd: 'cd /launch-pad' },
-  { href: '/app/workspace', label: 'workspace', icon: FileText, cmd: 'cd /workspace' },
-  { href: '/app/settings', label: 'settings', icon: Settings, cmd: 'cd /settings' },
+  { href: '/app', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/app/launch-pad', label: 'Launch Pad', icon: Rocket },
+  { href: '/app/workspace', label: 'Workspace', icon: FileText },
+  { href: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
 const toolItems = [
-  { href: '/app/tools/playground', label: 'code-playground', icon: Code2 },
-  { href: '/app/tools/kachow', label: 'kachow-ai', icon: Zap },
-  { href: '/app/tools/stuntman', label: 'stuntman-ai', icon: BarChart3 },
-  { href: '/app/tools/brainbox', label: 'brainbox', icon: Brain },
+  { href: '/app/tools/playground', label: 'Code Playground', icon: Code2 },
+  { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },
+  { href: '/app/tools/stuntman', label: 'StuntMan AI', icon: BarChart3 },
+  { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain },
 ]
 
 const adminItems = [
-  { href: '/app/admin/verify', label: 'sys-verify', icon: Shield },
+  { href: '/app/admin/verify', label: 'System Verify', icon: Shield },
 ]
 
 // Audio control component
@@ -83,16 +78,22 @@ function AudioControl() {
   return (
     <button
       onClick={handleClick}
-      className={`px-2 py-1 text-xs font-mono ${isMuted ? 'text-green-800' : 'text-green-500'} hover:text-green-400`}
+      className={cn(
+        'p-2 rounded-lg transition-colors',
+        isMuted
+          ? 'text-neutral-500 hover:text-neutral-400 hover:bg-white/5'
+          : 'text-violet-400 hover:text-violet-300 hover:bg-violet-500/10'
+      )}
+      title={isMuted ? 'Unmute' : 'Mute'}
     >
-      [{isMuted ? 'MUTED' : 'AUDIO'}]
+      {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
     </button>
   )
 }
 
 interface HubLayoutProps {
   children: React.ReactNode
-  user: User
+  user: SupabaseUser
 }
 
 function HubLayoutContent({ children, user }: HubLayoutProps) {
@@ -100,22 +101,7 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
   const router = useRouter()
   const prefersReducedMotion = usePrefersReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [currentTime, setCurrentTime] = useState('')
-  const [systemStats, setSystemStats] = useState({ pid: '----', mem: '--', cpu: '--' })
-
-  // Client-side values to avoid hydration mismatch
-  useEffect(() => {
-    setCurrentTime(new Date().toLocaleTimeString())
-    setSystemStats({
-      pid: String(Math.floor(Math.random() * 9000 + 1000)),
-      mem: String(Math.floor(Math.random() * 30 + 10)),
-      cpu: String(Math.floor(Math.random() * 20 + 5)),
-    })
-    const interval = setInterval(() => {
-      setCurrentTime(new Date().toLocaleTimeString())
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useKeyboardShortcuts()
 
@@ -143,238 +129,368 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
     setMenuOpen(false)
   }
 
-  const pageTransition = prefersReducedMotion
-    ? { duration: 0 }
-    : { duration: 0.15 }
-
-  const pageVariants = prefersReducedMotion
-    ? { initial: {}, animate: {}, exit: {} }
-    : {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0 },
-      }
-
-  const userName = user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'user'
+  const userName = user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'User'
+  const userInitial = userName.charAt(0).toUpperCase()
 
   return (
-    <div className="min-h-screen bg-black text-green-500 font-mono">
-      <CRTEffect />
+    <div className="min-h-screen bg-neutral-950 text-white">
+      {/* Background gradient */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
+      </div>
 
       {/* Mobile menu overlay */}
-      {menuOpen && (
-        <div className="fixed inset-0 z-40 bg-black/95 p-4 overflow-y-auto">
-          <div className="flex justify-between items-center mb-6">
-            <span className="text-green-500 text-sm">root@miller-ai:~#</span>
-            <button
+      <AnimatePresence>
+        {menuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm"
               onClick={() => setMenuOpen(false)}
-              className="text-green-500 hover:text-green-400 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed left-0 top-0 bottom-0 w-72 z-50 bg-neutral-900/95 backdrop-blur-xl border-r border-white/10"
             >
-              <X className="w-6 h-6" />
+              <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Image
+                    src="/logos/miller-ai-group.svg"
+                    alt="Miller AI Group"
+                    width={32}
+                    height={32}
+                    className="w-8 h-8"
+                  />
+                  <span className="font-semibold text-white">Miller AI</span>
+                </div>
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  className="p-2 rounded-lg hover:bg-white/5 text-neutral-400"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-6 overflow-y-auto max-h-[calc(100vh-80px)]">
+                {/* Navigation */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider px-3 mb-2">Navigation</p>
+                  {navItems.map((item) => {
+                    const Icon = item.icon
+                    const active = isActive(item.href)
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={handleNavClick}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all',
+                          active
+                            ? 'bg-violet-500/20 text-violet-400'
+                            : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+                        )}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+
+                {/* Tools */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider px-3 mb-2">Tools</p>
+                  {toolItems.map((item) => {
+                    const Icon = item.icon
+                    const active = isActive(item.href)
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={handleNavClick}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all',
+                          active
+                            ? 'bg-cyan-500/20 text-cyan-400'
+                            : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+                        )}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+
+                {/* Admin */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider px-3 mb-2">Admin</p>
+                  {adminItems.map((item) => {
+                    const Icon = item.icon
+                    const active = isActive(item.href)
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={handleNavClick}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all',
+                          active
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : 'text-neutral-400 hover:bg-white/5 hover:text-white'
+                        )}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+
+                <div className="pt-4 border-t border-white/10">
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors w-full"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    <span className="font-medium">Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <div className="relative flex min-h-screen z-10">
+        {/* Desktop Sidebar */}
+        <aside className={cn(
+          'hidden lg:flex flex-col border-r border-white/5 bg-neutral-900/50 backdrop-blur-xl transition-all duration-300',
+          sidebarCollapsed ? 'w-20' : 'w-64'
+        )}>
+          {/* Logo */}
+          <div className="p-4 border-b border-white/5">
+            <Link href="/app" className="flex items-center gap-3" onClick={handleNavClick}>
+              <Image
+                src="/logos/miller-ai-group.svg"
+                alt="Miller AI Group"
+                width={36}
+                height={36}
+                className="w-9 h-9"
+              />
+              {!sidebarCollapsed && (
+                <span className="font-semibold text-white">Miller AI</span>
+              )}
+            </Link>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 p-3 space-y-6 overflow-y-auto">
+            <div className="space-y-1">
+              {!sidebarCollapsed && (
+                <p className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider px-3 mb-2">Navigation</p>
+              )}
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={handleNavClick}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group',
+                      active
+                        ? 'bg-violet-500/20 text-violet-400'
+                        : 'text-neutral-400 hover:bg-white/5 hover:text-white',
+                      sidebarCollapsed && 'justify-center'
+                    )}
+                    title={sidebarCollapsed ? item.label : undefined}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
+                  </Link>
+                )
+              })}
+            </div>
+
+            <div className="space-y-1">
+              {!sidebarCollapsed && (
+                <p className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider px-3 mb-2">Tools</p>
+              )}
+              {toolItems.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={handleNavClick}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group',
+                      active
+                        ? 'bg-cyan-500/20 text-cyan-400'
+                        : 'text-neutral-400 hover:bg-white/5 hover:text-white',
+                      sidebarCollapsed && 'justify-center'
+                    )}
+                    title={sidebarCollapsed ? item.label : undefined}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
+                  </Link>
+                )
+              })}
+            </div>
+
+            <div className="space-y-1">
+              {!sidebarCollapsed && (
+                <p className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider px-3 mb-2">Admin</p>
+              )}
+              {adminItems.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={handleNavClick}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group',
+                      active
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-neutral-400 hover:bg-white/5 hover:text-white',
+                      sidebarCollapsed && 'justify-center'
+                    )}
+                    title={sidebarCollapsed ? item.label : undefined}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
+                  </Link>
+                )
+              })}
+            </div>
+          </nav>
+
+          {/* User Section */}
+          <div className="p-3 border-t border-white/5">
+            <button
+              onClick={handleLogout}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-neutral-400 hover:bg-white/5 hover:text-red-400 transition-colors w-full',
+                sidebarCollapsed && 'justify-center'
+              )}
+              title={sidebarCollapsed ? 'Sign Out' : undefined}
+            >
+              <LogOut className="w-5 h-5 flex-shrink-0" />
+              {!sidebarCollapsed && <span className="font-medium">Sign Out</span>}
             </button>
           </div>
+        </aside>
 
-          <div className="space-y-1 text-sm">
-            <p className="text-green-700 mb-2"># Navigation</p>
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavClick}
-                className={`block py-3 min-h-[44px] ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400 active:text-green-300'}`}
-              >
-                $ {item.cmd} {isActive(item.href) && '<--'}
-              </Link>
-            ))}
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <header className="sticky top-0 z-30 bg-neutral-950/80 backdrop-blur-xl border-b border-white/5">
+            <div className="flex items-center justify-between px-4 lg:px-6 h-16">
+              <div className="flex items-center gap-4">
+                {/* Mobile menu button */}
+                <button
+                  onClick={() => setMenuOpen(true)}
+                  className="lg:hidden p-2 rounded-lg hover:bg-white/5 text-neutral-400"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
 
-            <p className="text-green-700 mt-6 mb-2"># Tools</p>
-            {toolItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavClick}
-                className={`block py-3 min-h-[44px] ${isActive(item.href) ? 'text-green-400' : 'text-green-600 hover:text-green-400 active:text-green-300'}`}
-              >
-                $ ./tools/{item.label} {isActive(item.href) && '<--'}
-              </Link>
-            ))}
+                {/* Mobile logo */}
+                <Link href="/app" className="lg:hidden flex items-center gap-2">
+                  <Image
+                    src="/logos/miller-ai-group.svg"
+                    alt="Miller AI Group"
+                    width={28}
+                    height={28}
+                    className="w-7 h-7"
+                  />
+                </Link>
 
-            <p className="text-red-700 mt-6 mb-2"># Admin (root only)</p>
-            {adminItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavClick}
-                className={`block py-3 min-h-[44px] ${isActive(item.href) ? 'text-red-400' : 'text-red-600 hover:text-red-400 active:text-red-300'}`}
-              >
-                # ./admin/{item.label} {isActive(item.href) && '<--'}
-              </Link>
-            ))}
+                {/* Collapse sidebar button (desktop) */}
+                <button
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className="hidden lg:flex p-2 rounded-lg hover:bg-white/5 text-neutral-400"
+                  title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
 
-            <div className="mt-8 pt-4 border-t border-green-900">
-              <button
-                onClick={handleLogout}
-                className="text-red-500 hover:text-red-400 py-3 min-h-[44px] active:text-red-300"
-              >
-                $ logout --force
-              </button>
+                {/* Breadcrumb */}
+                <div className="hidden sm:flex items-center gap-2 text-sm">
+                  <span className="text-neutral-500">Miller AI</span>
+                  <ChevronRight className="w-4 h-4 text-neutral-600" />
+                  <span className="text-white font-medium">
+                    {pathname === '/app'
+                      ? 'Dashboard'
+                      : pathname.split('/').pop()?.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Search */}
+                <GlobalSearch />
+
+                {/* Keyboard shortcuts */}
+                <KeyboardShortcutsButton />
+
+                {/* Audio control */}
+                <AudioControl />
+
+                {/* User menu */}
+                <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-sm font-semibold text-white">
+                    {userInitial}
+                  </div>
+                  <span className="hidden sm:block text-sm font-medium text-neutral-300">{userName}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </header>
+
+          {/* Main Content */}
+          <main className="flex-1 overflow-auto">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={pathname}
+                initial={prefersReducedMotion ? {} : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={prefersReducedMotion ? {} : { opacity: 0, y: -10 }}
+                transition={{ duration: 0.15 }}
+                className="p-4 lg:p-6 max-w-7xl mx-auto"
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          {/* Footer */}
+          <footer className="border-t border-white/5 px-4 lg:px-6 py-3">
+            <div className="flex items-center justify-between text-xs text-neutral-500">
+              <div className="flex items-center gap-4">
+                <span>Miller AI Group</span>
+                <span className="hidden sm:inline text-neutral-700">|</span>
+                <span className="hidden sm:inline">v2.0</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>Connected</span>
+              </div>
+            </div>
+          </footer>
         </div>
-      )}
-
-      <div className="relative flex flex-col min-h-screen z-10">
-        {/* Header - Terminal style */}
-        <header className="border-b border-green-900 bg-black sticky top-0 z-30">
-          {/* Top bar */}
-          <div className="flex items-center justify-between px-4 py-2 text-xs border-b border-green-900/50">
-            <div className="flex items-center gap-4">
-              <div className="flex gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-              </div>
-              <span className="text-green-600 hidden sm:inline">root@miller-ai:~</span>
-            </div>
-            <div className="flex items-center gap-3 text-green-700">
-              <span className="hidden md:inline">{currentTime || '...'}</span>
-              <span className="text-green-500 flex items-center gap-1">
-                <span className="animate-pulse">●</span> LIVE
-              </span>
-            </div>
-          </div>
-
-          {/* Main header */}
-          <div className="flex items-center justify-between px-4 py-2">
-            <div className="flex items-center gap-4">
-              {/* Menu button - min 44px touch target */}
-              <button
-                onClick={() => setMenuOpen(true)}
-                className="text-green-500 hover:text-green-400 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-
-              {/* Logo/Title */}
-              <Link href="/app" className="text-green-500 hover:text-green-400" onClick={handleNavClick}>
-                <span className="text-sm font-bold">MILLER_AI</span>
-                <span className="text-green-700 text-xs ml-2 hidden sm:inline">v2.0.0</span>
-              </Link>
-
-              {/* Current path */}
-              <span className="text-green-700 text-xs hidden md:inline">
-                pwd: {pathname}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              {/* User info */}
-              <span className="text-green-600 hidden sm:inline">
-                [{userName}@root]
-              </span>
-
-              <AudioControl />
-              <KeyboardShortcutsButton />
-
-              {/* Logout */}
-              <button
-                onClick={handleLogout}
-                className="px-2 py-1 text-red-500 hover:text-red-400 hidden sm:block"
-              >
-                [EXIT]
-              </button>
-            </div>
-          </div>
-
-          {/* Navigation bar */}
-          <div className="px-4 py-1 border-t border-green-900/50 overflow-x-auto hidden md:block">
-            <div className="flex items-center gap-4 text-xs">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={handleNavClick}
-                  className={`whitespace-nowrap py-1 ${
-                    isActive(item.href)
-                      ? 'text-green-400 border-b border-green-400'
-                      : 'text-green-700 hover:text-green-500'
-                  }`}
-                >
-                  /{item.label}
-                </Link>
-              ))}
-              <span className="text-green-900">|</span>
-              {toolItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={handleNavClick}
-                  className={`whitespace-nowrap py-1 ${
-                    isActive(item.href)
-                      ? 'text-green-400 border-b border-green-400'
-                      : 'text-green-700 hover:text-green-500'
-                  }`}
-                >
-                  /tools/{item.label}
-                </Link>
-              ))}
-              <span className="text-green-900">|</span>
-              {adminItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={handleNavClick}
-                  className={`whitespace-nowrap py-1 ${
-                    isActive(item.href)
-                      ? 'text-red-400 border-b border-red-400'
-                      : 'text-red-700 hover:text-red-500'
-                  }`}
-                >
-                  /admin/{item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <main className="flex-1 overflow-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              initial={pageVariants.initial}
-              animate={pageVariants.animate}
-              exit={pageVariants.exit}
-              transition={pageTransition}
-              className="p-4 md:p-6 max-w-7xl mx-auto"
-            >
-              {/* Page header showing current directory */}
-              <div className="mb-4 text-xs text-green-700">
-                <span className="text-green-600">root@miller-ai</span>
-                <span className="text-green-500">:</span>
-                <span className="text-blue-400">{pathname}</span>
-                <span className="text-green-500">$ </span>
-                <span className="animate-pulse">█</span>
-              </div>
-
-              {children}
-            </motion.div>
-          </AnimatePresence>
-        </main>
-
-        {/* Footer - Terminal status bar */}
-        <footer className="border-t border-green-900 bg-black px-4 py-1 flex items-center justify-between text-[10px] text-green-700">
-          <div className="flex items-center gap-4">
-            <span>PID: {systemStats.pid}</span>
-            <span className="hidden sm:inline">MEM: {systemStats.mem}%</span>
-            <span className="hidden sm:inline">CPU: {systemStats.cpu}%</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-green-500">● CONNECTED</span>
-            <span className="hidden sm:inline">SESSION: {user.id.slice(0, 8).toUpperCase()}</span>
-            <span className="hidden md:inline">TLS 1.3</span>
-          </div>
-        </footer>
       </div>
 
       <OnboardingDialog />

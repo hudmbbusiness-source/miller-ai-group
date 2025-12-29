@@ -24,3 +24,6 @@ export {
 
 // Legacy - kept for backwards compatibility
 export { CinematicIntro } from './cinematic-intro'
+
+// NEW: Premium 3D Cinematic Scene - Watch Dogs / DedSec style
+export { CinematicScene } from './cinematic-scene'

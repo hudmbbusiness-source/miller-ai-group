@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useEffect, Suspense, useRef } from 'react'
+import { useState, useEffect, Suspense, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion, useScroll, useTransform, useSpring, useInView } from 'framer-motion'
+import { motion, useScroll, useTransform, useSpring, useInView, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SOCIAL_LINKS, PROJECTS } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { CinematicScene } from '@/components/hacker-os'
 import {
   Instagram,
   Linkedin,
@@ -300,6 +301,7 @@ const targetCompanies = [
 
 function MillerPageContent() {
   const [isProcessingAuth, setIsProcessingAuth] = useState(false)
+  const [showCinematic, setShowCinematic] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { scrollYProgress } = useScroll()
@@ -307,6 +309,16 @@ function MillerPageContent() {
   // Parallax effects
   const y1 = useTransform(scrollYProgress, [0, 1], [0, -100])
   const opacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
+
+  // Handle Enter System button click - trigger cinematic
+  const handleEnterSystem = useCallback(() => {
+    setShowCinematic(true)
+  }, [])
+
+  // Handle cinematic completion - redirect directly to app (will redirect to login if not authenticated)
+  const handleCinematicComplete = useCallback(() => {
+    router.push('/app')
+  }, [router])
 
   useEffect(() => {
     const code = searchParams.get('code')
@@ -346,8 +358,19 @@ function MillerPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white antialiased overflow-x-hidden">
-      <StripeMesh />
+    <>
+      {/* Cinematic Intro Scene */}
+      <AnimatePresence>
+        {showCinematic && (
+          <CinematicScene
+            onComplete={handleCinematicComplete}
+            audioSrc="/audio/intro-song.mp3"
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="min-h-screen bg-black text-white antialiased overflow-x-hidden">
+        <StripeMesh />
 
       {/* Navigation */}
       <motion.nav
@@ -391,8 +414,12 @@ function MillerPageContent() {
                 <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-gradient-to-r from-violet-500 to-fuchsia-500 group-hover:w-full transition-all duration-300" />
               </Link>
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button asChild size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25">
-                  <Link href="/login">Enter System</Link>
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg shadow-violet-500/25"
+                  onClick={handleEnterSystem}
+                >
+                  Enter System
                 </Button>
               </motion.div>
             </div>
@@ -473,7 +500,7 @@ function MillerPageContent() {
                 variant="outline"
                 size="lg"
                 className="min-h-[52px] px-8 text-lg border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20"
-                onClick={() => router.push('/login')}
+                onClick={handleEnterSystem}
               >
                 Enter System
                 <ArrowRight className="w-5 h-5 ml-2" />
@@ -896,7 +923,8 @@ function MillerPageContent() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </>
   )
 }
 

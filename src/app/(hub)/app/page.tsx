@@ -22,38 +22,39 @@ import {
   BarChart3,
   Brain,
   Rocket,
+  ChevronRight,
 } from 'lucide-react'
 import { GitHubDashboard } from '@/components/hub/github-dashboard'
 import { ProductivityAnalytics } from '@/components/hub/productivity-analytics'
 import { ActivityFeed } from '@/components/hub/activity-feed'
-import { HackerDashboardClient } from '@/components/hub/hacker-dashboard-client'
 import type { Goal } from '@/lib/actions/goals'
 import type { Asset } from '@/lib/actions/assets'
+import { cn } from '@/lib/utils'
 
 const statusColors: Record<string, string> = {
-  'active': 'bg-green-500/10 text-green-400 border-green-500/30',
-  'development': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-  'coming-soon': 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-  'past': 'bg-neutral-500/10 text-neutral-400 border-neutral-500/30',
+  'active': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  'development': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  'coming-soon': 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+  'past': 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
 }
 
 const statusLabels: Record<string, string> = {
-  'active': 'ONLINE',
-  'development': 'DEV',
-  'coming-soon': 'PENDING',
-  'past': 'OFFLINE',
+  'active': 'Active',
+  'development': 'In Dev',
+  'coming-soon': 'Soon',
+  'past': 'Past',
 }
 
 const priorityColors = {
-  0: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/30',
-  1: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
-  2: 'bg-red-500/10 text-red-400 border-red-500/30',
+  0: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
+  1: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  2: 'bg-red-500/10 text-red-400 border-red-500/20',
 }
 
 const priorityLabels = {
-  0: 'LOW',
-  1: 'MED',
-  2: 'HIGH',
+  0: 'Low',
+  1: 'Medium',
+  2: 'High',
 }
 
 const projectIcons: Record<string, typeof Zap> = {
@@ -127,10 +128,10 @@ export default async function DashboardPage() {
   ])
 
   const statCards = [
-    { label: 'Notes', count: stats.notes, href: '/app/workspace', icon: FileText, color: 'cyan' },
-    { label: 'Boards', count: stats.boards, href: '/app/workspace', icon: Grid3X3, color: 'purple' },
-    { label: 'Links', count: stats.links, href: '/app/links', icon: Link2, color: 'amber' },
-    { label: 'Files', count: stats.files, href: '/app/files', icon: FolderOpen, color: 'green' },
+    { label: 'Notes', count: stats.notes, href: '/app/workspace', icon: FileText, gradient: 'from-violet-500 to-purple-600' },
+    { label: 'Boards', count: stats.boards, href: '/app/workspace', icon: Grid3X3, gradient: 'from-cyan-500 to-blue-600' },
+    { label: 'Links', count: stats.links, href: '/app/links', icon: Link2, gradient: 'from-amber-500 to-orange-600' },
+    { label: 'Files', count: stats.files, href: '/app/files', icon: FolderOpen, gradient: 'from-emerald-500 to-green-600' },
   ]
 
   const formatDate = (dateStr: string | null) => {
@@ -140,334 +141,313 @@ export default async function DashboardPage() {
   }
 
   return (
-    <HackerDashboardClient>
-      <div className="space-y-8">
-        {/* Header with system info */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-mono font-bold text-cyan-400 tracking-wider">
-              SYSTEM DASHBOARD
-            </h1>
-            <p className="text-sm text-neutral-500 font-mono mt-1">
-              [OPERATOR COMMAND CENTER]
-            </p>
-          </div>
-          <div className="flex items-center gap-4 text-xs font-mono">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-green-500/30 bg-green-500/10">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-green-400">SYSTEM ONLINE</span>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">
+            Dashboard
+          </h1>
+          <p className="text-neutral-400 mt-1">
+            Welcome back. Here's your overview.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-sm text-emerald-400">All systems online</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {statCards.map((stat) => {
+          const Icon = stat.icon
+          return (
+            <Link key={stat.label} href={stat.href}>
+              <div className="group relative overflow-hidden rounded-2xl bg-neutral-900/50 border border-white/5 p-5 hover:border-white/10 transition-all duration-300">
+                {/* Gradient glow on hover */}
+                <div className={cn(
+                  'absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500',
+                  `bg-gradient-to-br ${stat.gradient}`
+                )} style={{ filter: 'blur(40px)', transform: 'scale(0.5)', opacity: 0 }} />
+
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={cn(
+                      'p-2.5 rounded-xl bg-gradient-to-br',
+                      stat.gradient
+                    )}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-neutral-600 group-hover:text-neutral-400 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-3xl font-bold text-white">{stat.count}</p>
+                    <p className="text-sm text-neutral-500">{stat.label}</p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+
+      {/* Goals & Wishlist Grid */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Active Goals */}
+        <div className="rounded-2xl bg-neutral-900/50 border border-white/5 overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-violet-500/10">
+                <Target className="w-4 h-4 text-violet-400" />
+              </div>
+              <span className="font-semibold text-white">Active Goals</span>
             </div>
+            <Link
+              href="/app/workspace"
+              className="text-sm text-neutral-500 hover:text-violet-400 transition-colors flex items-center gap-1"
+            >
+              View all <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+          <div className="p-5">
+            {activeGoals.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 rounded-full bg-violet-500/10 mx-auto mb-4 flex items-center justify-center">
+                  <Target className="w-6 h-6 text-violet-500/50" />
+                </div>
+                <p className="text-neutral-500 mb-4">No active goals yet</p>
+                <Link
+                  href="/app/workspace"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-500/10 text-violet-400 text-sm font-medium hover:bg-violet-500/20 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Goal
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeGoals.map((goal) => (
+                  <div
+                    key={goal.id}
+                    className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                  >
+                    <div className="p-1.5 rounded-lg bg-violet-500/10 mt-0.5">
+                      <CheckCircle2 className="w-4 h-4 text-violet-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{goal.title}</p>
+                      {goal.target_date && (
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-500 mt-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatDate(goal.target_date)}
+                        </div>
+                      )}
+                    </div>
+                    <span className={cn(
+                      'px-2 py-1 rounded-md text-xs font-medium border',
+                      priorityColors[goal.priority as 0 | 1 | 2]
+                    )}>
+                      {priorityLabels[goal.priority as 0 | 1 | 2]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {statCards.map((stat) => {
-            const Icon = stat.icon
-            const colorClasses: Record<string, { text: string; border: string; bg: string; glow: string }> = {
-              cyan: { text: 'text-cyan-400', border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', glow: '0 0 30px rgba(0, 255, 255, 0.2)' },
-              purple: { text: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-500/10', glow: '0 0 30px rgba(191, 0, 255, 0.2)' },
-              amber: { text: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/10', glow: '0 0 30px rgba(255, 191, 0, 0.2)' },
-              green: { text: 'text-green-400', border: 'border-green-500/30', bg: 'bg-green-500/10', glow: '0 0 30px rgba(0, 255, 65, 0.2)' },
-            }
-            const colors = colorClasses[stat.color]
-
-            return (
-              <Link key={stat.label} href={stat.href}>
-                <div
-                  className={`relative overflow-hidden rounded-lg p-4 sm:p-5 border ${colors.border} ${colors.bg} backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] group`}
-                  style={{ boxShadow: colors.glow }}
+        {/* Wishlist */}
+        <div className="rounded-2xl bg-neutral-900/50 border border-white/5 overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <ShoppingBag className="w-4 h-4 text-amber-400" />
+              </div>
+              <span className="font-semibold text-white">Wishlist</span>
+            </div>
+            <Link
+              href="/app/workspace"
+              className="text-sm text-neutral-500 hover:text-amber-400 transition-colors flex items-center gap-1"
+            >
+              View all <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+          <div className="p-5">
+            {wishlistItems.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 mx-auto mb-4 flex items-center justify-center">
+                  <ShoppingBag className="w-6 h-6 text-amber-500/50" />
+                </div>
+                <p className="text-neutral-500 mb-4">Wishlist is empty</p>
+                <Link
+                  href="/app/workspace"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-sm font-medium hover:bg-amber-500/20 transition-colors"
                 >
-                  {/* Corner accents */}
-                  <div className={`absolute top-0 left-0 w-3 h-px ${colors.text.replace('text-', 'bg-')}`} />
-                  <div className={`absolute top-0 left-0 h-3 w-px ${colors.text.replace('text-', 'bg-')}`} />
-                  <div className={`absolute bottom-0 right-0 w-3 h-px ${colors.text.replace('text-', 'bg-')}`} />
-                  <div className={`absolute bottom-0 right-0 h-3 w-px ${colors.text.replace('text-', 'bg-')}`} />
-
-                  {/* Scanline effect */}
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent" style={{ height: '2px', animation: 'scanline 2s linear infinite' }} />
-                  </div>
-
-                  <div className="relative">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest">
-                        {stat.label}
-                      </span>
-                      <Icon className={`w-4 h-4 ${colors.text}`} />
+                  <Plus className="w-4 h-4" />
+                  Add Item
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {wishlistItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                  >
+                    {item.image_url ? (
+                      <Image
+                        src={item.image_url}
+                        alt={item.name}
+                        width={44}
+                        height={44}
+                        className="w-11 h-11 rounded-lg object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                        <ShoppingBag className="w-5 h-5 text-amber-500/50" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                      {item.description && (
+                        <p className="text-xs text-neutral-500 truncate mt-0.5">
+                          {item.description}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex items-end justify-between">
-                      <span className={`text-3xl sm:text-4xl font-mono font-bold ${colors.text}`}>
-                        {stat.count}
-                      </span>
-                      <ArrowRight className="w-4 h-4 text-neutral-600 group-hover:text-neutral-400 transition-colors" />
-                    </div>
+                    {item.external_link && (
+                      <a
+                        href={item.external_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 rounded-lg text-neutral-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Activity Feed */}
+      <div className="rounded-2xl bg-neutral-900/50 border border-white/5 overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/5 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-purple-500/10">
+            <Activity className="w-4 h-4 text-purple-400" />
+          </div>
+          <span className="font-semibold text-white">Activity Feed</span>
+        </div>
+        <div className="p-5">
+          <ActivityFeed />
+        </div>
+      </div>
+
+      {/* Productivity Analytics */}
+      <div className="rounded-2xl bg-neutral-900/50 border border-white/5 overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/5 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-500/10">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+          </div>
+          <span className="font-semibold text-white">Productivity</span>
+        </div>
+        <div className="p-5">
+          <ProductivityAnalytics />
+        </div>
+      </div>
+
+      {/* GitHub Activity */}
+      <div className="rounded-2xl bg-neutral-900/50 border border-white/5 overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/5 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-white/5">
+            <Github className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-semibold text-white">GitHub Activity</span>
+        </div>
+        <div className="p-5">
+          <GitHubDashboard />
+        </div>
+      </div>
+
+      {/* Ventures Grid */}
+      <div>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-cyan-500/10">
+              <Rocket className="w-4 h-4 text-cyan-400" />
+            </div>
+            <span className="font-semibold text-white">Ventures</span>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {PROJECTS.map((project) => {
+            const Icon = projectIcons[project.slug] || Zap
+            return (
+              <Link key={project.slug} href={`/app/projects/${project.slug}`}>
+                <div className="group rounded-2xl bg-neutral-900/50 border border-white/5 p-5 hover:border-white/10 transition-all duration-300">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 group-hover:from-cyan-500 group-hover:to-blue-600 transition-all">
+                      <Icon className="w-5 h-5 text-cyan-400 group-hover:text-white transition-colors" />
+                    </div>
+                    <span className={cn(
+                      'px-2 py-1 rounded-md text-xs font-medium border',
+                      statusColors[project.status]
+                    )}>
+                      {statusLabels[project.status]}
+                    </span>
+                  </div>
+                  <h3 className="font-semibold text-white group-hover:text-cyan-400 transition-colors mb-1">
+                    {project.name}
+                  </h3>
+                  <p className="text-sm text-neutral-500 line-clamp-2">
+                    {project.description}
+                  </p>
                 </div>
               </Link>
             )
           })}
         </div>
+      </div>
 
-        {/* Real Data Metrics Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Quick Actions */}
+      <div>
+        <div className="flex items-center gap-3 mb-5">
+          <div className="p-2 rounded-lg bg-fuchsia-500/10">
+            <Sparkles className="w-4 h-4 text-fuchsia-400" />
+          </div>
+          <span className="font-semibold text-white">Quick Actions</span>
+        </div>
+        <div className="flex flex-wrap gap-3">
           {[
-            { label: 'Notes', value: stats.notes.toString(), icon: FileText, color: 'fuchsia' },
-            { label: 'Boards', value: stats.boards.toString(), icon: Grid3X3, color: 'green' },
-            { label: 'Links', value: stats.links.toString(), icon: Link2, color: 'purple' },
-            { label: 'Files', value: stats.files.toString(), icon: FolderOpen, color: 'amber' },
-          ].map((metric) => (
-            <div
-              key={metric.label}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-fuchsia-500/20 bg-black/40"
+            { label: 'New Note', href: '/app/workspace', gradient: 'from-violet-500 to-purple-600' },
+            { label: 'New Goal', href: '/app/workspace', gradient: 'from-emerald-500 to-green-600' },
+            { label: 'Wishlist', href: '/app/workspace', gradient: 'from-amber-500 to-orange-600' },
+            { label: 'New Board', href: '/app/workspace', gradient: 'from-fuchsia-500 to-pink-600' },
+            { label: 'Add Link', href: '/app/links', gradient: 'from-blue-500 to-cyan-600' },
+            { label: 'Upload', href: '/app/files', gradient: 'from-cyan-500 to-teal-600' },
+          ].map((action) => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all',
+                'bg-gradient-to-r hover:shadow-lg hover:scale-[1.02]',
+                action.gradient
+              )}
             >
-              <metric.icon className={`w-4 h-4 text-${metric.color}-400`} />
-              <div>
-                <p className="text-[10px] font-mono text-neutral-500 uppercase">{metric.label}</p>
-                <p className={`text-sm font-mono font-bold text-${metric.color}-400`}>{metric.value}</p>
-              </div>
-            </div>
+              <Plus className="w-4 h-4" />
+              {action.label}
+            </Link>
           ))}
         </div>
-
-        {/* Goals & Wishlist Grid */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Active Goals */}
-          <div className="rounded-lg border border-cyan-500/30 bg-black/40 backdrop-blur-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-cyan-500/20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Target className="w-4 h-4 text-cyan-400" />
-                <span className="font-mono text-sm text-cyan-400 uppercase tracking-wider">Active Goals</span>
-              </div>
-              <Link
-                href="/app/workspace"
-                className="text-xs font-mono text-neutral-500 hover:text-cyan-400 transition-colors flex items-center gap-1"
-              >
-                VIEW ALL <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-            <div className="p-4">
-              {activeGoals.length === 0 ? (
-                <div className="text-center py-8">
-                  <Target className="w-10 h-10 text-cyan-500/30 mx-auto mb-3" />
-                  <p className="text-sm font-mono text-neutral-500 mb-4">NO ACTIVE GOALS</p>
-                  <Link
-                    href="/app/workspace"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-sm font-mono hover:bg-cyan-500/20 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    ADD GOAL
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {activeGoals.map((goal) => (
-                    <div
-                      key={goal.id}
-                      className="flex items-start gap-3 p-3 rounded border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-cyan-500/50 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-mono text-sm text-white truncate">{goal.title}</p>
-                        {goal.target_date && (
-                          <div className="flex items-center gap-1 text-[10px] font-mono text-neutral-500 mt-1">
-                            <Calendar className="w-3 h-3" />
-                            {formatDate(goal.target_date)}
-                          </div>
-                        )}
-                      </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${priorityColors[goal.priority as 0 | 1 | 2]}`}>
-                        {priorityLabels[goal.priority as 0 | 1 | 2]}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Wishlist */}
-          <div className="rounded-lg border border-amber-500/30 bg-black/40 backdrop-blur-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-amber-500/20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <ShoppingBag className="w-4 h-4 text-amber-400" />
-                <span className="font-mono text-sm text-amber-400 uppercase tracking-wider">Wishlist</span>
-              </div>
-              <Link
-                href="/app/workspace"
-                className="text-xs font-mono text-neutral-500 hover:text-amber-400 transition-colors flex items-center gap-1"
-              >
-                VIEW ALL <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-            <div className="p-4">
-              {wishlistItems.length === 0 ? (
-                <div className="text-center py-8">
-                  <ShoppingBag className="w-10 h-10 text-amber-500/30 mx-auto mb-3" />
-                  <p className="text-sm font-mono text-neutral-500 mb-4">WISHLIST EMPTY</p>
-                  <Link
-                    href="/app/workspace"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded border border-amber-500/30 bg-amber-500/10 text-amber-400 text-sm font-mono hover:bg-amber-500/20 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    ADD ITEM
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {wishlistItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start gap-3 p-3 rounded border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-colors"
-                    >
-                      {item.image_url ? (
-                        <Image
-                          src={item.image_url}
-                          alt={item.name}
-                          width={40}
-                          height={40}
-                          className="w-10 h-10 rounded object-cover border border-amber-500/30"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-                          <ShoppingBag className="w-4 h-4 text-amber-500/50" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-mono text-sm text-white truncate">{item.name}</p>
-                        {item.description && (
-                          <p className="text-[10px] font-mono text-neutral-500 truncate mt-0.5">
-                            {item.description}
-                          </p>
-                        )}
-                      </div>
-                      {item.external_link && (
-                        <a
-                          href={item.external_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-neutral-500 hover:text-amber-400 transition-colors"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Activity Feed */}
-        <div className="rounded-lg border border-purple-500/30 bg-black/40 backdrop-blur-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-purple-500/20 flex items-center gap-3">
-            <Activity className="w-4 h-4 text-purple-400" />
-            <span className="font-mono text-sm text-purple-400 uppercase tracking-wider">Activity Feed</span>
-          </div>
-          <div className="p-4">
-            <ActivityFeed />
-          </div>
-        </div>
-
-        {/* Productivity Analytics */}
-        <div className="rounded-lg border border-green-500/30 bg-black/40 backdrop-blur-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-green-500/20 flex items-center gap-3">
-            <TrendingUp className="w-4 h-4 text-green-400" />
-            <span className="font-mono text-sm text-green-400 uppercase tracking-wider">Productivity Analytics</span>
-          </div>
-          <div className="p-4">
-            <ProductivityAnalytics />
-          </div>
-        </div>
-
-        {/* GitHub Activity */}
-        <div className="rounded-lg border border-white/10 bg-black/40 backdrop-blur-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/5 flex items-center gap-3">
-            <Github className="w-4 h-4 text-white" />
-            <span className="font-mono text-sm text-white uppercase tracking-wider">GitHub Activity</span>
-          </div>
-          <div className="p-4">
-            <GitHubDashboard />
-          </div>
-        </div>
-
-        {/* Ventures Grid */}
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <Rocket className="w-4 h-4 text-cyan-400" />
-            <span className="font-mono text-sm text-cyan-400 uppercase tracking-wider">Ventures</span>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {PROJECTS.map((project) => {
-              const Icon = projectIcons[project.slug] || Zap
-              return (
-                <Link key={project.slug} href={`/app/projects/${project.slug}`}>
-                  <div className="group rounded-lg border border-white/10 bg-black/40 backdrop-blur-xl p-4 hover:border-cyan-500/30 transition-all duration-300">
-                    {/* Corner accents */}
-                    <div className="absolute top-0 left-0 w-3 h-px bg-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="absolute top-0 left-0 h-3 w-px bg-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="p-2 rounded bg-cyan-500/10 border border-cyan-500/30">
-                        <Icon className="w-4 h-4 text-cyan-400" />
-                      </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${statusColors[project.status]}`}>
-                        {statusLabels[project.status]}
-                      </span>
-                    </div>
-                    <h3 className="font-mono text-sm font-bold text-white group-hover:text-cyan-400 transition-colors mb-1">
-                      {project.name}
-                    </h3>
-                    <p className="text-[11px] font-mono text-neutral-500 line-clamp-2">
-                      {project.description}
-                    </p>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <Sparkles className="w-4 h-4 text-purple-400" />
-            <span className="font-mono text-sm text-purple-400 uppercase tracking-wider">Quick Actions</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { label: 'NEW NOTE', href: '/app/workspace', color: 'cyan' },
-              { label: 'NEW GOAL', href: '/app/workspace', color: 'green' },
-              { label: 'WISHLIST', href: '/app/workspace', color: 'amber' },
-              { label: 'NEW BOARD', href: '/app/workspace', color: 'purple' },
-              { label: 'ADD LINK', href: '/app/links', color: 'blue' },
-              { label: 'UPLOAD', href: '/app/files', color: 'emerald' },
-            ].map((action) => {
-              const colorClasses: Record<string, string> = {
-                cyan: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20',
-                green: 'border-green-500/30 bg-green-500/10 text-green-400 hover:bg-green-500/20',
-                amber: 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20',
-                purple: 'border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20',
-                blue: 'border-blue-500/30 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20',
-                emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20',
-              }
-
-              return (
-                <Link
-                  key={action.label}
-                  href={action.href}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded border text-xs font-mono transition-colors ${colorClasses[action.color]}`}
-                >
-                  <Plus className="w-3 h-3" />
-                  {action.label}
-                </Link>
-              )
-            })}
-          </div>
-        </div>
       </div>
-    </HackerDashboardClient>
+    </div>
   )
 }

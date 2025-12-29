@@ -168,6 +168,7 @@ export function CinematicScene({
   const [codeLines, setCodeLines] = useState<string[]>([])
   const [activePopups, setActivePopups] = useState<number[]>([])
   const [showTitle, setShowTitle] = useState(false)
+  const [fadeOut, setFadeOut] = useState(false)
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -207,7 +208,8 @@ export function CinematicScene({
       setShowTitle(true)
     }, 4000)
     const t4 = setTimeout(() => startFadeOut(), 6000)
-    const t5 = setTimeout(() => onComplete(), 7500)
+    const t5 = setTimeout(() => setFadeOut(true), 7000) // Start visual fade out
+    const t6 = setTimeout(() => onComplete(), 8000) // Complete after fade
 
     // Add code lines progressively
     const codeInterval = setInterval(() => {
@@ -231,6 +233,7 @@ export function CinematicScene({
       clearTimeout(t3)
       clearTimeout(t4)
       clearTimeout(t5)
+      clearTimeout(t6)
       clearInterval(codeInterval)
       popupTimers.forEach(clearTimeout)
       if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current)
@@ -249,8 +252,8 @@ export function CinematicScene({
   return (
     <motion.div
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      animate={{ opacity: fadeOut ? 0 : 1 }}
+      transition={{ duration: fadeOut ? 1 : 0.5 }}
       className="fixed inset-0 z-[9999] bg-black overflow-hidden"
     >
       <audio ref={audioRef} src={audioSrc} preload="auto" />

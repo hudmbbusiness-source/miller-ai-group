@@ -400,12 +400,9 @@ function KachowLandingContent() {
             </div>
 
             <div className="flex items-center gap-4">
-              <Link
-                href="/login"
-                className="hidden sm:block text-sm text-neutral-400 hover:text-white transition-colors"
-              >
-                Sign In
-              </Link>
+              <span className="hidden sm:block text-xs text-neutral-500 px-3 py-1 rounded-full border border-neutral-800">
+                Coming 2026
+              </span>
               <motion.button
                 onClick={() => setShowSignup(true)}
                 whileHover={{ scale: 1.02 }}
@@ -747,7 +744,6 @@ function KachowLandingContent() {
               <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
               <Link href="/miller" className="hover:text-white transition-colors">About</Link>
-              <Link href="/login" className="hover:text-white transition-colors">Launch Pad</Link>
             </div>
 
             <p className="text-sm text-neutral-500">

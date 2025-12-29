@@ -1,16 +1,14 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Github, Loader2, Shield, Terminal, Wifi, Lock, Eye } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CinematicTakeover } from '@/components/hacker-os/cinematic-takeover'
 import { AudioEngineProvider, useAudioEngine } from '@/components/hacker-os'
 
 function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showTakeover, setShowTakeover] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userName, setUserName] = useState('Operator')
   const [mounted, setMounted] = useState(false)
@@ -45,7 +43,7 @@ function LoginContent() {
     }
   }, [])
 
-  // Auth check effect
+  // Auth check effect - skip second cinematic, go directly to app
   useEffect(() => {
     if (!mounted) return
 
@@ -54,32 +52,23 @@ function LoginContent() {
       setError('Authentication failed. Try again.')
     }
 
-    const takeover = searchParams.get('takeover')
-    if (takeover === 'true') {
-      const checkAuthAndTakeover = async () => {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setIsAuthenticated(true)
-          setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
-          await audioEngine.initialize()
-          await audioEngine.playIntroSong()
-          setShowTakeover(true)
+    // Check if user is authenticated
+    const checkAuth = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        // If coming back from OAuth (takeover=true), go directly to app
+        const takeover = searchParams.get('takeover')
+        if (takeover === 'true') {
+          router.push('/app')
+          return
         }
+        setIsAuthenticated(true)
+        setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
       }
-      checkAuthAndTakeover()
-    } else {
-      const checkAuth = async () => {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setIsAuthenticated(true)
-          setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
-        }
-      }
-      checkAuth()
     }
-  }, [mounted, searchParams])
+    checkAuth()
+  }, [mounted, searchParams, router])
 
   const handleGitHubLogin = async () => {
     setLoading(true)
@@ -119,34 +108,10 @@ function LoginContent() {
     }
   }
 
-  const soundtrackCleanupRef = useRef<(() => void) | null>(null)
-
   const handleEnterSystem = async () => {
     await audioEngine.initialize()
     audioEngine.playEffect('button_click')
-    // Skip the second cinematic - user already saw one on /miller
-    // Go directly to the app
     router.push('/app')
-  }
-
-  const handleTakeoverComplete = useCallback(() => {
-    // Stop the soundtrack
-    if (soundtrackCleanupRef.current) {
-      soundtrackCleanupRef.current()
-      soundtrackCleanupRef.current = null
-    }
-    audioEngine.stopIntroSong()
-    router.push('/app')
-  }, [router, audioEngine])
-
-  // Show cinematic takeover
-  if (showTakeover) {
-    return (
-      <CinematicTakeover
-        onComplete={handleTakeoverComplete}
-        userName={userName}
-      />
-    )
   }
 
   // Show login form

@@ -70,7 +70,10 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
 
     const addLine = () => {
       if (lineIndex < script.length) {
-        setLines(prev => [...prev, script[lineIndex]])
+        const newLine = script[lineIndex]
+        if (newLine !== undefined) {
+          setLines(prev => [...prev, newLine])
+        }
         lineIndex++
 
         if (containerRef.current) {
@@ -100,7 +103,8 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
     }
   }, [userName, onComplete])
 
-  const getLineColor = (line: string): string => {
+  const getLineColor = (line: string | undefined): string => {
+    if (!line) return 'text-green-600'
     if (line.startsWith('$')) return 'text-green-400'
     if (line.startsWith('[+]')) return 'text-green-500'
     if (line.startsWith('[*]')) return 'text-blue-400'
@@ -142,7 +146,7 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
             ref={containerRef}
             className="flex-1 overflow-y-auto text-sm leading-relaxed"
           >
-            {lines.map((line, i) => (
+            {lines.filter(line => line !== undefined).map((line, i) => (
               <div key={i} className={getLineColor(line)}>
                 {line || '\u00A0'}
               </div>

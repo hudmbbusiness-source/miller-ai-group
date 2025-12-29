@@ -50,8 +50,18 @@ function LoginContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userName, setUserName] = useState('Operator')
   const [bootText, setBootText] = useState<string[]>([])
+  const [currentTime, setCurrentTime] = useState<string>('')
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Set time on client only to avoid hydration mismatch
+  useEffect(() => {
+    setCurrentTime(new Date().toLocaleTimeString())
+    const interval = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString())
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   let audioEngine: ReturnType<typeof useAudioEngine> | null = null
   try {
@@ -216,8 +226,7 @@ function LoginContent() {
         {/* Header bar */}
         <div className="flex items-center justify-between mb-6 text-xs text-green-600">
           <span>miller-ai v2.0</span>
-          <span className="hidden sm:inline">{new Date().toISOString()}</span>
-          <span className="sm:hidden">{new Date().toLocaleTimeString()}</span>
+          <span>{currentTime || '...'}</span>
         </div>
 
         {/* Boot log */}

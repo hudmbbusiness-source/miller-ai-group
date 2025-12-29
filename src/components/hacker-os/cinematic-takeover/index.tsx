@@ -14,6 +14,8 @@ export const CHARACTERS: never[] = []
 export function CinematicTakeover({ onComplete, userName = 'Operator' }: CinematicTakeoverProps) {
   const [lines, setLines] = useState<string[]>([])
   const [phase, setPhase] = useState<'hack' | 'pwned'>('hack')
+  const [sessionId] = useState(() => Date.now().toString(16))
+  const [timestamp] = useState(() => new Date().toISOString())
   const containerRef = useRef<HTMLDivElement>(null)
 
   const hackScript = [
@@ -28,7 +30,7 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
     ``,
     `$ ssh root@10.0.0.1`,
     `root@10.0.0.1's password: `,
-    `Last login: ${new Date().toUTCString()}`,
+    `Last login: ${timestamp}`,
     ``,
     `root@target:~# whoami`,
     `root`,
@@ -81,17 +83,24 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
     }
   }, [phase, onComplete])
 
+  // Pre-computed random values to avoid hydration mismatch
+  const glitchLines = Array.from({ length: 20 }, (_, i) => ({
+    top: (i * 5) % 100,
+    delay: (i * 0.1) % 2,
+    repeatDelay: (i * 0.15) % 3,
+  }))
+
   if (phase === 'pwned') {
     return (
       <div className="fixed inset-0 bg-black z-50 flex items-center justify-center font-mono overflow-hidden">
         {/* Glitch background */}
         <div className="absolute inset-0">
-          {Array.from({ length: 20 }).map((_, i) => (
+          {glitchLines.map((line, i) => (
             <motion.div
               key={i}
               className="absolute h-px bg-red-500/30"
               style={{
-                top: `${Math.random() * 100}%`,
+                top: `${line.top}%`,
                 left: 0,
                 right: 0,
               }}
@@ -102,8 +111,8 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
               transition={{
                 duration: 0.3,
                 repeat: Infinity,
-                delay: Math.random() * 2,
-                repeatDelay: Math.random() * 3,
+                delay: line.delay,
+                repeatDelay: line.repeatDelay,
               }}
             />
           ))}
@@ -195,10 +204,10 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
           </motion.span>
         </div>
         <div className="absolute top-4 right-4 text-xs text-green-600 font-mono">
-          {new Date().toISOString()}
+          {timestamp}
         </div>
         <div className="absolute bottom-4 left-4 text-xs text-green-800 font-mono">
-          Session: {Date.now().toString(16)}
+          Session: {sessionId}
         </div>
         <div className="absolute bottom-4 right-4 text-xs text-green-800 font-mono">
           miller-ai v2.0

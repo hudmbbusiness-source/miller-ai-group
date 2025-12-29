@@ -32,7 +32,7 @@ import {
   X,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 // CRT scanline effect
 function CRTEffect() {
@@ -100,6 +100,16 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
   const router = useRouter()
   const prefersReducedMotion = usePrefersReducedMotion()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [currentTime, setCurrentTime] = useState('')
+
+  // Client-side time to avoid hydration mismatch
+  useEffect(() => {
+    setCurrentTime(new Date().toLocaleTimeString())
+    const interval = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString())
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   useKeyboardShortcuts()
 
@@ -221,7 +231,7 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
               <span className="text-green-600 hidden sm:inline">root@miller-ai:~</span>
             </div>
             <div className="flex items-center gap-3 text-green-700">
-              <span className="hidden md:inline">{new Date().toLocaleTimeString()}</span>
+              <span className="hidden md:inline">{currentTime || '...'}</span>
               <span className="text-green-500 flex items-center gap-1">
                 <span className="animate-pulse">●</span> LIVE
               </span>

@@ -15,16 +15,55 @@ function getGroqClient(): Groq {
   return groqClient
 }
 
+interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { prompt, language, existingCode, action } = body
+    const { prompt, language, existingCode, action, systemPrompt, conversationHistory } = body
 
     if (!prompt && !existingCode) {
       return NextResponse.json({ error: 'Prompt or existing code is required' }, { status: 400 })
     }
 
-    let systemPrompt = `You are an expert programmer. You write clean, efficient, well-documented code.
+    // Chat mode - for playground conversational AI
+    if (action === 'chat' && systemPrompt) {
+      const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+        { role: 'system', content: systemPrompt }
+      ]
+
+      // Add conversation history if provided
+      if (conversationHistory && Array.isArray(conversationHistory)) {
+        for (const msg of conversationHistory as ConversationMessage[]) {
+          messages.push({ role: msg.role, content: msg.content })
+        }
+      }
+
+      // Add the current user message
+      messages.push({ role: 'user', content: prompt })
+
+      const completion = await getGroqClient().chat.completions.create({
+        messages,
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.7,
+        max_tokens: 8000,
+      })
+
+      const result = completion.choices[0]?.message?.content || ''
+
+      return NextResponse.json({
+        code: result,
+        response: result,
+        action: 'chat',
+        tokensUsed: completion.usage?.total_tokens || 0,
+      })
+    }
+
+    // Legacy single-action modes
+    let defaultSystemPrompt = `You are an expert programmer. You write clean, efficient, well-documented code.
 Always respond with ONLY the code - no explanations, no markdown code blocks, just the raw code.
 Use modern best practices and include helpful comments where appropriate.`
 
@@ -45,7 +84,7 @@ ${prompt ? `Additional instructions: ${prompt}` : ''}
 
 Remember: Return ONLY the improved code, no markdown, no explanations.`
     } else if (action === 'explain') {
-      systemPrompt = `You are an expert programmer who explains code clearly and concisely.`
+      defaultSystemPrompt = `You are an expert programmer who explains code clearly and concisely.`
       userPrompt = `Explain this ${language || 'JavaScript'} code in detail:
 
 ${existingCode}
@@ -69,7 +108,7 @@ Remember: Return ONLY the converted code, no markdown, no explanations.`
 
     const completion = await getGroqClient().chat.completions.create({
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: defaultSystemPrompt },
         { role: 'user', content: userPrompt },
       ],
       model: 'llama-3.3-70b-versatile',

@@ -2,69 +2,46 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Github, Loader2, Shield, Terminal, Wifi, Lock, Eye } from 'lucide-react'
+import { Github, Loader2, Shield, ArrowRight, Sparkles, Lock } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { AudioEngineProvider, useAudioEngine } from '@/components/hacker-os'
+import { motion } from 'framer-motion'
+import Image from 'next/image'
+import Link from 'next/link'
 
 function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [userName, setUserName] = useState('Operator')
+  const [userName, setUserName] = useState('')
   const [mounted, setMounted] = useState(false)
-  const [glitchText, setGlitchText] = useState(false)
-  const [systemTime, setSystemTime] = useState('--:--:--')
-  const [connectionStatus, setConnectionStatus] = useState('CONNECTING')
   const router = useRouter()
   const searchParams = useSearchParams()
-  const audioEngine = useAudioEngine()
 
-  // Mount effect
   useEffect(() => {
     setMounted(true)
-    // Set initial time
-    setSystemTime(new Date().toLocaleTimeString())
-    setConnectionStatus('SECURE')
-
-    // Update time every second
-    const timeInterval = setInterval(() => {
-      setSystemTime(new Date().toLocaleTimeString())
-    }, 1000)
-
-    // Random glitch effect
-    const glitchInterval = setInterval(() => {
-      setGlitchText(true)
-      setTimeout(() => setGlitchText(false), 100)
-    }, 3000 + Math.random() * 4000)
-
-    return () => {
-      clearInterval(timeInterval)
-      clearInterval(glitchInterval)
-    }
   }, [])
 
-  // Auth check effect - skip second cinematic, go directly to app
+  // Auth check effect
   useEffect(() => {
     if (!mounted) return
 
     const authError = searchParams.get('error')
     if (authError) {
-      setError('Authentication failed. Try again.')
+      setError('Authentication failed. Please try again.')
     }
 
-    // Check if user is authenticated
     const checkAuth = async () => {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        // If coming back from OAuth (takeover=true), go directly to app
+        // If coming back from OAuth, go directly to app
         const takeover = searchParams.get('takeover')
         if (takeover === 'true') {
           router.push('/app')
           return
         }
         setIsAuthenticated(true)
-        setUserName(user.user_metadata?.name || user.email?.split('@')[0] || 'Operator')
+        setUserName(user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User')
       }
     }
     checkAuth()
@@ -74,24 +51,17 @@ function LoginContent() {
     setLoading(true)
     setError(null)
 
-    await audioEngine.initialize()
-    audioEngine.playEffect('button_click')
-
-    localStorage.clear()
-    sessionStorage.clear()
-
     try {
       const supabase = createClient()
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/login&takeover=true`,
-          skipBrowserRedirect: true,
+          redirectTo: `${window.location.origin}/auth/callback?next=/app`,
         },
       })
 
       if (error) {
-        setError(`Auth failed: ${error.message}`)
+        setError(error.message)
         setLoading(false)
         return
       }
@@ -103,222 +73,191 @@ function LoginContent() {
         setLoading(false)
       }
     } catch (err) {
-      setError(`Error: ${err instanceof Error ? err.message : String(err)}`)
+      setError(err instanceof Error ? err.message : 'An error occurred')
       setLoading(false)
     }
   }
 
-  const handleEnterSystem = async () => {
-    await audioEngine.initialize()
-    audioEngine.playEffect('button_click')
+  const handleEnterSystem = () => {
     router.push('/app')
   }
 
-  // Show login form
   return (
-    <div className="min-h-screen bg-black text-green-500 font-mono overflow-hidden relative">
-      {/* CRT Scanlines */}
-      <div
-        className="fixed inset-0 pointer-events-none z-50 opacity-30"
-        style={{
-          background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.2) 0px, rgba(0,0,0,0.2) 1px, transparent 1px, transparent 2px)',
-        }}
-      />
-
-      {/* Animated grid background */}
-      <div
-        className="fixed inset-0 opacity-5"
-        style={{
-          backgroundImage: 'linear-gradient(rgba(0,255,0,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,0,0.1) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-        }}
-      />
-
-      {/* Glitch overlay */}
-      {glitchText && (
-        <div className="fixed inset-0 z-40 pointer-events-none">
-          <div className="absolute inset-0 bg-red-500/5" />
-          <div className="absolute top-1/4 left-0 right-0 h-px bg-cyan-500/30" />
-          <div className="absolute top-3/4 left-0 right-0 h-0.5 bg-green-500/30" />
-        </div>
-      )}
-
-      {/* Top HUD Bar */}
-      <div className="fixed top-0 left-0 right-0 z-30 border-b border-green-900/50 bg-black/90 backdrop-blur-sm">
-        <div className="flex items-center justify-between px-4 py-2 text-xs">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-green-500">{connectionStatus}</span>
-            </div>
-            <div className="hidden sm:flex items-center gap-2 text-green-700">
-              <Wifi className="w-3 h-3" />
-              <span>ENCRYPTED</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-green-600">
-            <span className="hidden sm:inline">SYS_TIME: {systemTime}</span>
-            <span className="flex items-center gap-1">
-              <Lock className="w-3 h-3" />
-              TLS 1.3
-            </span>
-          </div>
-        </div>
+    <div className="min-h-screen bg-neutral-950 text-white overflow-hidden relative">
+      {/* Background gradients */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-violet-500/20 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-500/15 rounded-full blur-[100px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-fuchsia-500/10 rounded-full blur-[80px]" />
       </div>
+
+      {/* Grid background */}
+      <div
+        className="fixed inset-0 opacity-[0.02]"
+        style={{
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+        }}
+      />
+
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-neutral-950/80 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/miller" className="flex items-center gap-3">
+              <Image
+                src="/logos/miller-ai-group.svg"
+                alt="Miller AI Group"
+                width={32}
+                height={32}
+                className="w-8 h-8"
+              />
+              <span className="font-semibold text-white">Miller AI Group</span>
+            </Link>
+            <div className="flex items-center gap-2 text-sm text-neutral-400">
+              <Lock className="w-4 h-4" />
+              <span>Secure Login</span>
+            </div>
+          </div>
+        </div>
+      </nav>
 
       {/* Main Content */}
-      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6 pt-16">
-        {/* Logo Section */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Shield className="w-8 h-8 text-green-500" />
-            <h1
-              className={`text-3xl md:text-4xl font-black tracking-wider ${glitchText ? 'text-red-500' : 'text-green-500'}`}
-              style={{ textShadow: '0 0 20px rgba(0,255,0,0.5)' }}
-            >
-              MILLER AI GROUP
-            </h1>
-          </div>
-          <div className="flex items-center justify-center gap-2 text-green-700 text-xs">
-            <Terminal className="w-3 h-3" />
-            <span>SECURE ACCESS TERMINAL v2.0</span>
-          </div>
-        </div>
+      <div className="relative z-10 min-h-screen flex items-center justify-center p-6 pt-24">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-md"
+        >
+          {/* Card */}
+          <div className="relative">
+            {/* Glow */}
+            <div className="absolute -inset-1 bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-fuchsia-500/20 rounded-3xl blur-xl" />
 
-        {/* Terminal Window */}
-        <div className="w-full max-w-md">
-          {/* Terminal Header */}
-          <div className="flex items-center justify-between px-4 py-2 bg-green-900/20 border border-green-900/50 border-b-0">
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
+            <div className="relative rounded-2xl bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-8">
+              {/* Header */}
+              <div className="text-center mb-8">
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                  className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 mb-6 shadow-lg shadow-violet-500/25"
+                >
+                  <Shield className="w-8 h-8 text-white" />
+                </motion.div>
+                <h1 className="text-2xl font-bold text-white mb-2">
+                  {isAuthenticated ? `Welcome back, ${userName}` : 'Sign in to Miller AI'}
+                </h1>
+                <p className="text-neutral-400 text-sm">
+                  {isAuthenticated
+                    ? 'Your session is active. Ready to continue?'
+                    : 'Access your dashboard and AI tools'}
+                </p>
               </div>
-              <span className="text-green-600 text-xs ml-2">auth@miller-ai</span>
-            </div>
-            <div className="text-green-700 text-xs">
-              <Eye className="w-3 h-3 inline mr-1" />
-              MONITORED
-            </div>
-          </div>
 
-          {/* Terminal Body */}
-          <div className="border border-green-900/50 bg-black/80 backdrop-blur-sm p-6">
-            {/* Command prompt */}
-            <div className="text-sm mb-4 pb-4 border-b border-green-900/30">
-              <span className="text-green-600">root@miller-ai</span>
-              <span className="text-white">:</span>
-              <span className="text-blue-400">~/auth</span>
-              <span className="text-white"># </span>
-              <span className="text-green-400">./authenticate.sh</span>
-              <span className="animate-pulse ml-1">█</span>
-            </div>
+              {/* Error */}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20"
+                >
+                  <p className="text-red-400 text-sm">{error}</p>
+                </motion.div>
+              )}
 
-            {/* Status messages */}
-            <div className="text-sm mb-6 space-y-1">
+              {/* Actions */}
               {isAuthenticated ? (
-                <>
-                  <p className="text-green-500">[+] Authentication successful</p>
-                  <p className="text-green-500">[+] User identified: <span className="text-cyan-400">{userName}</span></p>
-                  <p className="text-green-500">[+] Access level: <span className="text-red-400 font-bold">ROOT</span></p>
-                  <p className="text-green-500">[+] Session initialized</p>
-                  <p className="text-yellow-500 mt-2">[!] Ready to breach...</p>
-                </>
+                <motion.button
+                  onClick={handleEnterSystem}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  className="w-full relative group overflow-hidden rounded-xl"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <span className="relative flex items-center justify-center gap-2 py-4 text-white font-semibold">
+                    Enter Dashboard
+                    <ArrowRight className="w-5 h-5" />
+                  </span>
+                </motion.button>
               ) : (
-                <>
-                  <p className="text-blue-400">[*] Initializing secure connection...</p>
-                  <p className="text-green-500">[+] Connection established</p>
-                  <p className="text-green-500">[+] Encryption verified</p>
-                  <p className="text-yellow-500">[!] Authentication required</p>
-                  <p className="text-green-700 mt-2">Awaiting credentials...</p>
-                </>
+                <motion.button
+                  onClick={handleGitHubLogin}
+                  disabled={loading}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  className="w-full flex items-center justify-center gap-3 py-4 rounded-xl bg-white text-black font-semibold hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Github className="w-5 h-5" />
+                      <span>Continue with GitHub</span>
+                    </>
+                  )}
+                </motion.button>
+              )}
+
+              {/* Divider */}
+              {!isAuthenticated && (
+                <div className="relative my-8">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/10" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="px-4 bg-neutral-900 text-xs text-neutral-500">
+                      Secure authentication via GitHub
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Features */}
+              {!isAuthenticated && (
+                <div className="space-y-3">
+                  {[
+                    'Access AI-powered tools and analytics',
+                    'Manage your projects and workspace',
+                    'Connect with the Miller AI ecosystem',
+                  ].map((feature, index) => (
+                    <motion.div
+                      key={feature}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 + index * 0.1 }}
+                      className="flex items-center gap-3 text-sm text-neutral-400"
+                    >
+                      <div className="w-5 h-5 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-3 h-3 text-violet-400" />
+                      </div>
+                      {feature}
+                    </motion.div>
+                  ))}
+                </div>
               )}
             </div>
-
-            {/* Error display */}
-            {error && (
-              <div className="text-red-500 text-sm mb-4 p-3 border border-red-900/50 bg-red-900/10">
-                <p className="font-bold">[-] AUTHENTICATION FAILED</p>
-                <p className="text-red-400 text-xs mt-1">{error}</p>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            {isAuthenticated ? (
-              <button
-                onClick={handleEnterSystem}
-                className="w-full py-4 bg-green-500 text-black font-bold text-sm hover:bg-green-400 active:bg-green-600 transition-colors relative overflow-hidden group"
-              >
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                  <Terminal className="w-5 h-5" />
-                  INITIALIZE BREACH SEQUENCE
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-              </button>
-            ) : (
-              <button
-                onClick={handleGitHubLogin}
-                disabled={loading}
-                className="w-full py-4 bg-green-500 text-black font-bold text-sm hover:bg-green-400 active:bg-green-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 relative overflow-hidden group"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>AUTHENTICATING...</span>
-                  </>
-                ) : (
-                  <>
-                    <Github className="w-5 h-5" />
-                    <span>AUTHENTICATE VIA GITHUB</span>
-                  </>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-              </button>
-            )}
-
-            {/* Security notice */}
-            <div className="mt-4 pt-4 border-t border-green-900/30 text-center">
-              <p className="text-green-800 text-xs">
-                <Lock className="w-3 h-3 inline mr-1" />
-                256-bit AES encrypted session
-              </p>
-            </div>
           </div>
-        </div>
 
-        {/* Bottom Stats */}
-        <div className="mt-8 flex items-center gap-6 text-xs text-green-700">
-          <div className="text-center">
-            <div className="text-green-500 font-bold">24/7</div>
-            <div>UPTIME</div>
+          {/* Footer */}
+          <div className="mt-8 text-center">
+            <p className="text-xs text-neutral-500">
+              By signing in, you agree to our{' '}
+              <Link href="/terms" className="text-violet-400 hover:underline">Terms</Link>
+              {' '}and{' '}
+              <Link href="/privacy" className="text-violet-400 hover:underline">Privacy Policy</Link>
+            </p>
           </div>
-          <div className="w-px h-8 bg-green-900" />
-          <div className="text-center">
-            <div className="text-green-500 font-bold">443</div>
-            <div>PORT</div>
-          </div>
-          <div className="w-px h-8 bg-green-900" />
-          <div className="text-center">
-            <div className="text-green-500 font-bold">HTTPS</div>
-            <div>PROTOCOL</div>
-          </div>
-        </div>
+        </motion.div>
       </div>
 
-      {/* Bottom HUD Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-green-900/50 bg-black/90 backdrop-blur-sm">
-        <div className="flex items-center justify-between px-4 py-2 text-xs text-green-700">
-          <div className="flex items-center gap-4">
-            <span>TERMINAL: ACTIVE</span>
-            <span className="hidden sm:inline">FIREWALL: ENABLED</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-green-500">● ONLINE</span>
-            <span className="hidden sm:inline">v2.0.0</span>
-          </div>
-        </div>
-      </div>
+      {/* Bottom accent */}
+      <div className="fixed bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent" />
     </div>
   )
 }
@@ -326,13 +265,16 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <p className="text-green-500 font-mono">Loading...</p>
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+        >
+          <Sparkles className="w-8 h-8 text-violet-500" />
+        </motion.div>
       </div>
     }>
-      <AudioEngineProvider>
-        <LoginContent />
-      </AudioEngineProvider>
+      <LoginContent />
     </Suspense>
   )
 }

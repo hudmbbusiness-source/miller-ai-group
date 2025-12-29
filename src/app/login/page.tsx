@@ -124,8 +124,13 @@ function LoginContent() {
   const handleEnterSystem = async () => {
     await audioEngine.initialize()
     audioEngine.playEffect('button_click')
-    // Use Web Audio API soundtrack (more reliable than MP3)
-    soundtrackCleanupRef.current = audioEngine.playCinematicSoundtrack(60)
+    // Try MP3 first, fall back to Web Audio API
+    try {
+      await audioEngine.playIntroSong()
+    } catch {
+      // Fall back to generated soundtrack
+      soundtrackCleanupRef.current = audioEngine.playCinematicSoundtrack(45)
+    }
     setShowTakeover(true)
   }
 

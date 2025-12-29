@@ -92,7 +92,7 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
     setMatrixRain(rain)
   }, [])
 
-  // Boot sequence
+  // Boot sequence - FAST
   useEffect(() => {
     if (!showBoot) return
 
@@ -100,24 +100,24 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
       setBootProgress(prev => {
         if (prev >= 100) {
           clearInterval(bootInterval)
-          setTimeout(() => setShowBoot(false), 500)
+          setTimeout(() => setShowBoot(false), 200)
           return 100
         }
-        return prev + 2
+        return prev + 5 // Faster increment
       })
-    }, 50)
+    }, 30) // Faster interval
 
     return () => clearInterval(bootInterval)
   }, [showBoot])
 
-  // Random glitch effect
+  // Random glitch effect - more frequent for intensity
   useEffect(() => {
     if (showPwned || showBoot) return
 
     const glitchInterval = setInterval(() => {
       setGlitchActive(true)
-      setTimeout(() => setGlitchActive(false), 80 + Math.random() * 120)
-    }, 1500 + Math.random() * 2500)
+      setTimeout(() => setGlitchActive(false), 50 + Math.random() * 80)
+    }, 800 + Math.random() * 1200) // More frequent glitches
 
     return () => clearInterval(glitchInterval)
   }, [showPwned, showBoot])
@@ -302,19 +302,20 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         }
 
         // Trigger glitch on important lines
-        if (newLine?.includes('[!]') || newLine?.includes('████')) {
+        if (newLine?.includes('[!]') || newLine?.includes('████') || newLine?.includes('PHASE')) {
           setGlitchActive(true)
-          setTimeout(() => setGlitchActive(false), 150)
+          setTimeout(() => setGlitchActive(false), 100)
         }
 
-        // Variable timing for realism
-        let delay = 60
-        if (newLine === '') delay = 200
-        else if (newLine?.startsWith('════')) delay = 100
-        else if (newLine?.startsWith('[!]')) delay = 150
-        else if (newLine?.startsWith('$') || newLine?.startsWith('msf')) delay = 120
-        else if (newLine?.startsWith('[+]')) delay = 80
-        else delay = 50 + Math.random() * 30
+        // FAST variable timing - quick but readable
+        let delay = 25
+        if (newLine === '') delay = 80 // Brief pause for sections
+        else if (newLine?.startsWith('════')) delay = 40
+        else if (newLine?.startsWith('[!]')) delay = 60 // Slight emphasis on warnings
+        else if (newLine?.startsWith('$') || newLine?.startsWith('msf')) delay = 50 // Commands slightly slower
+        else if (newLine?.startsWith('[+]')) delay = 30 // Success messages fast
+        else if (newLine?.includes('PHASE')) delay = 100 // Pause on phase headers
+        else delay = 20 + Math.random() * 15 // Fast base speed
 
         setTimeout(addLine, delay)
       } else {
@@ -324,12 +325,12 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
           setShowPwned(true)
           completeTimeout.current = setTimeout(() => {
             onComplete()
-          }, 5000)
-        }, 1000)
+          }, 3500) // Faster transition to app
+        }, 500) // Quick transition to PWNED
       }
     }
 
-    setTimeout(addLine, 800)
+    setTimeout(addLine, 300) // Start faster
 
     return () => {
       if (completeTimeout.current) {
@@ -379,23 +380,23 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
 
 
         {/* Boot content */}
-        <div className="relative z-10 text-center">
-          <pre className="text-green-500 text-[8px] sm:text-xs mb-8 leading-tight" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>
+        <div className="relative z-10 text-center px-4 w-full max-w-lg">
+          <pre className="text-green-500 text-[6px] xs:text-[8px] sm:text-xs mb-6 sm:mb-8 leading-tight overflow-hidden" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>
             {MILLER_ASCII}
           </pre>
 
-          <div className="text-green-400 text-sm mb-4">
+          <div className="text-green-400 text-xs sm:text-sm mb-4">
             [ OFFENSIVE SECURITY FRAMEWORK ]
           </div>
 
-          <div className="w-80 h-2 bg-green-900/30 border border-green-700/50 mx-auto mb-4 overflow-hidden">
+          <div className="w-full max-w-xs sm:max-w-sm h-2 sm:h-3 bg-green-900/30 border border-green-700/50 mx-auto mb-4 overflow-hidden">
             <div
               className="h-full bg-green-500 transition-all duration-100"
               style={{ width: `${bootProgress}%`, boxShadow: '0 0 10px rgba(0,255,0,0.8)' }}
             />
           </div>
 
-          <div className="text-green-600 text-xs space-y-1">
+          <div className="text-green-600 text-[10px] sm:text-xs space-y-1">
             <p>{bootProgress < 20 && '> Loading kernel modules...'}</p>
             <p>{bootProgress >= 20 && bootProgress < 40 && '> Initializing network stack...'}</p>
             <p>{bootProgress >= 40 && bootProgress < 60 && '> Loading exploit database...'}</p>
@@ -404,7 +405,7 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
             <p>{bootProgress >= 100 && '> SYSTEM READY'}</p>
           </div>
 
-          <div className="text-green-700 text-xs mt-6">
+          <div className="text-green-700 text-[10px] sm:text-xs mt-4 sm:mt-6">
             v2.0.0 | Build 2024.12.28
           </div>
         </div>
@@ -517,7 +518,7 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         </div>
 
         {/* Main terminal */}
-        <div className="h-full flex flex-col pt-14 pb-12">
+        <div className="h-full flex flex-col pt-14 pb-20 lg:pb-12">
           <div className="flex-1 flex">
             {/* Left margin */}
             <div className="w-4 md:w-12 flex-shrink-0" />
@@ -560,15 +561,29 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
           </div>
         </div>
 
+        {/* Mobile progress bar - only visible on small screens */}
+        <div className="absolute bottom-12 left-0 right-0 px-4 lg:hidden z-20">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`text-[10px] ${currentPhase.color} font-bold`}>{currentPhase.name}</span>
+            <span className="text-green-500 text-[10px] ml-auto">{progress}%</span>
+          </div>
+          <div className="h-1.5 bg-green-900/30 overflow-hidden border border-green-700/30">
+            <div
+              className="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
         {/* Bottom status bar */}
         <div className="absolute bottom-0 left-0 right-0 p-2 flex items-center justify-between border-t border-green-900/50 bg-black/90 z-20 text-[10px]">
-          <div className="flex items-center gap-4 text-green-600">
-            <span>TARGET: 10.0.0.0/24</span>
+          <div className="flex items-center gap-2 sm:gap-4 text-green-600">
+            <span className="hidden xs:inline">TARGET: 10.0.0.0/24</span>
+            <span className="xs:hidden">10.0.0.0/24</span>
             <span className="hidden sm:inline">PROTOCOL: MULTI</span>
-            <span className="hidden md:inline">LATENCY: {Math.floor(Math.random() * 30 + 10)}ms</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-green-500">PACKETS: {Math.floor(progress * 247)}</span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="text-green-500 hidden sm:inline">PACKETS: {Math.floor(progress * 247)}</span>
             <span className="text-green-500">LINES: {lines.length}</span>
           </div>
         </div>
@@ -612,53 +627,53 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
           </pre>
 
           <h1
-            className="text-4xl sm:text-5xl md:text-7xl font-black text-red-500 mb-4 tracking-widest animate-pulse"
+            className="text-3xl xs:text-4xl sm:text-5xl md:text-7xl font-black text-red-500 mb-3 sm:mb-4 tracking-wider sm:tracking-widest animate-pulse"
             style={{ textShadow: '0 0 50px rgba(255,0,0,0.7), 0 0 100px rgba(255,0,0,0.4), 4px 4px 0 #000' }}
           >
             SYSTEM OWNED
           </h1>
 
-          <div className="h-px w-64 mx-auto bg-gradient-to-r from-transparent via-red-500 to-transparent mb-6" />
+          <div className="h-px w-48 sm:w-64 mx-auto bg-gradient-to-r from-transparent via-red-500 to-transparent mb-4 sm:mb-6" />
 
           <pre
-            className="text-green-500 text-[4px] xs:text-[6px] sm:text-[8px] mb-4 leading-none"
+            className="text-green-500 text-[4px] xs:text-[5px] sm:text-[8px] mb-3 sm:mb-4 leading-none hidden xs:block"
             style={{ textShadow: '0 0 15px rgba(0,255,0,0.6)' }}
           >
             {MILLER_ASCII}
           </pre>
 
           <div
-            className="text-green-400 text-xl sm:text-2xl md:text-3xl font-bold mb-2 tracking-[0.2em]"
+            className="text-green-400 text-lg xs:text-xl sm:text-2xl md:text-3xl font-bold mb-2 tracking-[0.1em] sm:tracking-[0.2em]"
             style={{ textShadow: '0 0 20px rgba(0,255,0,0.6)' }}
           >
             ACCESS GRANTED
           </div>
 
-          <div className="text-green-600 text-base mb-6">
+          <div className="text-green-600 text-sm sm:text-base mb-4 sm:mb-6">
             Welcome, <span className="text-green-400 font-bold">{userName}</span>
           </div>
 
-          <div className="text-green-500 text-sm font-mono mb-8">
+          <div className="text-green-500 text-xs sm:text-sm font-mono mb-6 sm:mb-8">
             root@miller-ai:~# <span className="animate-pulse">█</span>
           </div>
 
           {/* Stats */}
-          <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-center">
-            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
-              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>24</div>
-              <div className="text-green-700 text-[10px] uppercase tracking-widest">Hosts</div>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap justify-center gap-2 sm:gap-4 md:gap-8 text-center">
+            <div className="border border-green-900/50 px-3 sm:px-4 py-2 bg-black/50">
+              <div className="text-green-400 text-xl sm:text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>24</div>
+              <div className="text-green-700 text-[8px] sm:text-[10px] uppercase tracking-widest">Hosts</div>
             </div>
-            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
-              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>ROOT</div>
-              <div className="text-green-700 text-[10px] uppercase tracking-widest">Access</div>
+            <div className="border border-green-900/50 px-3 sm:px-4 py-2 bg-black/50">
+              <div className="text-green-400 text-xl sm:text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>ROOT</div>
+              <div className="text-green-700 text-[8px] sm:text-[10px] uppercase tracking-widest">Access</div>
             </div>
-            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
-              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>1.2K</div>
-              <div className="text-green-700 text-[10px] uppercase tracking-widest">Creds</div>
+            <div className="border border-green-900/50 px-3 sm:px-4 py-2 bg-black/50">
+              <div className="text-green-400 text-xl sm:text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>1.2K</div>
+              <div className="text-green-700 text-[8px] sm:text-[10px] uppercase tracking-widest">Creds</div>
             </div>
-            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
-              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>3.2GB</div>
-              <div className="text-green-700 text-[10px] uppercase tracking-widest">Exfil</div>
+            <div className="border border-green-900/50 px-3 sm:px-4 py-2 bg-black/50">
+              <div className="text-green-400 text-xl sm:text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>3.2GB</div>
+              <div className="text-green-700 text-[8px] sm:text-[10px] uppercase tracking-widest">Exfil</div>
             </div>
           </div>
         </div>

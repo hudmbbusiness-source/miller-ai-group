@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Github, Loader2, Shield, Terminal, Wifi, Lock, Eye } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -119,14 +119,22 @@ function LoginContent() {
     }
   }
 
+  const soundtrackCleanupRef = useRef<(() => void) | null>(null)
+
   const handleEnterSystem = async () => {
     await audioEngine.initialize()
     audioEngine.playEffect('button_click')
-    await audioEngine.playIntroSong()
+    // Use Web Audio API soundtrack (more reliable than MP3)
+    soundtrackCleanupRef.current = audioEngine.playCinematicSoundtrack(60)
     setShowTakeover(true)
   }
 
   const handleTakeoverComplete = useCallback(() => {
+    // Stop the soundtrack
+    if (soundtrackCleanupRef.current) {
+      soundtrackCleanupRef.current()
+      soundtrackCleanupRef.current = null
+    }
     audioEngine.stopIntroSong()
     router.push('/app')
   }, [router, audioEngine])

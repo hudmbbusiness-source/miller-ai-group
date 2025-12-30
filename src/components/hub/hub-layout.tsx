@@ -455,6 +455,13 @@ function HubLayoutContent({ children, user }: HubLayoutProps) {
                     {userInitial}
                   </div>
                   <span className="hidden sm:block text-sm font-medium text-neutral-300">{userName}</span>
+                  <button
+                    onClick={handleLogout}
+                    className="ml-2 p-2 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>

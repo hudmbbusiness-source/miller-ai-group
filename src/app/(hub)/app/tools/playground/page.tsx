@@ -1,170 +1,243 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Code2,
-  Copy,
-  Check,
-  Play,
   Save,
-  Download,
   Loader2,
   Sparkles,
   Plus,
-  Maximize2,
-  Minimize2,
-  Send,
-  Bot,
-  User,
   FolderOpen,
   Eye,
-  FileCode,
-  FileText,
-  Palette,
+  RefreshCw,
+  ExternalLink,
+  Send,
+  X,
+  Wand2,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type EditorTab = 'html' | 'css' | 'js'
-
-const DEFAULT_HTML = `<div class="container">
-  <h1 class="title">Welcome</h1>
-  <p class="subtitle">Start building something amazing</p>
-  <button class="btn" id="startBtn">Get Started</button>
-  <div id="content"></div>
-</div>`
-
-const DEFAULT_CSS = `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  overflow: hidden;
-}
-
-.container {
-  text-align: center;
-  padding: 3rem;
-}
-
-.title {
-  font-size: 3rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 1rem;
-}
-
-.subtitle {
-  color: rgba(255,255,255,0.6);
-  margin-bottom: 2rem;
-}
-
-.btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 1rem 2rem;
-  border-radius: 50px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-}
-
-#content {
-  margin-top: 2rem;
-}`
-
-const DEFAULT_JS = `const btn = document.getElementById('startBtn');
-const content = document.getElementById('content');
-let count = 0;
-
-btn?.addEventListener('click', () => {
-  count++;
-  content.innerHTML = \`
-    <div style="padding: 2rem; background: rgba(255,255,255,0.1); border-radius: 16px; margin-top: 1rem;">
-      <p style="font-size: 1.5rem;">Clicked \${count} time\${count > 1 ? 's' : ''}!</p>
-    </div>
-  \`;
-});
-
-console.log('Ready!');`
-
 export default function PlaygroundPage() {
-  const [html, setHtml] = useState(DEFAULT_HTML)
-  const [css, setCss] = useState(DEFAULT_CSS)
-  const [js, setJs] = useState(DEFAULT_JS)
-  const [editorTab, setEditorTab] = useState<EditorTab>('html')
-  const [projectName, setProjectName] = useState('Untitled Project')
+  const [html, setHtml] = useState('')
+  const [css, setCss] = useState('')
+  const [js, setJs] = useState('')
+  const [projectName, setProjectName] = useState('Untitled')
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [chatInput, setChatInput] = useState('')
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: "Hey! I'm your code assistant. Tell me what you want to build - games, animations, UI components, whatever. I'll create the code for you."
-    }
-  ])
+  const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const chatEndRef = useRef<HTMLDivElement>(null)
+  const [aiMessage, setAiMessage] = useState('')
+  const [consoleOutput, setConsoleOutput] = useState<string[]>([])
 
-  // Save current code to localStorage for preview page
+  // Prompt translator state
+  const [rawIdea, setRawIdea] = useState('')
+  const [translatedPrompt, setTranslatedPrompt] = useState('')
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [showTranslator, setShowTranslator] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const autoRunRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Auto-run preview when code changes
+  useEffect(() => {
+    if (autoRunRef.current) clearTimeout(autoRunRef.current)
+    autoRunRef.current = setTimeout(() => runCode(), 500)
+    return () => { if (autoRunRef.current) clearTimeout(autoRunRef.current) }
+  }, [html, css, js])
+
+  // Save to localStorage for other pages
   useEffect(() => {
     localStorage.setItem('playground_code', JSON.stringify({ html, css, js, projectName }))
   }, [html, css, js, projectName])
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
-
-  // Load from localStorage on mount (for returning from preview/saved)
+  // Load from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('playground_code')
     if (saved) {
       try {
-        const { html: h, css: c, js: j, projectName: n } = JSON.parse(saved)
-        if (h) setHtml(h)
-        if (c) setCss(c)
-        if (j) setJs(j)
-        if (n) setProjectName(n)
+        const data = JSON.parse(saved)
+        if (data.html) setHtml(data.html)
+        if (data.css) setCss(data.css)
+        if (data.js) setJs(data.js)
+        if (data.projectName) setProjectName(data.projectName)
+        if (data.projectId) setProjectId(data.projectId)
       } catch {}
     }
   }, [])
+
+  // Console message handler
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'console') {
+        setConsoleOutput(p => [...p.slice(-20), e.data.message])
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  const runCode = useCallback(() => {
+    if (!iframeRef.current) return
+    setConsoleOutput([])
+
+    const doc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  min-height: 100vh;
+  background: #0a0a0a;
+  color: white;
+  font-family: system-ui, sans-serif;
+}
+${css}
+</style>
+</head>
+<body>
+${html}
+<script>
+(function() {
+  const log = console.log;
+  console.log = (...args) => {
+    parent.postMessage({ type: 'console', message: '> ' + args.join(' ') }, '*');
+    log.apply(console, args);
+  };
+  console.error = (...args) => {
+    parent.postMessage({ type: 'console', message: 'ERROR: ' + args.join(' ') }, '*');
+  };
+  window.onerror = (msg, url, line) => {
+    parent.postMessage({ type: 'console', message: 'ERROR: ' + msg + ' (line ' + line + ')' }, '*');
+  };
+})();
+try {
+${js}
+} catch(e) { console.error(e.message); }
+</script>
+</body>
+</html>`
+    iframeRef.current.srcdoc = doc
+  }, [html, css, js])
+
+  // Translate casual idea to technical prompt
+  const translatePrompt = async () => {
+    if (!rawIdea.trim() || isTranslating) return
+
+    setIsTranslating(true)
+    setTranslatedPrompt('')
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `You are a prompt engineer. Take this casual/slang description and rewrite it as a detailed, technical prompt for a code generator that creates HTML/CSS/JS.
+
+USER'S IDEA: "${rawIdea}"
+
+Rewrite this as a clear, detailed prompt that specifies:
+- Exactly what visual elements to create
+- Colors, animations, effects to use
+- Interactivity and behavior
+- Layout and positioning
+- Any special features
+
+Keep it concise but detailed. Only output the rewritten prompt, nothing else.`,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.response) {
+        setTranslatedPrompt(data.response)
+      }
+    } catch (err) {
+      console.error(err)
+      setTranslatedPrompt('Failed to translate. Try again.')
+    } finally {
+      setIsTranslating(false)
+    }
+  }
+
+  const copyTranslatedPrompt = () => {
+    navigator.clipboard.writeText(translatedPrompt)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const useTranslatedPrompt = () => {
+    setPrompt(translatedPrompt)
+    setShowTranslator(false)
+    setRawIdea('')
+    setTranslatedPrompt('')
+  }
+
+  const handleGenerate = async () => {
+    if (!prompt.trim() || isGenerating) return
+
+    setIsGenerating(true)
+    setAiMessage('Generating...')
+
+    try {
+      const res = await fetch('/api/ai/code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          action: 'playground',
+          currentCode: (html || css || js) ? { html, css, js } : null
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        if (data.html) setHtml(data.html)
+        if (data.css) setCss(data.css)
+        if (data.js) setJs(data.js)
+        setAiMessage(data.description || 'Done!')
+        setPrompt('')
+      } else if (data.raw) {
+        setAiMessage('AI response format issue. Check console.')
+        console.log('Raw AI response:', data.raw)
+      } else {
+        setAiMessage(data.error || 'Generation failed')
+      }
+    } catch (err) {
+      console.error(err)
+      setAiMessage('Error generating code')
+    } finally {
+      setIsGenerating(false)
+      setTimeout(() => setAiMessage(''), 5000)
+    }
+  }
 
   const saveProject = async () => {
     setIsSaving(true)
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { alert('Sign in to save projects'); setIsSaving(false); return }
+      if (!user) {
+        alert('Sign in to save')
+        setIsSaving(false)
+        return
+      }
 
-      const projectData = { user_id: user.id, name: projectName, html, css, js, updated_at: new Date().toISOString() }
+      const projectData = {
+        user_id: user.id,
+        name: projectName,
+        html,
+        css,
+        js,
+        updated_at: new Date().toISOString()
+      }
 
       if (projectId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -172,317 +245,281 @@ export default function PlaygroundPage() {
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (supabase.from('playground_projects') as any)
-          .insert({ ...projectData, created_at: new Date().toISOString() }).select().single()
+          .insert({ ...projectData, created_at: new Date().toISOString() })
+          .select()
+          .single()
         if (data) setProjectId(data.id)
       }
-      setChatMessages(p => [...p, { role: 'assistant', content: `Saved "${projectName}"! You can find it in the Saved tab.` }])
+      setAiMessage('Saved!')
+      setTimeout(() => setAiMessage(''), 2000)
     } catch (err) {
-      console.error('Save failed:', err)
-      setChatMessages(p => [...p, { role: 'assistant', content: 'Failed to save. Please try again.' }])
+      console.error(err)
+      setAiMessage('Save failed')
     }
-    finally { setIsSaving(false) }
+    setIsSaving(false)
   }
 
   const newProject = () => {
     setProjectId(null)
-    setProjectName('Untitled Project')
-    setHtml(DEFAULT_HTML)
-    setCss(DEFAULT_CSS)
-    setJs(DEFAULT_JS)
-    setChatMessages([{ role: 'assistant', content: "New project started! What would you like to build?" }])
+    setProjectName('Untitled')
+    setHtml('')
+    setCss('')
+    setJs('')
+    setConsoleOutput([])
+    localStorage.removeItem('playground_code')
   }
 
-  const handleChat = async () => {
-    if (!chatInput.trim() || isGenerating) return
-    const userMsg = chatInput.trim()
-    setChatInput('')
-    setChatMessages(p => [...p, { role: 'user', content: userMsg }])
-    setIsGenerating(true)
-
-    try {
-      const systemPrompt = `You are an expert web developer. Create HTML, CSS, and JavaScript code based on user requests.
-
-CURRENT CODE STATE:
-HTML:
-${html}
-
-CSS:
-${css}
-
-JS:
-${js}
-
-ALWAYS RESPOND IN THIS EXACT FORMAT:
-[Brief 1-2 sentence description of what you created/changed]
-
-===HTML===
-[Your complete HTML code - just the body content, no doctype/html/head tags]
-===CSS===
-[Your complete CSS code]
-===JS===
-[Your complete JavaScript code]
-
-IMPORTANT RULES:
-1. ALWAYS include all three sections: ===HTML===, ===CSS===, ===JS===
-2. Create visually impressive, modern code with:
-   - Smooth animations and transitions
-   - Gradients and modern color schemes
-   - Glassmorphism, shadows, hover effects
-   - For games: use canvas, particle effects, smooth physics
-3. Code must be COMPLETE and WORKING - no placeholders or TODOs
-4. Keep explanation brief - focus on the code
-5. If user asks to modify existing code, preserve what works and change only what's needed`
-
-      const res = await fetch('/api/ai/code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: userMsg,
-          systemPrompt,
-          conversationHistory: chatMessages.slice(-6),
-          action: 'chat',
-        }),
-      })
-
-      if (!res.ok) throw new Error('Failed to generate')
-      const data = await res.json()
-      const response = data.code || data.response || ''
-
-      // Parse response
-      const htmlMatch = response.match(/===HTML===([\s\S]*?)(?====CSS===|===JS===|$)/i)
-      const cssMatch = response.match(/===CSS===([\s\S]*?)(?====HTML===|===JS===|$)/i)
-      const jsMatch = response.match(/===JS===([\s\S]*?)(?====HTML===|===CSS===|$)/i)
-      const explMatch = response.match(/^([\s\S]*?)(?====)/i)
-      const explanation = explMatch ? explMatch[1].trim() : ''
-
-      if (htmlMatch || cssMatch || jsMatch) {
-        if (htmlMatch) setHtml(htmlMatch[1].trim())
-        if (cssMatch) setCss(cssMatch[1].trim())
-        if (jsMatch) setJs(jsMatch[1].trim())
-        setChatMessages(p => [...p, { role: 'assistant', content: explanation || "Done! Click Preview to see it in action." }])
-      } else {
-        setChatMessages(p => [...p, { role: 'assistant', content: response || "I need more details. What would you like me to create?" }])
-      }
-    } catch (err) {
-      console.error('Chat error:', err)
-      setChatMessages(p => [...p, { role: 'assistant', content: "Something went wrong. Please try again." }])
-    } finally {
-      setIsGenerating(false)
+  const openInNewWindow = () => {
+    const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName}</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { min-height: 100vh; background: #0a0a0a; color: white; font-family: system-ui, sans-serif; } ${css}</style></head><body>${html}<script>${js}<\/script></body></html>`
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(doc)
+      win.document.close()
     }
   }
 
-  const getCurrentCode = () => editorTab === 'html' ? html : editorTab === 'css' ? css : js
-  const setCurrentCode = (code: string) => {
-    if (editorTab === 'html') setHtml(code)
-    else if (editorTab === 'css') setCss(code)
-    else setJs(code)
-  }
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(getCurrentCode())
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleDownload = () => {
-    const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName}</title><style>${css}</style></head><body>${html}<script>${js}<\/script></body></html>`
-    const blob = new Blob([full], { type: 'text/html' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `${projectName.toLowerCase().replace(/\s+/g, '-')}.html`
-    a.click()
-  }
-
   return (
-    <div className="min-h-screen p-6">
+    <div className="h-screen flex flex-col bg-[#1e1e1e] overflow-hidden">
       {/* Header */}
-      <div className="max-w-7xl mx-auto mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/25">
-              <Code2 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Code Playground</h1>
-              <p className="text-neutral-400 text-sm">Build, test, and save your creations</p>
-            </div>
+      <div className="h-12 flex items-center justify-between px-4 bg-[#252526] border-b border-[#3c3c3c]">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Code2 className="w-5 h-5 text-violet-400" />
+            <span className="font-semibold text-white">Playground</span>
           </div>
+          <div className="w-px h-5 bg-[#3c3c3c]" />
+          <input
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            className="bg-transparent text-neutral-300 text-sm border-none outline-none w-32"
+            placeholder="Project name"
+          />
+        </div>
 
-          {/* Navigation Buttons */}
-          <div className="flex items-center gap-3">
-            <Link href="/app/tools/playground/preview">
-              <Button className="bg-green-600 hover:bg-green-700 text-white gap-2 px-6">
-                <Eye className="w-4 h-4" />
-                Preview
-              </Button>
-            </Link>
-            <Link href="/app/tools/playground/saved">
-              <Button variant="outline" className="border-violet-500/50 text-violet-400 hover:bg-violet-500/10 gap-2 px-6">
-                <FolderOpen className="w-4 h-4" />
-                Saved
-              </Button>
-            </Link>
-          </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={newProject} className="text-neutral-400 hover:text-white h-8">
+            <Plus className="w-4 h-4 mr-1" /> New
+          </Button>
+          <Button size="sm" variant="ghost" onClick={saveProject} disabled={isSaving} className="text-violet-400 hover:text-violet-300 h-8">
+            {isSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+            Save
+          </Button>
+          <div className="w-px h-5 bg-[#3c3c3c]" />
+          <Link href="/app/tools/playground/preview">
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 h-8">
+              <Eye className="w-4 h-4 mr-1" /> Preview
+            </Button>
+          </Link>
+          <Link href="/app/tools/playground/saved">
+            <Button size="sm" variant="outline" className="border-[#3c3c3c] text-neutral-300 hover:bg-[#3c3c3c] h-8">
+              <FolderOpen className="w-4 h-4 mr-1" /> Saved
+            </Button>
+          </Link>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className={cn(
-        "max-w-7xl mx-auto rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-900/50 backdrop-blur",
-        isFullscreen && "fixed inset-4 z-50 max-w-none"
-      )}>
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-800 bg-neutral-900">
-          <div className="flex items-center gap-4">
-            <Input
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              className="bg-neutral-800 border-neutral-700 text-white font-medium w-56 focus-visible:ring-violet-500"
-              placeholder="Project name..."
+      <div className="flex-1 flex overflow-hidden">
+        {/* Code Editors - Left Side */}
+        <div className="w-1/2 flex flex-col border-r border-[#3c3c3c]">
+          {/* HTML Editor */}
+          <div className="flex-1 flex flex-col border-b border-[#3c3c3c]">
+            <div className="h-8 flex items-center px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
+              <span className="text-xs font-medium text-orange-400">HTML</span>
+            </div>
+            <textarea
+              value={html}
+              onChange={(e) => setHtml(e.target.value)}
+              className="flex-1 bg-[#1e1e1e] text-orange-200 font-mono text-sm p-3 resize-none outline-none"
+              placeholder="<div>Your HTML here...</div>"
+              spellCheck={false}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={newProject} className="text-neutral-400 hover:text-white gap-2">
-              <Plus className="w-4 h-4" />
-              New
-            </Button>
-            <Button variant="ghost" size="sm" onClick={saveProject} disabled={isSaving} className="text-violet-400 hover:text-violet-300 gap-2">
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleDownload} className="text-neutral-400 hover:text-white gap-2">
-              <Download className="w-4 h-4" />
-              Download
-            </Button>
-            <div className="w-px h-6 bg-neutral-700 mx-2" />
-            <Button variant="ghost" size="icon" onClick={() => setIsFullscreen(!isFullscreen)} className="text-neutral-400 hover:text-white">
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </Button>
+
+          {/* CSS Editor */}
+          <div className="flex-1 flex flex-col border-b border-[#3c3c3c]">
+            <div className="h-8 flex items-center px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
+              <span className="text-xs font-medium text-blue-400">CSS</span>
+            </div>
+            <textarea
+              value={css}
+              onChange={(e) => setCss(e.target.value)}
+              className="flex-1 bg-[#1e1e1e] text-blue-200 font-mono text-sm p-3 resize-none outline-none"
+              placeholder=".container { ... }"
+              spellCheck={false}
+            />
+          </div>
+
+          {/* JS Editor */}
+          <div className="flex-1 flex flex-col">
+            <div className="h-8 flex items-center px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
+              <span className="text-xs font-medium text-yellow-400">JavaScript</span>
+            </div>
+            <textarea
+              value={js}
+              onChange={(e) => setJs(e.target.value)}
+              className="flex-1 bg-[#1e1e1e] text-yellow-200 font-mono text-sm p-3 resize-none outline-none"
+              placeholder="// Your JavaScript here..."
+              spellCheck={false}
+            />
           </div>
         </div>
 
-        <div className="flex" style={{ height: isFullscreen ? 'calc(100vh - 120px)' : '70vh' }}>
-          {/* AI Chat Panel */}
-          <div className="w-80 flex flex-col border-r border-neutral-800 bg-neutral-950/50">
-            <div className="px-4 py-3 border-b border-neutral-800 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-violet-400" />
-              <span className="font-semibold text-white">AI Assistant</span>
+        {/* Preview - Right Side */}
+        <div className="w-1/2 flex flex-col">
+          {/* Preview Header */}
+          <div className="h-8 flex items-center justify-between px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
+            <span className="text-xs font-medium text-green-400">Preview</span>
+            <div className="flex items-center gap-1">
+              <button onClick={runCode} className="p-1 hover:bg-[#3c3c3c] rounded" title="Refresh">
+                <RefreshCw className="w-3.5 h-3.5 text-neutral-400" />
+              </button>
+              <button onClick={openInNewWindow} className="p-1 hover:bg-[#3c3c3c] rounded" title="Open in new window">
+                <ExternalLink className="w-3.5 h-3.5 text-neutral-400" />
+              </button>
             </div>
+          </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {chatMessages.map((msg, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={cn("flex gap-3", msg.role === 'user' ? "justify-end" : "")}
-                >
-                  {msg.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
-                      <Bot className="w-4 h-4 text-violet-400" />
-                    </div>
-                  )}
-                  <div className={cn(
-                    "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
-                    msg.role === 'user'
-                      ? "bg-violet-600 text-white rounded-br-md"
-                      : "bg-neutral-800 text-neutral-200 rounded-bl-md"
-                  )}>
-                    {msg.content}
-                  </div>
-                  {msg.role === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center flex-shrink-0">
-                      <User className="w-4 h-4 text-neutral-300" />
-                    </div>
-                  )}
-                </motion.div>
+          {/* Preview iframe */}
+          <div className="flex-1 bg-[#0a0a0a]">
+            <iframe
+              ref={iframeRef}
+              className="w-full h-full border-0"
+              sandbox="allow-scripts allow-modals"
+              title="Preview"
+            />
+          </div>
+
+          {/* Console */}
+          <div className="h-24 flex flex-col border-t border-[#3c3c3c]">
+            <div className="h-6 flex items-center justify-between px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
+              <span className="text-xs text-neutral-500">Console</span>
+              <button onClick={() => setConsoleOutput([])} className="text-neutral-600 hover:text-neutral-400">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 font-mono text-xs bg-[#1e1e1e]">
+              {consoleOutput.length === 0 ? (
+                <span className="text-neutral-600">Console output...</span>
+              ) : consoleOutput.map((msg, i) => (
+                <div key={i} className={cn(
+                  "py-0.5",
+                  msg.startsWith('ERROR') ? "text-red-400" : "text-green-400"
+                )}>{msg}</div>
               ))}
-              {isGenerating && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center">
-                    <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
-                  </div>
-                  <div className="bg-neutral-800 rounded-2xl rounded-bl-md px-4 py-2.5">
-                    <span className="text-sm text-neutral-400">Creating your code...</span>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Prompt Translator Panel */}
+      {showTranslator && (
+        <div className="border-t border-[#3c3c3c] bg-[#1e1e1e] p-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-medium text-white">Prompt Translator</span>
+                <span className="text-xs text-neutral-500">Write your idea casually, get a detailed prompt</span>
+              </div>
+              <button onClick={() => setShowTranslator(false)} className="text-neutral-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Input */}
-            <div className="p-4 border-t border-neutral-800">
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="What should I build?"
-                  className="flex-1 bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500 focus-visible:ring-violet-500"
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChat()}
-                  disabled={isGenerating}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Input */}
+              <div>
+                <label className="text-xs text-neutral-500 mb-1 block">Your idea (casual)</label>
+                <textarea
+                  value={rawIdea}
+                  onChange={(e) => setRawIdea(e.target.value)}
+                  placeholder="e.g., make me a cool bouncing ball thing with like sparkles and stuff when it bounces"
+                  className="w-full h-24 bg-[#2d2d2d] text-white text-sm p-3 rounded-lg resize-none outline-none border border-[#3c3c3c] focus:border-amber-500"
                 />
                 <Button
-                  onClick={handleChat}
-                  disabled={isGenerating || !chatInput.trim()}
-                  className="bg-violet-600 hover:bg-violet-700 px-4"
+                  onClick={translatePrompt}
+                  disabled={isTranslating || !rawIdea.trim()}
+                  className="mt-2 bg-amber-600 hover:bg-amber-700"
                 >
-                  <Send className="w-4 h-4" />
+                  {isTranslating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
+                  Translate
                 </Button>
               </div>
-            </div>
-          </div>
 
-          {/* Code Editor */}
-          <div className="flex-1 flex flex-col">
-            {/* Editor Tabs */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-800 bg-neutral-900/50">
-              {[
-                { id: 'html' as EditorTab, label: 'HTML', icon: FileCode, color: '#f97316' },
-                { id: 'css' as EditorTab, label: 'CSS', icon: Palette, color: '#3b82f6' },
-                { id: 'js' as EditorTab, label: 'JavaScript', icon: FileText, color: '#eab308' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setEditorTab(tab.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                    editorTab === tab.id
-                      ? "text-white shadow-lg"
-                      : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
-                  )}
-                  style={editorTab === tab.id ? { backgroundColor: `${tab.color}22`, color: tab.color } : {}}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              ))}
-
-              <div className="ml-auto flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleCopy} className="text-neutral-500 hover:text-white gap-2">
-                  {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                  {copied ? 'Copied' : 'Copy'}
-                </Button>
+              {/* Output */}
+              <div>
+                <label className="text-xs text-neutral-500 mb-1 block">Technical prompt (copy this)</label>
+                <textarea
+                  value={translatedPrompt}
+                  readOnly
+                  placeholder="Translated prompt will appear here..."
+                  className="w-full h-24 bg-[#2d2d2d] text-green-300 text-sm p-3 rounded-lg resize-none outline-none border border-[#3c3c3c]"
+                />
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    onClick={copyTranslatedPrompt}
+                    disabled={!translatedPrompt}
+                    variant="outline"
+                    className="border-[#3c3c3c] text-neutral-300"
+                  >
+                    {copied ? <Check className="w-4 h-4 mr-2 text-green-400" /> : <Copy className="w-4 h-4 mr-2" />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </Button>
+                  <Button
+                    onClick={useTranslatedPrompt}
+                    disabled={!translatedPrompt}
+                    className="bg-violet-600 hover:bg-violet-700"
+                  >
+                    Use This Prompt
+                  </Button>
+                </div>
               </div>
-            </div>
-
-            {/* Code Area */}
-            <div className="flex-1 relative bg-neutral-950">
-              <textarea
-                value={getCurrentCode()}
-                onChange={(e) => setCurrentCode(e.target.value)}
-                className={cn(
-                  "absolute inset-0 w-full h-full bg-transparent border-0 font-mono text-sm resize-none p-6 focus:outline-none leading-relaxed",
-                  editorTab === 'html' && "text-orange-300",
-                  editorTab === 'css' && "text-blue-300",
-                  editorTab === 'js' && "text-yellow-300"
-                )}
-                spellCheck={false}
-                placeholder={`Write your ${editorTab.toUpperCase()} code here...`}
-              />
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Input Bar - Bottom */}
+      <div className="h-14 flex items-center gap-3 px-4 bg-[#252526] border-t border-[#3c3c3c]">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setShowTranslator(!showTranslator)}
+          className={cn(
+            "h-8 px-2",
+            showTranslator ? "text-amber-400" : "text-neutral-500 hover:text-amber-400"
+          )}
+          title="Prompt Translator"
+        >
+          <Wand2 className="w-4 h-4" />
+        </Button>
+        <Sparkles className="w-5 h-5 text-violet-400 flex-shrink-0" />
+        <input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+          placeholder="Describe what to create... (e.g., 'bouncing ball with particle effects', 'neon button', 'space shooter game')"
+          className="flex-1 bg-[#3c3c3c] text-white text-sm px-4 py-2 rounded-lg outline-none placeholder:text-neutral-500 focus:ring-1 focus:ring-violet-500"
+          disabled={isGenerating}
+        />
+        <Button
+          onClick={handleGenerate}
+          disabled={isGenerating || !prompt.trim()}
+          className="bg-violet-600 hover:bg-violet-700 h-9 px-4"
+        >
+          {isGenerating ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Send className="w-4 h-4" />
+          )}
+        </Button>
+        {aiMessage && (
+          <span className={cn(
+            "text-sm",
+            aiMessage.includes('Error') || aiMessage.includes('failed') ? "text-red-400" : "text-green-400"
+          )}>{aiMessage}</span>
+        )}
       </div>
     </div>
   )

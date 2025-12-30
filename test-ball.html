@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html><head><meta charset='UTF-8'>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{min-height:100vh;background:#0a0a0a;display:flex;align-items:center;justify-content:center}
+</style></head>
+<body><canvas id="canvas" width="800" height="600"></canvas><script>let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
+let ball = {
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  vx: 2,
+  vy: 2,
+  radius: 30,
+  color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+};
+let particles = [];
+let gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+gradient.addColorStop(0, `hsl(220, 100%, 50%)`);
+gradient.addColorStop(1, `hsl(280, 100%, 50%)`);
+function drawBackground() {
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+function drawBall() {
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = `hsl(${hslToRgb(ball.color).h}, 100%, 50%, 0.5)`;
+  ctx.fillStyle = ball.color;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+function updateBall() {
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
+    ball.vx *= -1;
+    createParticle(ball.x, ball.y);
+  }
+  if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+    ball.vy *= -1;
+    createParticle(ball.x, ball.y);
+  }
+}
+function drawParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let particle = particles[i];
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = `hsl(${hslToRgb(particle.color).h}, 100%, 50%, 0.5)`;
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+    ctx.fill();
+    particle.x += particle.vx;
+    particle.y += particle.vy;
+    particle.radius -= 0.1;
+    if (particle.radius < 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+function createParticle(x, y) {
+  particles.push({
+    x: x,
+    y: y,
+    vx: Math.random() * 2 - 1,
+    vy: Math.random() * 2 - 1,
+    radius: 5,
+    color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+  });
+}
+function hslToRgb(hslColor) {
+  let hsl = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  let h = parseInt(hsl[1]) / 360;
+  let s = parseInt(hsl[2]) / 100;
+  let l = parseInt(hsl[3]) / 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hueToRgb(p, q, h + 1/3);
+    g = hueToRgb(p, q, h);
+    b = hueToRgb(p, q, h - 1/3);
+  }
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+    h: parseInt(hsl[1]),
+  };
+}
+function hueToRgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1/6) return p + (q - p) * 6 * t;
+  if (t < 1/2) return q;
+  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+  return p;
+}
+function animate() {
+  drawBackground();
+  drawBall();
+  updateBall();
+  drawParticles();
+  requestAnimationFrame(animate);
+}
+animate();</script></body></html>

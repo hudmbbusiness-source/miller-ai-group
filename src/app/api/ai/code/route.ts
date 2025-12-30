@@ -20,39 +20,49 @@ interface ConversationMessage {
   content: string
 }
 
-const PLAYGROUND_SYSTEM_PROMPT = `You are an expert creative web developer who builds impressive, interactive web experiences. You create visually stunning code with animations, effects, and interactivity.
+const PLAYGROUND_SYSTEM_PROMPT = `You are a creative frontend developer who makes VISUALLY STUNNING web experiences. Your code is professional-grade, like CodePen featured pens.
 
-CRITICAL: You MUST respond with valid JSON in this exact format:
-{
-  "description": "Brief description of what you created",
-  "html": "your HTML code here",
-  "css": "your CSS code here",
-  "js": "your JavaScript code here"
-}
+OUTPUT FORMAT - Respond with ONLY this JSON:
+{"description":"what you made","html":"<html here>","css":"<css here>","js":"<js here>"}
 
-IMPORTANT RULES:
-1. Response must be ONLY valid JSON - no markdown, no extra text
-2. All code must be COMPLETE and WORKING - no placeholders, no "// add more here"
-3. HTML should be just body content (no doctype, html, head, body tags)
-4. Escape all quotes and special characters properly for JSON
+CRITICAL VISUAL REQUIREMENTS:
+1. NEVER use plain rectangles or basic shapes - add gradients, rounded corners, shadows, glows
+2. ALWAYS add animations - nothing should be static
+3. Use vibrant colors - neon glows, gradients, particle effects
+4. Canvas games must have: gradient backgrounds, glowing elements, particle trails, smooth physics
+5. UI elements must have: glassmorphism, shadows, hover states, transitions
 
-STYLE REQUIREMENTS - Make everything visually impressive:
-- Use modern CSS: gradients, shadows, blur, transforms, transitions
-- Add smooth animations with CSS @keyframes or JS requestAnimationFrame
-- Use vibrant color schemes with proper contrast
-- Add hover effects, glows, particle effects when appropriate
-- For games: use HTML5 Canvas with smooth 60fps animations
-- For UI: glassmorphism, neumorphism, modern card designs
-- Make it responsive and centered on the page
+EXAMPLE - If asked for "bouncing ball", create THIS quality:
+- Canvas with gradient or starfield background
+- Ball with gradient fill and outer glow (shadowBlur)
+- Motion trail using fading circles
+- Color that shifts through rainbow using HSL
+- Gravity, bounce physics, maybe mouse interaction
+- Particle burst on bounce
 
-EXAMPLES OF WHAT TO CREATE:
-- "bouncing ball" = Animated ball with physics, trails, color changes, click interactions
-- "button" = Glowing neon button with hover effects, ripple animation, gradient
-- "clock" = Analog or digital clock with smooth animations, modern design
-- "game" = Full canvas game with controls, scoring, particles, sound effects
-- "loading" = Creative loading animation with multiple elements
+EXAMPLE - If asked for "button", create THIS quality:
+- Gradient background with multiple color stops
+- Multiple layered box-shadows for glow effect
+- Hover: scale transform, brighter glow, color shift
+- Click: ripple effect, press animation
+- Pseudo-elements for extra effects
 
-Always go above and beyond what's asked - add extra polish and effects.`
+EXAMPLE - If asked for "game", include:
+- Gradient/animated background (stars, particles)
+- Player with glow/trail effects
+- Enemies with distinct visual styles
+- Particle explosions on hits
+- Floating score with glow
+- Smooth requestAnimationFrame loop
+
+CODE STYLE:
+- Use template literals for complex strings
+- Use HSL colors for easy manipulation
+- Use ctx.shadowBlur and ctx.shadowColor for glows
+- Use CSS variables for theming
+- Add requestAnimationFrame for all animations
+
+Make it look like a professional CodePen demo, not a coding tutorial example.`
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,18 +80,20 @@ export async function POST(request: NextRequest) {
       ]
 
       // Build context-aware prompt
-      let userPrompt = prompt
+      let userPrompt = `Create: ${prompt}
+
+Remember: Make it VISUALLY IMPRESSIVE with glows, gradients, animations, and effects. Not a basic tutorial example.`
 
       // If there's existing code, include it for modifications
       if (currentCode && (currentCode.html || currentCode.css || currentCode.js)) {
-        userPrompt = `CURRENT CODE TO MODIFY:
+        userPrompt = `CURRENT CODE:
 HTML: ${currentCode.html || '(empty)'}
 CSS: ${currentCode.css || '(empty)'}
 JS: ${currentCode.js || '(empty)'}
 
-USER REQUEST: ${prompt}
+MODIFY TO: ${prompt}
 
-Modify the existing code based on the request. Keep what works, improve what's asked.`
+Keep the visual quality high - gradients, glows, animations.`
       }
 
       messages.push({ role: 'user', content: userPrompt })
@@ -89,7 +101,7 @@ Modify the existing code based on the request. Keep what works, improve what's a
       const completion = await getGroqClient().chat.completions.create({
         messages,
         model: 'llama-3.3-70b-versatile',
-        temperature: 0.5,
+        temperature: 0.7,
         max_tokens: 8000,
       })
 
@@ -97,7 +109,6 @@ Modify the existing code based on the request. Keep what works, improve what's a
 
       // Parse JSON response
       try {
-        // Try to extract JSON from the response
         let jsonStr = result.trim()
 
         // Remove markdown code blocks if present
@@ -122,10 +133,7 @@ Modify the existing code based on the request. Keep what works, improve what's a
           tokensUsed: completion.usage?.total_tokens || 0,
         })
       } catch (parseError) {
-        // If JSON parsing fails, try to extract code another way
-        console.error('JSON parse failed, trying fallback:', parseError)
-
-        // Return raw response for debugging
+        console.error('JSON parse failed:', parseError)
         return NextResponse.json({
           success: false,
           error: 'Failed to parse AI response',
@@ -135,7 +143,7 @@ Modify the existing code based on the request. Keep what works, improve what's a
       }
     }
 
-    // Legacy chat mode - for backward compatibility
+    // Legacy chat mode
     if (action === 'chat' && systemPrompt) {
       const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
         { role: 'system', content: systemPrompt }
@@ -174,40 +182,16 @@ Use modern best practices and include helpful comments where appropriate.`
     let userPrompt = ''
 
     if (action === 'generate') {
-      userPrompt = `Write ${language || 'JavaScript'} code for the following:
-
-${prompt}
-
-Remember: Return ONLY the code, no markdown, no explanations.`
+      userPrompt = `Write ${language || 'JavaScript'} code for: ${prompt}. Return ONLY code.`
     } else if (action === 'improve') {
-      userPrompt = `Improve this ${language || 'JavaScript'} code. Make it more efficient, readable, and add helpful comments:
-
-${existingCode}
-
-${prompt ? `Additional instructions: ${prompt}` : ''}
-
-Remember: Return ONLY the improved code, no markdown, no explanations.`
+      userPrompt = `Improve this ${language || 'JavaScript'} code:\n${existingCode}\n${prompt ? `Instructions: ${prompt}` : ''}\nReturn ONLY code.`
     } else if (action === 'explain') {
-      defaultSystemPrompt = `You are an expert programmer who explains code clearly and concisely.`
-      userPrompt = `Explain this ${language || 'JavaScript'} code in detail:
-
-${existingCode}
-
-Explain what it does, how it works, and any important patterns or concepts used.`
+      defaultSystemPrompt = `You are an expert programmer who explains code clearly.`
+      userPrompt = `Explain this ${language || 'JavaScript'} code:\n${existingCode}`
     } else if (action === 'debug') {
-      userPrompt = `Debug and fix this ${language || 'JavaScript'} code:
-
-${existingCode}
-
-${prompt ? `The issue is: ${prompt}` : 'Find and fix any bugs or issues.'}
-
-Remember: Return ONLY the fixed code, no markdown, no explanations.`
+      userPrompt = `Debug this ${language || 'JavaScript'} code:\n${existingCode}\n${prompt ? `Issue: ${prompt}` : ''}\nReturn ONLY fixed code.`
     } else if (action === 'convert') {
-      userPrompt = `Convert this code to ${prompt || 'TypeScript'}:
-
-${existingCode}
-
-Remember: Return ONLY the converted code, no markdown, no explanations.`
+      userPrompt = `Convert to ${prompt || 'TypeScript'}:\n${existingCode}\nReturn ONLY code.`
     }
 
     const completion = await getGroqClient().chat.completions.create({
@@ -222,7 +206,6 @@ Remember: Return ONLY the converted code, no markdown, no explanations.`
 
     const result = completion.choices[0]?.message?.content || ''
 
-    // Clean up any markdown code blocks if present
     let cleanedResult = result
     if (cleanedResult.startsWith('```')) {
       cleanedResult = cleanedResult.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')

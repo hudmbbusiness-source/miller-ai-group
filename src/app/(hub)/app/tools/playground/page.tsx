@@ -82,9 +82,39 @@ export default function PlaygroundPage() {
     return () => window.removeEventListener('message', handler)
   }, [])
 
+  // Clean code by removing any wrapper tags the AI might include
+  const cleanCSS = (code: string) => {
+    return code
+      .replace(/<style[^>]*>/gi, '')
+      .replace(/<\/style>/gi, '')
+      .trim()
+  }
+
+  const cleanJS = (code: string) => {
+    return code
+      .replace(/<script[^>]*>/gi, '')
+      .replace(/<\/script>/gi, '')
+      .trim()
+  }
+
+  const cleanHTML = (code: string) => {
+    return code
+      .replace(/<!DOCTYPE[^>]*>/gi, '')
+      .replace(/<html[^>]*>/gi, '')
+      .replace(/<\/html>/gi, '')
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+      .replace(/<body[^>]*>/gi, '')
+      .replace(/<\/body>/gi, '')
+      .trim()
+  }
+
   const runCode = useCallback(() => {
     if (!iframeRef.current) return
     setConsoleOutput([])
+
+    const safeCSS = cleanCSS(css)
+    const safeJS = cleanJS(js)
+    const safeHTML = cleanHTML(html)
 
     const doc = `<!DOCTYPE html>
 <html>
@@ -99,11 +129,11 @@ body {
   color: white;
   font-family: system-ui, sans-serif;
 }
-${css}
+${safeCSS}
 </style>
 </head>
 <body>
-${html}
+${safeHTML}
 <script>
 (function() {
   const log = console.log;
@@ -119,7 +149,7 @@ ${html}
   };
 })();
 try {
-${js}
+${safeJS}
 } catch(e) { console.error(e.message); }
 </script>
 </body>

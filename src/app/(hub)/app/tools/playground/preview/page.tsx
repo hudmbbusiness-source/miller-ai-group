@@ -64,9 +64,23 @@ export default function PreviewPage() {
     return () => window.removeEventListener('message', handler)
   }, [])
 
+  // Clean code by removing any wrapper tags the AI might include
+  const cleanCSS = (code: string) => code.replace(/<style[^>]*>/gi, '').replace(/<\/style>/gi, '').trim()
+  const cleanJS = (code: string) => code.replace(/<script[^>]*>/gi, '').replace(/<\/script>/gi, '').trim()
+  const cleanHTML = (code: string) => code
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/<html[^>]*>/gi, '').replace(/<\/html>/gi, '')
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+    .replace(/<body[^>]*>/gi, '').replace(/<\/body>/gi, '')
+    .trim()
+
   const runCode = useCallback(() => {
     if (!iframeRef.current) return
     setConsoleOutput([])
+
+    const safeCSS = cleanCSS(css)
+    const safeJS = cleanJS(js)
+    const safeHTML = cleanHTML(html)
 
     const fullHtml = `<!DOCTYPE html>
 <html>
@@ -74,10 +88,14 @@ export default function PreviewPage() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${projectName}</title>
-  <style>${css}</style>
+  <style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { min-height: 100vh; background: #0a0a0a; color: white; font-family: system-ui, sans-serif; }
+${safeCSS}
+  </style>
 </head>
 <body>
-${html}
+${safeHTML}
 <script>
 // Console proxy
 const _c = console;
@@ -90,7 +108,7 @@ window.onerror = (m, u, l) => parent.postMessage({t:'err', m: m + ' (line ' + l 
 
 // Run user code
 try {
-  ${js}
+  ${safeJS}
 } catch(e) {
   console.error(e.message);
 }

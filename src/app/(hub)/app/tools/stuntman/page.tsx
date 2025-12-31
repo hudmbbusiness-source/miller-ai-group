@@ -314,13 +314,13 @@ export default function StuntmanToolPage() {
                           Bids (Buy Orders)
                         </div>
                         <div className="space-y-1">
-                          {orderbook.bids.slice(0, 5).map((bid, i) => (
+                          {(orderbook.bids || []).slice(0, 5).map((bid, i) => (
                             <div
                               key={i}
                               className="flex justify-between text-xs p-2 rounded bg-emerald-500/5 border border-emerald-500/10"
                             >
-                              <span className="text-emerald-400">${formatPrice(bid.price)}</span>
-                              <span className="text-muted-foreground">{formatVolume(bid.quantity)}</span>
+                              <span className="text-emerald-400">${formatPrice(bid?.price)}</span>
+                              <span className="text-muted-foreground">{formatVolume(bid?.quantity)}</span>
                             </div>
                           ))}
                         </div>
@@ -331,13 +331,13 @@ export default function StuntmanToolPage() {
                           Asks (Sell Orders)
                         </div>
                         <div className="space-y-1">
-                          {orderbook.asks.slice(0, 5).map((ask, i) => (
+                          {(orderbook.asks || []).slice(0, 5).map((ask, i) => (
                             <div
                               key={i}
                               className="flex justify-between text-xs p-2 rounded bg-red-500/5 border border-red-500/10"
                             >
-                              <span className="text-red-400">${formatPrice(ask.price)}</span>
-                              <span className="text-muted-foreground">{formatVolume(ask.quantity)}</span>
+                              <span className="text-red-400">${formatPrice(ask?.price)}</span>
+                              <span className="text-muted-foreground">{formatVolume(ask?.quantity)}</span>
                             </div>
                           ))}
                         </div>
@@ -350,25 +350,28 @@ export default function StuntmanToolPage() {
                     <div>
                       <div className="text-sm font-medium mb-3">Other Markets</div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {dashboard.tickers.filter(t => t.instrument_name !== selectedPair).slice(0, 4).map((t) => {
-                          const change = parseFloat(t.price_change_percentage_24h || '0')
-                          const up = change >= 0
-                          return (
-                            <motion.button
-                              key={t.instrument_name}
-                              onClick={() => setSelectedPair(t.instrument_name)}
-                              className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 border border-border/50 hover:border-emerald-500/30 transition-all text-left"
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                            >
-                              <div className="text-xs text-muted-foreground">{t.instrument_name.replace('_', '/')}</div>
-                              <div className="font-medium">${formatPrice(t.last_traded_price)}</div>
-                              <div className={cn("text-xs", up ? "text-emerald-500" : "text-red-500")}>
-                                {up ? '+' : ''}{change.toFixed(2)}%
-                              </div>
-                            </motion.button>
-                          )
-                        })}
+                        {dashboard.tickers
+                          .filter(t => t && t.instrument_name && t.instrument_name !== selectedPair)
+                          .slice(0, 4)
+                          .map((t) => {
+                            const change = parseFloat(t.price_change_percentage_24h || '0')
+                            const up = change >= 0
+                            return (
+                              <motion.button
+                                key={t.instrument_name}
+                                onClick={() => setSelectedPair(t.instrument_name)}
+                                className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 border border-border/50 hover:border-emerald-500/30 transition-all text-left"
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                              >
+                                <div className="text-xs text-muted-foreground">{t.instrument_name?.replace('_', '/') || '--'}</div>
+                                <div className="font-medium">${formatPrice(t.last_traded_price)}</div>
+                                <div className={cn("text-xs", up ? "text-emerald-500" : "text-red-500")}>
+                                  {up ? '+' : ''}{isNaN(change) ? '0.00' : change.toFixed(2)}%
+                                </div>
+                              </motion.button>
+                            )
+                          })}
                       </div>
                     </div>
                   )}

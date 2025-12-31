@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
+import Cerebras from '@cerebras/cerebras_cloud_sdk'
 
 let groqClient: Groq | null = null
+let cerebrasClient: Cerebras | null = null
 
-function getGroqClient(): Groq {
-  if (!groqClient) {
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error('GROQ_API_KEY is not configured')
-    }
+function getGroqClient(): Groq | null {
+  if (!groqClient && process.env.GROQ_API_KEY) {
     groqClient = new Groq({
       apiKey: process.env.GROQ_API_KEY,
     })
@@ -15,41 +14,60 @@ function getGroqClient(): Groq {
   return groqClient
 }
 
-// Use smaller model - much higher rate limits on free tier
-const MODEL = 'llama-3.1-8b-instant'
+function getCerebrasClient(): Cerebras | null {
+  if (!cerebrasClient && process.env.CEREBRAS_API_KEY) {
+    cerebrasClient = new Cerebras({
+      apiKey: process.env.CEREBRAS_API_KEY,
+    })
+  }
+  return cerebrasClient
+}
 
-// Retry with exponential backoff
+// Provider configurations
+const PROVIDERS = [
+  { name: 'groq', model: 'llama-3.1-8b-instant', getClient: getGroqClient },
+  { name: 'cerebras', model: 'llama-3.3-70b', getClient: getCerebrasClient },
+]
+
+// Try providers with retry logic
 async function callWithRetry(
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
   options: { temperature: number; max_tokens: number }
 ) {
-  const maxRetries = 4
-  const baseDelay = 5000 // 5 seconds
+  const maxRetries = 2
+  const baseDelay = 3000
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const completion = await getGroqClient().chat.completions.create({
-        messages,
-        model: MODEL,
-        temperature: options.temperature,
-        max_tokens: options.max_tokens,
-      })
-      return { completion, model: MODEL }
-    } catch (error) {
-      const isRateLimit = error instanceof Error &&
-        (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
+  for (const provider of PROVIDERS) {
+    const client = provider.getClient()
+    if (!client) continue
 
-      if (isRateLimit && attempt < maxRetries - 1) {
-        // Wait longer each time: 5s, 10s, 20s, 40s
-        const delay = baseDelay * Math.pow(2, attempt)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      } else {
-        throw error
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const completion = await client.chat.completions.create({
+          messages,
+          model: provider.model,
+          temperature: options.temperature,
+          max_tokens: options.max_tokens,
+        })
+        return { completion, model: provider.model, provider: provider.name }
+      } catch (error) {
+        const isRateLimit = error instanceof Error &&
+          (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
+
+        if (isRateLimit && attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        } else if (isRateLimit) {
+          // Try next provider
+          break
+        } else {
+          throw error
+        }
       }
     }
   }
 
-  throw new Error('All retry attempts failed')
+  throw new Error('All providers rate limited. Please try again in a minute.')
 }
 
 interface ConversationMessage {

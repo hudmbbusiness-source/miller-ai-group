@@ -15,6 +15,58 @@ function getGroqClient(): Groq {
   return groqClient
 }
 
+// Models in order of preference (try larger first, fall back to smaller)
+const MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant', // Faster, higher rate limits
+]
+
+// Retry with exponential backoff and model fallback
+async function callWithRetry(
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  options: { temperature: number; max_tokens: number }
+) {
+  const maxRetries = 3
+  const baseDelay = 2000 // 2 seconds
+
+  for (let modelIndex = 0; modelIndex < MODELS.length; modelIndex++) {
+    const model = MODELS[modelIndex]
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const completion = await getGroqClient().chat.completions.create({
+          messages,
+          model,
+          temperature: options.temperature,
+          max_tokens: options.max_tokens,
+        })
+        return { completion, model }
+      } catch (error) {
+        const isRateLimit = error instanceof Error &&
+          (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
+
+        if (isRateLimit) {
+          // If rate limited on last model, last attempt - throw
+          if (modelIndex === MODELS.length - 1 && attempt === maxRetries - 1) {
+            throw error
+          }
+
+          // If rate limited, try next model or wait and retry
+          if (attempt < maxRetries - 1) {
+            const delay = baseDelay * Math.pow(2, attempt) // 2s, 4s, 8s
+            await new Promise(resolve => setTimeout(resolve, delay))
+          }
+        } else {
+          // Non-rate-limit error, throw immediately
+          throw error
+        }
+      }
+    }
+  }
+
+  throw new Error('All retry attempts failed')
+}
+
 interface ConversationMessage {
   role: 'user' | 'assistant'
   content: string
@@ -98,9 +150,7 @@ Keep the visual quality high - gradients, glows, animations.`
 
       messages.push({ role: 'user', content: userPrompt })
 
-      const completion = await getGroqClient().chat.completions.create({
-        messages,
-        model: 'llama-3.3-70b-versatile',
+      const { completion, model: usedModel } = await callWithRetry(messages, {
         temperature: 0.7,
         max_tokens: 8000,
       })
@@ -157,9 +207,7 @@ Keep the visual quality high - gradients, glows, animations.`
 
       messages.push({ role: 'user', content: prompt })
 
-      const completion = await getGroqClient().chat.completions.create({
-        messages,
-        model: 'llama-3.3-70b-versatile',
+      const { completion } = await callWithRetry(messages, {
         temperature: 0.7,
         max_tokens: 8000,
       })
@@ -194,15 +242,13 @@ Use modern best practices and include helpful comments where appropriate.`
       userPrompt = `Convert to ${prompt || 'TypeScript'}:\n${existingCode}\nReturn ONLY code.`
     }
 
-    const completion = await getGroqClient().chat.completions.create({
-      messages: [
+    const { completion } = await callWithRetry(
+      [
         { role: 'system', content: defaultSystemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      model: 'llama-3.3-70b-versatile',
-      temperature: 0.3,
-      max_tokens: 4096,
-    })
+      { temperature: 0.3, max_tokens: 4096 }
+    )
 
     const result = completion.choices[0]?.message?.content || ''
 

@@ -482,8 +482,9 @@ export default function MediaLibraryPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {assets.map((asset) => {
-            const Icon = FileTypeIcon(asset.file_type)
+            const IconComponent = FileTypeIcon(asset.file_type)
             const isSelected = selectedAssets.has(asset.id)
+            const fileType = asset.file_type as MediaFileType
 
             return (
               <Card
@@ -527,10 +528,10 @@ export default function MediaLibraryPage() {
                   <Badge
                     className={cn(
                       'absolute bottom-2 left-2 text-xs',
-                      FILE_TYPE_COLORS[asset.file_type]
+                      FILE_TYPE_COLORS[fileType]
                     )}
                   >
-                    <Icon className="w-3 h-3 mr-1" />
+                    <IconComponent className="w-3 h-3 mr-1" />
                     {asset.file_type}
                   </Badge>
                 </div>
@@ -548,8 +549,9 @@ export default function MediaLibraryPage() {
         <Card>
           <div className="divide-y divide-white/5">
             {assets.map((asset) => {
-              const Icon = FileTypeIcon(asset.file_type)
+              const IconComponent = FileTypeIcon(asset.file_type)
               const isSelected = selectedAssets.has(asset.id)
+              const fileType = asset.file_type as MediaFileType
 
               return (
                 <div
@@ -588,7 +590,7 @@ export default function MediaLibraryPage() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <Icon className="w-6 h-6 text-neutral-500" />
+                      <IconComponent className="w-6 h-6 text-neutral-500" />
                     )}
                   </div>
 
@@ -601,7 +603,7 @@ export default function MediaLibraryPage() {
                   </div>
 
                   {/* Type badge */}
-                  <Badge className={cn('flex-shrink-0', FILE_TYPE_COLORS[asset.file_type])}>
+                  <Badge className={cn('flex-shrink-0', FILE_TYPE_COLORS[fileType])}>
                     {asset.file_type}
                   </Badge>
 

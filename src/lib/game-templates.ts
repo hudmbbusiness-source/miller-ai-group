@@ -1,10 +1,11 @@
-// High-quality prebuilt game templates for the Code Playground
+// High-quality prebuilt templates for the Code Playground
 
 export interface GameTemplate {
   id: string
   name: string
   description: string
   thumbnail: string
+  category: 'games' | 'ui' | 'animations'
   html: string
   css: string
   js: string
@@ -16,6 +17,7 @@ export const GAME_TEMPLATES: GameTemplate[] = [
     name: 'Space Shooter',
     description: 'Neon spaceship shooter with particles',
     thumbnail: '🚀',
+    category: 'games',
     html: `<canvas id="game" width="800" height="600"></canvas>`,
     css: `body{margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:hidden}canvas{box-shadow:0 0 30px rgba(0,255,255,0.3)}`,
     js: `const canvas = document.getElementById('game');
@@ -41,6 +43,7 @@ function draw() { ctx.save(); if(screenShake > 0.5) ctx.translate((Math.random()
     name: 'Neon Snake',
     description: 'Classic snake with glowing graphics',
     thumbnail: '🐍',
+    category: 'games',
     html: `<canvas id="game" width="600" height="600"></canvas>`,
     css: `body{margin:0;background:#0a0a0a;display:flex;justify-content:center;align-items:center;min-height:100vh}canvas{box-shadow:0 0 40px rgba(0,255,100,0.3)}`,
     js: `const canvas = document.getElementById('game');
@@ -58,6 +61,7 @@ function draw() { ctx.fillStyle = 'rgba(10, 10, 20, 0.2)'; ctx.fillRect(0, 0, 60
     name: 'Particle Playground',
     description: 'Click to create particle explosions',
     thumbnail: '✨',
+    category: 'animations',
     html: `<canvas id="game" width="800" height="600"></canvas>`,
     css: `body{margin:0;background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;overflow:hidden}canvas{cursor:crosshair;box-shadow:0 0 50px rgba(255,100,255,0.2)}`,
     js: `const canvas = document.getElementById('game');
@@ -79,6 +83,7 @@ function loop() { update(); draw(); requestAnimationFrame(loop); } ctx.fillStyle
     name: 'Neon Flappy',
     description: 'Flappy bird with synthwave style',
     thumbnail: '🐦',
+    category: 'games',
     html: `<canvas id="game" width="400" height="600"></canvas>`,
     css: `body{margin:0;background:linear-gradient(135deg,#1a0a2e,#16213e);display:flex;justify-content:center;align-items:center;min-height:100vh}canvas{box-shadow:0 0 40px rgba(255,0,255,0.4)}`,
     js: `const canvas = document.getElementById('game');
@@ -96,5 +101,278 @@ function drawPipe(p) { ctx.save(); ctx.shadowBlur = 20; ctx.shadowColor = \`hsl(
 function drawBird() { ctx.save(); ctx.translate(bird.x, bird.y); ctx.rotate(Math.min(Math.max(bird.vy * 0.05, -0.5), 0.8)); ctx.shadowBlur = 25; ctx.shadowColor = '#0ff'; const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, bird.radius); bodyGrad.addColorStop(0, '#fff'); bodyGrad.addColorStop(0.5, '#0ff'); bodyGrad.addColorStop(1, '#008'); ctx.fillStyle = bodyGrad; ctx.beginPath(); ctx.ellipse(0, 0, bird.radius, bird.radius * 0.8, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#0aa'; ctx.beginPath(); ctx.ellipse(-5, Math.sin(Date.now() * 0.02) * 3, 8, 5, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(6, -3, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(7, -3, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#f80'; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(20, 2); ctx.lineTo(12, 5); ctx.closePath(); ctx.fill(); ctx.restore(); }
 function draw() { const bgGrad = ctx.createLinearGradient(0, 0, 0, 600); bgGrad.addColorStop(0, '#1a0a2e'); bgGrad.addColorStop(0.5, '#16213e'); bgGrad.addColorStop(1, '#0f3460'); ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, 400, 600); ctx.fillStyle = '#fff'; for(let i = 0; i < 50; i++) { const x = (i * 73 + Date.now() * 0.01) % 400, y = (i * 47) % 400; ctx.globalAlpha = 0.3 + Math.sin(i + Date.now() * 0.005) * 0.3; ctx.fillRect(x, y, (Math.sin(i + Date.now() * 0.003) + 1), (Math.sin(i + Date.now() * 0.003) + 1)); } ctx.globalAlpha = 1; pipes.forEach(drawPipe); particles.forEach(p => { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.shadowBlur = 8; ctx.shadowColor = p.color; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); }); ctx.globalAlpha = 1; ctx.shadowBlur = 0; if(gameState !== 'dead') drawBird(); ctx.fillStyle = '#f0f'; ctx.shadowBlur = 10; ctx.shadowColor = '#f0f'; ctx.fillRect(0, 570, 400, 5); for(let i = -1; i < 11; i++) { ctx.fillStyle = '#808'; ctx.fillRect(i * 40 - groundOffset, 575, 20, 25); } ctx.shadowBlur = 15; ctx.shadowColor = '#fff'; ctx.fillStyle = '#fff'; ctx.font = 'bold 48px monospace'; ctx.textAlign = 'center'; ctx.fillText(score.toString(), 200, 80); if(gameState === 'start') { ctx.font = '20px monospace'; ctx.fillText('TAP or SPACE to start', 200, 400); } if(gameState === 'dead') { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 0; ctx.fillRect(0, 0, 400, 600); ctx.shadowBlur = 20; ctx.shadowColor = '#f0f'; ctx.fillStyle = '#f0f'; ctx.font = 'bold 40px monospace'; ctx.fillText('GAME OVER', 200, 250); ctx.shadowColor = '#fff'; ctx.fillStyle = '#fff'; ctx.font = '24px monospace'; ctx.fillText('Score: ' + score, 200, 310); ctx.fillText('Best: ' + highScore, 200, 345); ctx.font = '18px monospace'; ctx.fillText('TAP to restart', 200, 400); } }
 function loop() { update(); draw(); requestAnimationFrame(loop); } loop();`
+  },
+  // UI Components
+  {
+    id: 'glassmorphic-card',
+    name: 'Glassmorphic Card',
+    description: 'Modern frosted glass card design',
+    thumbnail: '🪟',
+    category: 'ui',
+    html: `<div class="container">
+  <div class="card">
+    <div class="card-header">
+      <div class="avatar"></div>
+      <div class="info">
+        <h3>Alex Morgan</h3>
+        <p>Product Designer</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>Creating beautiful interfaces with attention to every detail. Passionate about user experience.</p>
+    </div>
+    <div class="card-footer">
+      <button class="btn primary">Follow</button>
+      <button class="btn secondary">Message</button>
+    </div>
+  </div>
+</div>`,
+    css: `.container{display:flex;justify-content:center;align-items:center;min-height:100vh;background:linear-gradient(135deg,#667eea 0%,#764ba2 50%,#f093fb 100%);font-family:system-ui,sans-serif}
+.card{width:320px;padding:24px;background:rgba(255,255,255,0.15);backdrop-filter:blur(20px);border-radius:24px;border:1px solid rgba(255,255,255,0.3);box-shadow:0 25px 50px rgba(0,0,0,0.15)}
+.card-header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+.avatar{width:60px;height:60px;background:linear-gradient(135deg,#f093fb,#f5576c);border-radius:50%;box-shadow:0 8px 20px rgba(240,147,251,0.4)}
+.info h3{margin:0;color:#fff;font-size:18px}
+.info p{margin:4px 0 0;color:rgba(255,255,255,0.7);font-size:14px}
+.card-body{color:rgba(255,255,255,0.9);font-size:14px;line-height:1.6;margin-bottom:20px}
+.card-body p{margin:0}
+.card-footer{display:flex;gap:12px}
+.btn{flex:1;padding:12px;border:none;border-radius:12px;font-weight:600;cursor:pointer;transition:all 0.3s}
+.btn.primary{background:linear-gradient(135deg,#f093fb,#f5576c);color:#fff;box-shadow:0 4px 15px rgba(240,147,251,0.4)}
+.btn.primary:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(240,147,251,0.5)}
+.btn.secondary{background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3)}
+.btn.secondary:hover{background:rgba(255,255,255,0.3)}`,
+    js: `// Add subtle floating animation
+const card = document.querySelector('.card');
+let time = 0;
+function animate() {
+  time += 0.02;
+  const y = Math.sin(time) * 5;
+  const rotate = Math.sin(time * 0.5) * 1;
+  card.style.transform = \`translateY(\${y}px) rotate(\${rotate}deg)\`;
+  requestAnimationFrame(animate);
+}
+animate();
+
+// Button ripple effect
+document.querySelectorAll('.btn').forEach(btn => {
+  btn.addEventListener('click', function(e) {
+    const ripple = document.createElement('span');
+    const rect = this.getBoundingClientRect();
+    ripple.style.cssText = \`position:absolute;border-radius:50%;background:rgba(255,255,255,0.4);transform:scale(0);animation:ripple 0.6s ease-out;left:\${e.clientX - rect.left}px;top:\${e.clientY - rect.top}px;width:100px;height:100px;margin:-50px\`;
+    this.style.position = 'relative';
+    this.style.overflow = 'hidden';
+    this.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  });
+});
+
+// Add ripple animation
+const style = document.createElement('style');
+style.textContent = '@keyframes ripple{to{transform:scale(4);opacity:0}}';
+document.head.appendChild(style);`
+  },
+  {
+    id: 'neon-buttons',
+    name: 'Neon Buttons',
+    description: 'Glowing cyberpunk button collection',
+    thumbnail: '💡',
+    category: 'ui',
+    html: `<div class="button-showcase">
+  <button class="neon-btn cyan">LAUNCH</button>
+  <button class="neon-btn pink">CONNECT</button>
+  <button class="neon-btn green">ACTIVATE</button>
+  <button class="neon-btn orange">OVERRIDE</button>
+</div>`,
+    css: `.button-showcase{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:24px;min-height:100vh;background:#0a0a0a;padding:40px}
+.neon-btn{font-family:monospace;font-size:18px;font-weight:bold;letter-spacing:4px;padding:20px 50px;background:transparent;border:2px solid;cursor:pointer;position:relative;overflow:hidden;transition:all 0.3s}
+.neon-btn::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,currentColor,transparent);opacity:0.3;transition:left 0.5s}
+.neon-btn:hover::before{left:100%}
+.neon-btn.cyan{color:#0ff;border-color:#0ff;box-shadow:0 0 10px #0ff,inset 0 0 10px rgba(0,255,255,0.1)}
+.neon-btn.cyan:hover{background:rgba(0,255,255,0.1);box-shadow:0 0 20px #0ff,0 0 40px #0ff,0 0 60px #0ff,inset 0 0 20px rgba(0,255,255,0.2)}
+.neon-btn.pink{color:#f0f;border-color:#f0f;box-shadow:0 0 10px #f0f,inset 0 0 10px rgba(255,0,255,0.1)}
+.neon-btn.pink:hover{background:rgba(255,0,255,0.1);box-shadow:0 0 20px #f0f,0 0 40px #f0f,0 0 60px #f0f,inset 0 0 20px rgba(255,0,255,0.2)}
+.neon-btn.green{color:#0f0;border-color:#0f0;box-shadow:0 0 10px #0f0,inset 0 0 10px rgba(0,255,0,0.1)}
+.neon-btn.green:hover{background:rgba(0,255,0,0.1);box-shadow:0 0 20px #0f0,0 0 40px #0f0,0 0 60px #0f0,inset 0 0 20px rgba(0,255,0,0.2)}
+.neon-btn.orange{color:#f80;border-color:#f80;box-shadow:0 0 10px #f80,inset 0 0 10px rgba(255,136,0,0.1)}
+.neon-btn.orange:hover{background:rgba(255,136,0,0.1);box-shadow:0 0 20px #f80,0 0 40px #f80,0 0 60px #f80,inset 0 0 20px rgba(255,136,0,0.2)}
+.neon-btn:active{transform:scale(0.95)}`,
+    js: `// Add click burst effect
+document.querySelectorAll('.neon-btn').forEach(btn => {
+  btn.addEventListener('click', function(e) {
+    const color = getComputedStyle(this).color;
+    for(let i = 0; i < 20; i++) {
+      const particle = document.createElement('div');
+      const angle = (Math.PI * 2 / 20) * i;
+      const velocity = 2 + Math.random() * 3;
+      const size = 4 + Math.random() * 4;
+      particle.style.cssText = \`position:fixed;width:\${size}px;height:\${size}px;background:\${color};border-radius:50%;pointer-events:none;left:\${e.clientX}px;top:\${e.clientY}px;box-shadow:0 0 10px \${color};z-index:9999\`;
+      document.body.appendChild(particle);
+      const vx = Math.cos(angle) * velocity;
+      const vy = Math.sin(angle) * velocity;
+      let x = e.clientX, y = e.clientY, life = 1;
+      function animate() {
+        x += vx; y += vy + 0.5; life -= 0.02;
+        particle.style.left = x + 'px';
+        particle.style.top = y + 'px';
+        particle.style.opacity = life;
+        particle.style.transform = \`scale(\${life})\`;
+        if(life > 0) requestAnimationFrame(animate);
+        else particle.remove();
+      }
+      animate();
+    }
+  });
+});`
+  },
+  // More Animations
+  {
+    id: 'matrix-rain',
+    name: 'Matrix Rain',
+    description: 'Classic digital rain effect',
+    thumbnail: '💚',
+    category: 'animations',
+    html: `<canvas id="matrix"></canvas>`,
+    css: `body{margin:0;overflow:hidden}canvas{display:block;background:#000}`,
+    js: `const canvas = document.getElementById('matrix');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+
+const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const fontSize = 16;
+const columns = Math.floor(canvas.width / fontSize);
+const drops = Array(columns).fill(1);
+
+function draw() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#0f0';
+  ctx.font = fontSize + 'px monospace';
+
+  for(let i = 0; i < drops.length; i++) {
+    const char = chars[Math.floor(Math.random() * chars.length)];
+    const x = i * fontSize;
+    const y = drops[i] * fontSize;
+
+    // Brighter head
+    ctx.fillStyle = '#fff';
+    ctx.fillText(char, x, y);
+
+    // Trail
+    ctx.fillStyle = '#0f0';
+    ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y - fontSize);
+
+    if(y > canvas.height && Math.random() > 0.975) {
+      drops[i] = 0;
+    }
+    drops[i]++;
+  }
+}
+
+setInterval(draw, 35);`
+  },
+  {
+    id: 'gradient-waves',
+    name: 'Gradient Waves',
+    description: 'Smooth animated wave background',
+    thumbnail: '🌊',
+    category: 'animations',
+    html: `<div class="wave-container">
+  <svg class="waves" viewBox="0 24 150 28" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:#667eea"/>
+        <stop offset="50%" style="stop-color:#764ba2"/>
+        <stop offset="100%" style="stop-color:#f093fb"/>
+      </linearGradient>
+    </defs>
+    <path class="wave wave1" fill="url(#grad1)" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z"/>
+    <path class="wave wave2" fill="url(#grad1)" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z"/>
+    <path class="wave wave3" fill="url(#grad1)" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z"/>
+  </svg>
+  <div class="content">
+    <h1>Beautiful Waves</h1>
+    <p>Smooth animated gradient waves</p>
+  </div>
+</div>`,
+    css: `.wave-container{min-height:100vh;background:linear-gradient(180deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;overflow:hidden;position:relative;font-family:system-ui,sans-serif}
+.waves{position:fixed;bottom:0;left:0;width:100%;height:30vh;min-height:100px;max-height:200px}
+.wave{animation:wave 10s ease-in-out infinite;opacity:0.6}
+.wave1{animation-delay:0s;opacity:0.3}
+.wave2{animation-delay:-2s;opacity:0.5}
+.wave3{animation-delay:-4s;opacity:0.7}
+@keyframes wave{0%,100%{transform:translateX(0)}50%{transform:translateX(-25%)}}
+.content{text-align:center;z-index:10;color:#fff}
+.content h1{font-size:48px;margin:0;background:linear-gradient(135deg,#667eea,#f093fb);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 40px rgba(102,126,234,0.3)}
+.content p{font-size:20px;opacity:0.7;margin-top:16px}`,
+    js: `// Add floating particles
+const container = document.querySelector('.wave-container');
+for(let i = 0; i < 30; i++) {
+  const particle = document.createElement('div');
+  particle.className = 'particle';
+  particle.style.cssText = \`
+    position:fixed;
+    width:\${3 + Math.random() * 6}px;
+    height:\${3 + Math.random() * 6}px;
+    background:rgba(255,255,255,\${0.1 + Math.random() * 0.3});
+    border-radius:50%;
+    left:\${Math.random() * 100}%;
+    top:\${Math.random() * 100}%;
+    pointer-events:none;
+    animation:float \${5 + Math.random() * 10}s ease-in-out infinite;
+    animation-delay:\${Math.random() * 5}s;
+  \`;
+  container.appendChild(particle);
+}
+
+const style = document.createElement('style');
+style.textContent = \`
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0); opacity: 0.5; }
+    50% { transform: translateY(-100px) rotate(180deg); opacity: 1; }
+  }
+\`;
+document.head.appendChild(style);`
+  },
+  {
+    id: 'loading-spinners',
+    name: 'Loading Spinners',
+    description: 'Collection of animated loaders',
+    thumbnail: '⏳',
+    category: 'ui',
+    html: `<div class="spinners">
+  <div class="spinner pulse"></div>
+  <div class="spinner ring"></div>
+  <div class="spinner dots"><span></span><span></span><span></span></div>
+  <div class="spinner square"></div>
+</div>`,
+    css: `.spinners{display:flex;justify-content:center;align-items:center;gap:60px;min-height:100vh;background:linear-gradient(135deg,#1a1a2e,#16213e);flex-wrap:wrap;padding:40px}
+.spinner{width:60px;height:60px}
+.pulse{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:50%;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:0.5}}
+.ring{border:4px solid transparent;border-top:4px solid #f093fb;border-right:4px solid #764ba2;border-radius:50%;animation:spin 1s linear infinite;box-shadow:0 0 20px rgba(240,147,251,0.3)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.dots{display:flex;justify-content:center;align-items:center;gap:8px}
+.dots span{width:12px;height:12px;background:#0ff;border-radius:50%;animation:bounce 1.4s ease-in-out infinite;box-shadow:0 0 15px #0ff}
+.dots span:nth-child(2){animation-delay:0.2s}
+.dots span:nth-child(3){animation-delay:0.4s}
+@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+.square{position:relative}
+.square::before,.square::after{content:'';position:absolute;width:100%;height:100%;border:4px solid;box-sizing:border-box}
+.square::before{border-color:#f80 transparent transparent transparent;animation:spin 1.5s linear infinite}
+.square::after{border-color:transparent #0f0 transparent transparent;animation:spin 1.5s linear infinite reverse}`,
+    js: `// Add color cycling
+const spinners = document.querySelectorAll('.spinner');
+let hue = 0;
+function colorCycle() {
+  hue = (hue + 0.5) % 360;
+  spinners.forEach((s, i) => {
+    s.style.filter = \`hue-rotate(\${hue + i * 30}deg)\`;
+  });
+  requestAnimationFrame(colorCycle);
+}
+colorCycle();`
   }
 ];

@@ -20,11 +20,20 @@ import {
   Gamepad2,
   ChevronDown,
   Menu,
+  Download,
+  Share2,
+  Zap,
+  Layout,
+  Palette,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { GAME_TEMPLATES } from '@/lib/game-templates'
+import dynamic from 'next/dynamic'
+
+// Dynamic import for Monaco Editor (client-side only)
+const Editor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
 
 export default function PlaygroundPage() {
   const [html, setHtml] = useState('')
@@ -49,6 +58,118 @@ export default function PlaygroundPage() {
   // Mobile state
   const [activeTab, setActiveTab] = useState<'html' | 'css' | 'js' | 'preview'>('preview')
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [templateCategory, setTemplateCategory] = useState<'games' | 'ui' | 'animations'>('games')
+  const [isFixingError, setIsFixingError] = useState(false)
+
+  // Download as ZIP
+  const downloadZip = async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${projectName}</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+${html}
+<script src="script.js"></script>
+</body>
+</html>`
+
+    zip.file('index.html', htmlContent)
+    zip.file('styles.css', `/* ${projectName} Styles */\n* { margin: 0; padding: 0; box-sizing: border-box; }\nbody { min-height: 100vh; background: #0a0a0a; color: white; font-family: system-ui, sans-serif; }\n${css}`)
+    zip.file('script.js', `// ${projectName} JavaScript\n${js}`)
+    zip.file('README.md', `# ${projectName}\n\nCreated with Miller AI Group Code Playground\n\n## How to run\n1. Open index.html in a browser\n2. Or use a local server: \`npx serve .\``)
+
+    const blob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${projectName.toLowerCase().replace(/\s+/g, '-')}.zip`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Copy share link
+  const copyShareLink = async () => {
+    if (!projectId) {
+      setAiMessage('Save project first to get share link')
+      setTimeout(() => setAiMessage(''), 3000)
+      return
+    }
+    const shareUrl = `${window.location.origin}/app/tools/playground?id=${projectId}`
+    await navigator.clipboard.writeText(shareUrl)
+    setAiMessage('Share link copied!')
+    setTimeout(() => setAiMessage(''), 3000)
+  }
+
+  // AI fix error from console
+  const fixError = async (errorMsg: string) => {
+    if (isFixingError) return
+    setIsFixingError(true)
+    setAiMessage('Fixing error...')
+
+    try {
+      const res = await fetch('/api/ai/code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Fix this error: "${errorMsg}"\n\nKeep all existing functionality, just fix the bug.`,
+          action: 'playground',
+          currentCode: { html, css, js }
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        if (data.html) setHtml(data.html)
+        if (data.css) setCss(data.css)
+        if (data.js) setJs(data.js)
+        setAiMessage('Error fixed!')
+        setConsoleOutput([])
+      } else {
+        setAiMessage(data.error || 'Could not fix error')
+      }
+    } catch {
+      setAiMessage('Fix failed')
+    } finally {
+      setIsFixingError(false)
+      setTimeout(() => setAiMessage(''), 3000)
+    }
+  }
+
+  // Load project from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('id')
+    if (id) {
+      loadProjectById(id)
+    }
+  }, [])
+
+  const loadProjectById = async (id: string) => {
+    try {
+      const supabase = createClient()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase.from('playground_projects') as any)
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (data) {
+        setProjectId(data.id)
+        setProjectName(data.name)
+        setHtml(data.html || '')
+        setCss(data.css || '')
+        setJs(data.js || '')
+      }
+    } catch (err) {
+      console.error('Failed to load project:', err)
+    }
+  }
 
   // Load a game template
   const loadTemplate = (templateId: string) => {
@@ -385,6 +506,12 @@ Keep it concise but detailed. Only output the rewritten prompt, nothing else.`,
             {isSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
             Save
           </Button>
+          <Button size="sm" variant="ghost" onClick={downloadZip} className="text-amber-400 hover:text-amber-300 h-8">
+            <Download className="w-4 h-4 mr-1" /> ZIP
+          </Button>
+          <Button size="sm" variant="ghost" onClick={copyShareLink} className="text-cyan-400 hover:text-cyan-300 h-8">
+            <Share2 className="w-4 h-4 mr-1" /> Share
+          </Button>
           <div className="w-px h-5 bg-[#3c3c3c]" />
           <Link href="/app/tools/playground/preview">
             <Button size="sm" className="bg-green-600 hover:bg-green-700 h-8">
@@ -502,45 +629,78 @@ Keep it concise but detailed. Only output the rewritten prompt, nothing else.`,
         {/* Code Editors - Left Side */}
         <div className="w-1/2 flex flex-col border-r border-[#3c3c3c]">
           {/* HTML Editor */}
-          <div className="flex-1 flex flex-col border-b border-[#3c3c3c]">
+          <div className="flex-1 flex flex-col border-b border-[#3c3c3c] min-h-0">
             <div className="h-8 flex items-center px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
               <span className="text-xs font-medium text-orange-400">HTML</span>
             </div>
-            <textarea
-              value={html}
-              onChange={(e) => setHtml(e.target.value)}
-              className="flex-1 bg-[#1e1e1e] text-orange-200 font-mono text-sm p-3 resize-none outline-none"
-              placeholder="<div>Your HTML here...</div>"
-              spellCheck={false}
-            />
+            <div className="flex-1 min-h-0">
+              <Editor
+                height="100%"
+                language="html"
+                value={html}
+                onChange={(value) => setHtml(value || '')}
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
 
           {/* CSS Editor */}
-          <div className="flex-1 flex flex-col border-b border-[#3c3c3c]">
+          <div className="flex-1 flex flex-col border-b border-[#3c3c3c] min-h-0">
             <div className="h-8 flex items-center px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
               <span className="text-xs font-medium text-blue-400">CSS</span>
             </div>
-            <textarea
-              value={css}
-              onChange={(e) => setCss(e.target.value)}
-              className="flex-1 bg-[#1e1e1e] text-blue-200 font-mono text-sm p-3 resize-none outline-none"
-              placeholder=".container { ... }"
-              spellCheck={false}
-            />
+            <div className="flex-1 min-h-0">
+              <Editor
+                height="100%"
+                language="css"
+                value={css}
+                onChange={(value) => setCss(value || '')}
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
 
           {/* JS Editor */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0">
             <div className="h-8 flex items-center px-3 bg-[#2d2d2d] border-b border-[#3c3c3c]">
               <span className="text-xs font-medium text-yellow-400">JavaScript</span>
             </div>
-            <textarea
-              value={js}
-              onChange={(e) => setJs(e.target.value)}
-              className="flex-1 bg-[#1e1e1e] text-yellow-200 font-mono text-sm p-3 resize-none outline-none"
-              placeholder="// Your JavaScript here..."
-              spellCheck={false}
-            />
+            <div className="flex-1 min-h-0">
+              <Editor
+                height="100%"
+                language="javascript"
+                value={js}
+                onChange={(value) => setJs(value || '')}
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -582,9 +742,20 @@ Keep it concise but detailed. Only output the rewritten prompt, nothing else.`,
                 <span className="text-neutral-600">Console output...</span>
               ) : consoleOutput.map((msg, i) => (
                 <div key={i} className={cn(
-                  "py-0.5",
+                  "py-0.5 flex items-center gap-2",
                   msg.startsWith('ERROR') ? "text-red-400" : "text-green-400"
-                )}>{msg}</div>
+                )}>
+                  <span className="flex-1">{msg}</span>
+                  {msg.startsWith('ERROR') && (
+                    <button
+                      onClick={() => fixError(msg)}
+                      disabled={isFixingError}
+                      className="px-2 py-0.5 text-xs bg-red-500/20 hover:bg-red-500/40 rounded text-red-300 flex items-center gap-1 transition-colors"
+                    >
+                      <Zap className="w-3 h-3" /> Fix
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -616,7 +787,18 @@ Keep it concise but detailed. Only output the rewritten prompt, nothing else.`,
                 {consoleOutput.length === 0 ? (
                   <span className="text-neutral-600">Console output...</span>
                 ) : consoleOutput.map((msg, i) => (
-                  <div key={i} className={cn("py-0.5", msg.startsWith('ERROR') ? "text-red-400" : "text-green-400")}>{msg}</div>
+                  <div key={i} className={cn("py-0.5 flex items-center gap-2", msg.startsWith('ERROR') ? "text-red-400" : "text-green-400")}>
+                    <span className="flex-1 text-xs">{msg}</span>
+                    {msg.startsWith('ERROR') && (
+                      <button
+                        onClick={() => fixError(msg)}
+                        disabled={isFixingError}
+                        className="px-1.5 py-0.5 text-xs bg-red-500/20 rounded text-red-300"
+                      >
+                        <Zap className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

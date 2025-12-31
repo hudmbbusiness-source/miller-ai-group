@@ -219,6 +219,34 @@ Use modern best practices and include helpful comments where appropriate.`
     })
   } catch (error) {
     console.error('Code generation error:', error)
+
+    // Return specific error messages
+    if (error instanceof Error) {
+      if (error.message.includes('GROQ_API_KEY')) {
+        return NextResponse.json(
+          { error: 'AI service not configured. Please add GROQ_API_KEY.' },
+          { status: 503 }
+        )
+      }
+      if (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit')) {
+        return NextResponse.json(
+          { error: 'Rate limit hit. Wait a moment and try again.' },
+          { status: 429 }
+        )
+      }
+      if (error.message.includes('invalid_api_key') || error.message.includes('401')) {
+        return NextResponse.json(
+          { error: 'Invalid API key. Check GROQ_API_KEY.' },
+          { status: 401 }
+        )
+      }
+      // Return actual error message for debugging
+      return NextResponse.json(
+        { error: `AI Error: ${error.message}` },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Failed to generate code. Please try again.' },
       { status: 500 }

@@ -504,6 +504,28 @@ export default function StuntmanToolPage() {
         </Card>
       </motion.div>
 
+      {/* Open Full Trading Interface */}
+      <motion.div variants={itemVariants}>
+        <Card className="border-2 border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-amber-500/5">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-orange-400">Full Trading Interface</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Access paper trading, strategies, backtesting, and more
+                </p>
+              </div>
+              <Button asChild className="bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/25">
+                <Link href="/stuntman">
+                  <Zap className="w-4 h-4 mr-2" />
+                  Open Trading System
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Quick Actions */}
       <motion.div variants={itemVariants}>
         <Card>
@@ -511,6 +533,24 @@ export default function StuntmanToolPage() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
+            <Button asChild className="bg-orange-500 hover:bg-orange-600 text-white">
+              <Link href="/stuntman/trade">
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Start Trading
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="hover:border-emerald-500/50 hover:text-emerald-500">
+              <Link href="/stuntman/strategies">
+                <Cpu className="w-4 h-4 mr-2" />
+                Manage Strategies
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="hover:border-emerald-500/50 hover:text-emerald-500">
+              <Link href="/stuntman/history">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Trade History
+              </Link>
+            </Button>
             <Button variant="outline" asChild className="hover:border-emerald-500/50 hover:text-emerald-500">
               <Link href="/app/projects/stuntman">
                 <ExternalLink className="w-4 h-4 mr-2" />

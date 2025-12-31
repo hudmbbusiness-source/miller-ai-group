@@ -23,11 +23,19 @@ function getCerebrasClient(): Cerebras | null {
   return cerebrasClient
 }
 
+// Return type for AI completion
+interface CompletionResult {
+  content: string
+  tokensUsed: number
+  model: string
+  provider: string
+}
+
 // Try providers with retry logic
 async function callWithRetry(
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
   options: { temperature: number; max_tokens: number }
-) {
+): Promise<CompletionResult> {
   const maxRetries = 2
   const baseDelay = 3000
 
@@ -42,7 +50,12 @@ async function callWithRetry(
           temperature: options.temperature,
           max_tokens: options.max_tokens,
         })
-        return { completion, model: 'llama-3.1-8b-instant', provider: 'groq' }
+        return {
+          content: completion.choices[0]?.message?.content || '',
+          tokensUsed: completion.usage?.total_tokens || 0,
+          model: 'llama-3.1-8b-instant',
+          provider: 'groq'
+        }
       } catch (error) {
         const isRateLimit = error instanceof Error &&
           (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
@@ -70,7 +83,12 @@ async function callWithRetry(
           temperature: options.temperature,
           max_tokens: options.max_tokens,
         })
-        return { completion, model: 'llama-3.3-70b', provider: 'cerebras' }
+        return {
+          content: completion.choices[0]?.message?.content || '',
+          tokensUsed: completion.usage?.totalTokens || 0,
+          model: 'llama-3.3-70b',
+          provider: 'cerebras'
+        }
       } catch (error) {
         const isRateLimit = error instanceof Error &&
           (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
@@ -171,16 +189,14 @@ Keep the visual quality high - gradients, glows, animations.`
 
       messages.push({ role: 'user', content: userPrompt })
 
-      const { completion, model: usedModel } = await callWithRetry(messages, {
+      const { content, tokensUsed } = await callWithRetry(messages, {
         temperature: 0.7,
         max_tokens: 8000,
       })
 
-      const result = completion.choices[0]?.message?.content || ''
-
       // Parse JSON response
       try {
-        let jsonStr = result.trim()
+        let jsonStr = content.trim()
 
         // Remove markdown code blocks if present
         if (jsonStr.startsWith('```')) {
@@ -201,15 +217,15 @@ Keep the visual quality high - gradients, glows, animations.`
           html: parsed.html || '',
           css: parsed.css || '',
           js: parsed.js || '',
-          tokensUsed: completion.usage?.total_tokens || 0,
+          tokensUsed,
         })
       } catch (parseError) {
         console.error('JSON parse failed:', parseError)
         return NextResponse.json({
           success: false,
           error: 'Failed to parse AI response',
-          raw: result,
-          tokensUsed: completion.usage?.total_tokens || 0,
+          raw: content,
+          tokensUsed,
         })
       }
     }
@@ -228,18 +244,16 @@ Keep the visual quality high - gradients, glows, animations.`
 
       messages.push({ role: 'user', content: prompt })
 
-      const { completion } = await callWithRetry(messages, {
+      const { content, tokensUsed } = await callWithRetry(messages, {
         temperature: 0.7,
         max_tokens: 8000,
       })
 
-      const result = completion.choices[0]?.message?.content || ''
-
       return NextResponse.json({
-        code: result,
-        response: result,
+        code: content,
+        response: content,
         action: 'chat',
-        tokensUsed: completion.usage?.total_tokens || 0,
+        tokensUsed,
       })
     }
 
@@ -263,7 +277,7 @@ Use modern best practices and include helpful comments where appropriate.`
       userPrompt = `Convert to ${prompt || 'TypeScript'}:\n${existingCode}\nReturn ONLY code.`
     }
 
-    const { completion } = await callWithRetry(
+    const { content, tokensUsed } = await callWithRetry(
       [
         { role: 'system', content: defaultSystemPrompt },
         { role: 'user', content: userPrompt },
@@ -271,9 +285,7 @@ Use modern best practices and include helpful comments where appropriate.`
       { temperature: 0.3, max_tokens: 4096 }
     )
 
-    const result = completion.choices[0]?.message?.content || ''
-
-    let cleanedResult = result
+    let cleanedResult = content
     if (cleanedResult.startsWith('```')) {
       cleanedResult = cleanedResult.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
     }
@@ -282,7 +294,7 @@ Use modern best practices and include helpful comments where appropriate.`
       code: cleanedResult,
       action,
       language,
-      tokensUsed: completion.usage?.total_tokens || 0,
+      tokensUsed,
     })
   } catch (error) {
     console.error('Code generation error:', error)

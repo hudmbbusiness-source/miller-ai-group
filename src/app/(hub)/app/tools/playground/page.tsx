@@ -17,10 +17,13 @@ import {
   Wand2,
   Copy,
   Check,
+  Gamepad2,
+  ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+import { GAME_TEMPLATES } from '@/lib/game-templates'
 
 export default function PlaygroundPage() {
   const [html, setHtml] = useState('')
@@ -40,6 +43,19 @@ export default function PlaygroundPage() {
   const [isTranslating, setIsTranslating] = useState(false)
   const [showTranslator, setShowTranslator] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
+
+  // Load a game template
+  const loadTemplate = (templateId: string) => {
+    const template = GAME_TEMPLATES.find(t => t.id === templateId)
+    if (template) {
+      setHtml(template.html)
+      setCss(template.css)
+      setJs(template.js)
+      setProjectName(template.name)
+      setShowTemplates(false)
+    }
+  }
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const autoRunRef = useRef<NodeJS.Timeout | null>(null)
@@ -330,6 +346,36 @@ Keep it concise but detailed. Only output the rewritten prompt, nothing else.`,
           <Button size="sm" variant="ghost" onClick={newProject} className="text-neutral-400 hover:text-white h-8">
             <Plus className="w-4 h-4 mr-1" /> New
           </Button>
+          <div className="relative">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowTemplates(!showTemplates)}
+              className="text-emerald-400 hover:text-emerald-300 h-8"
+            >
+              <Gamepad2 className="w-4 h-4 mr-1" /> Templates <ChevronDown className="w-3 h-3 ml-1" />
+            </Button>
+            {showTemplates && (
+              <div className="absolute top-full left-0 mt-1 w-64 bg-[#252526] border border-[#3c3c3c] rounded-lg shadow-xl z-50">
+                <div className="p-2 border-b border-[#3c3c3c]">
+                  <span className="text-xs text-neutral-500">Ready-to-play games</span>
+                </div>
+                {GAME_TEMPLATES.map(template => (
+                  <button
+                    key={template.id}
+                    onClick={() => loadTemplate(template.id)}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-[#3c3c3c] transition-colors text-left"
+                  >
+                    <span className="text-2xl">{template.thumbnail}</span>
+                    <div>
+                      <div className="text-sm text-white font-medium">{template.name}</div>
+                      <div className="text-xs text-neutral-500">{template.description}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button size="sm" variant="ghost" onClick={saveProject} disabled={isSaving} className="text-violet-400 hover:text-violet-300 h-8">
             {isSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
             Save

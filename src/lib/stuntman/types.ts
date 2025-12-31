@@ -9,9 +9,9 @@
 // CORE TRADING TYPES
 // =============================================================================
 
-export type TradingSide = 'BUY' | 'SELL'
-export type PositionSide = 'LONG' | 'SHORT'
-export type OrderType = 'MARKET' | 'LIMIT' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'STOP_LIMIT'
+export type TradingSide = 'BUY' | 'SELL' | 'buy' | 'sell'
+export type PositionSide = 'LONG' | 'SHORT' | 'long' | 'short'
+export type OrderType = 'MARKET' | 'LIMIT' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'STOP_LIMIT' | 'market' | 'limit' | 'stop_loss' | 'take_profit' | 'stop_limit'
 export type TimeInForce = 'GTC' | 'IOC' | 'FOK'
 export type OrderStatus = 'pending' | 'open' | 'partial' | 'filled' | 'cancelled' | 'rejected' | 'expired'
 export type PositionStatus = 'open' | 'closing' | 'closed'
@@ -102,9 +102,29 @@ export interface TradingAccount {
   currentBalance: number
   reservedBalance: number
   availableBalance: number
+  balance: number // Alias for currentBalance
   isActive: boolean
   createdAt: Date
   updatedAt: Date
+}
+
+// Account settings for risk management
+export interface AccountSettings {
+  defaultStopLossPercent: number
+  defaultTakeProfitPercent: number
+  maxDailyLoss: number
+  maxPositionSize: number
+  autoStopLoss: boolean
+  autoTakeProfit: boolean
+}
+
+// Position sizing strategies
+export interface PositionSizing {
+  type: 'fixed' | 'percent' | 'kelly' | 'volatility'
+  fixedAmount?: number
+  percentOfBalance?: number
+  kellyFraction?: number
+  volatilityTarget?: number
 }
 
 export interface Position {
@@ -136,29 +156,36 @@ export interface Position {
 export interface Order {
   id: string
   accountId: string
+  account_id?: string // snake_case alias
   userId: string
   positionId: string | null
   strategyId: string | null
   signalId: string | null
   externalOrderId: string | null
   instrumentName: string
+  instrument_name?: string // snake_case alias
   side: TradingSide
   orderType: OrderType
+  order_type?: string // snake_case alias
   timeInForce: TimeInForce
   quantity: number
   filledQuantity: number
+  filled_quantity?: number // snake_case alias
   remainingQuantity: number
   price: number | null
   stopPrice: number | null
   filledPrice: number | null
   avgFillPrice: number | null
+  average_price?: number | null // snake_case alias
   fee: number
+  fees?: number // alias
   feeCurrency: string
   status: OrderStatus
   rejectReason: string | null
   createdAt: Date
   updatedAt: Date
   filledAt: Date | null
+  filled_at?: string | null // snake_case alias
   cancelledAt: Date | null
 }
 
@@ -265,6 +292,7 @@ export interface PatternConfig {
     lookbackPeriod: number
     touchCount: number
     priceZonePercent: number
+    minTouches?: number // Alias for touchCount
   }
   trendLines: {
     enabled: boolean
@@ -278,6 +306,8 @@ export interface PatternConfig {
 
 export type CandlestickPattern =
   | 'doji'
+  | 'dragonfly_doji'
+  | 'gravestone_doji'
   | 'hammer'
   | 'inverted_hammer'
   | 'bullish_engulfing'
@@ -293,6 +323,8 @@ export type CandlestickPattern =
   | 'hanging_man'
   | 'spinning_top'
   | 'marubozu'
+  | 'tweezer_top'
+  | 'tweezer_bottom'
 
 export type ChartPattern =
   | 'head_and_shoulders'
@@ -304,6 +336,7 @@ export type ChartPattern =
   | 'ascending_triangle'
   | 'descending_triangle'
   | 'symmetric_triangle'
+  | 'symmetrical_triangle' // Alias
   | 'bull_flag'
   | 'bear_flag'
   | 'bull_pennant'
@@ -396,6 +429,7 @@ export interface IndicatorValues {
   ema?: Record<number, number>
   sma?: Record<number, number>
   bollinger?: { upper: number; middle: number; lower: number; width: number }
+  bollingerBands?: { upper: number; middle: number; lower: number; width: number } // Alias
   atr?: number
   volume?: { current: number; ma: number; ratio: number }
   stochastic?: { k: number; d: number }
@@ -412,6 +446,11 @@ export interface PatternDetection {
   price: number
   timestamp: number
   details: Record<string, unknown>
+  // Structured pattern data for signal generator
+  candlestick?: Array<{ pattern: string; confidence: number; direction: string }>
+  chart?: Array<{ pattern: string; confidence: number; direction: string }>
+  support?: number[]
+  resistance?: number[]
 }
 
 export interface Signal {
@@ -420,6 +459,8 @@ export interface Signal {
   userId: string
   instrumentName: string
   signalType: SignalType
+  side: TradingSide // Alias for signal direction
+  source: string // Signal source (indicator, pattern, etc.)
   strength: number
   confidence: number
   priceAtSignal: number
@@ -429,12 +470,14 @@ export interface Signal {
   riskRewardRatio: number | null
   indicators: IndicatorValues
   patternsDetected: PatternDetection[]
+  patterns: string[] // Simple pattern names list
   reasoning: string[]
   executed: boolean
   orderId: string | null
   executionPrice: number | null
   validUntil: Date | null
   expired: boolean
+  timestamp: Date // When signal was generated
   createdAt: Date
 }
 

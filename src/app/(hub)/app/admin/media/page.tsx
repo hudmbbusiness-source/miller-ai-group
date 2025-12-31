@@ -332,7 +332,24 @@ export default function MediaLibraryPage() {
     }
   }
 
-  const FileTypeIcon = (type: string): React.ElementType => FILE_TYPE_ICONS[type as MediaFileType] || File
+  const renderFileTypeIcon = (type: string, className: string = 'w-3 h-3') => {
+    switch (type) {
+      case 'image':
+        return <ImageIcon className={className} />
+      case 'video':
+        return <Video className={className} />
+      case 'audio':
+        return <Music className={className} />
+      case 'document':
+        return <FileText className={className} />
+      case 'animation':
+        return <Sparkles className={className} />
+      case 'svg':
+        return <ImageIcon className={className} />
+      default:
+        return <File className={className} />
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -482,7 +499,6 @@ export default function MediaLibraryPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {assets.map((asset) => {
-            const IconComponent = FileTypeIcon(asset.file_type)
             const isSelected = selectedAssets.has(asset.id)
             const fileType = asset.file_type as MediaFileType
 
@@ -531,7 +547,7 @@ export default function MediaLibraryPage() {
                       FILE_TYPE_COLORS[fileType]
                     )}
                   >
-                    <IconComponent className="w-3 h-3 mr-1" />
+                    {renderFileTypeIcon(asset.file_type, 'w-3 h-3 mr-1')}
                     {asset.file_type}
                   </Badge>
                 </div>
@@ -549,7 +565,6 @@ export default function MediaLibraryPage() {
         <Card>
           <div className="divide-y divide-white/5">
             {assets.map((asset) => {
-              const IconComponent = FileTypeIcon(asset.file_type)
               const isSelected = selectedAssets.has(asset.id)
               const fileType = asset.file_type as MediaFileType
 
@@ -590,7 +605,7 @@ export default function MediaLibraryPage() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <IconComponent className="w-6 h-6 text-neutral-500" />
+                      renderFileTypeIcon(asset.file_type, 'w-6 h-6 text-neutral-500')
                     )}
                   </div>
 

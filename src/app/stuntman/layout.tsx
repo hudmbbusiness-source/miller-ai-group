@@ -33,23 +33,30 @@ export default async function StuntManLayout({
       <header className="sticky top-0 z-50 border-b border-zinc-900 bg-black/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            {/* Logo */}
-            <Link href="/stuntman" className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
+            {/* Logo - Clean, professional like Robinhood/Coinbase */}
+            <Link href="/stuntman" className="flex items-center gap-3">
+              <div className="w-8 h-8 relative">
+                {/* Abstract S with chart line - minimal design */}
+                <svg viewBox="0 0 32 32" fill="none" className="w-full h-full">
+                  {/* Main S shape */}
                   <path
-                    d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"
-                    fill="white"
+                    d="M8 10C8 6.68629 10.6863 4 14 4H18C21.3137 4 24 6.68629 24 10V10C24 12.2091 22.2091 14 20 14H12C9.79086 14 8 15.7909 8 18V18C8 21.3137 10.6863 24 14 24H18C21.3137 24 24 21.3137 24 18"
                     stroke="white"
-                    strokeWidth="1"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                  {/* Chart accent line */}
+                  <path
+                    d="M6 22L12 16L16 19L26 10"
+                    stroke="#22c55e"
+                    strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                 </svg>
               </div>
-              <span className="font-bold text-xl hidden sm:block">
-                <span className="text-white">Stunt</span>
-                <span className="text-emerald-400">Man</span>
+              <span className="font-semibold text-lg tracking-tight hidden sm:block text-white">
+                StuntMan
               </span>
             </Link>
 
@@ -63,10 +70,10 @@ export default async function StuntManLayout({
 
             {/* Right Side */}
             <div className="flex items-center gap-3">
-              {/* Live Indicator */}
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs text-zinc-400">Live</span>
+              {/* Live Indicator - Subtle, professional */}
+              <div className="hidden sm:flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                <span className="text-xs text-zinc-500 font-medium">Live</span>
               </div>
 
               {/* Settings */}

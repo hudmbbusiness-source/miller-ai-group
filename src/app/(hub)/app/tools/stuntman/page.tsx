@@ -95,15 +95,19 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 }
 
-function formatPrice(price: string | number): string {
+function formatPrice(price: string | number | undefined | null): string {
+  if (price === undefined || price === null) return '--'
   const num = typeof price === 'string' ? parseFloat(price) : price
+  if (isNaN(num)) return '--'
   if (num >= 1000) return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   if (num >= 1) return num.toFixed(4)
   return num.toFixed(6)
 }
 
-function formatVolume(volume: string | number): string {
+function formatVolume(volume: string | number | undefined | null): string {
+  if (volume === undefined || volume === null) return '--'
   const num = typeof volume === 'string' ? parseFloat(volume) : volume
+  if (isNaN(num)) return '--'
   if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`
   if (num >= 1000) return `${(num / 1000).toFixed(2)}K`
   return num.toFixed(2)

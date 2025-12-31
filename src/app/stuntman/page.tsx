@@ -195,18 +195,18 @@ export default function StuntManDashboard() {
                     </div>
                     <div className="text-right">
                       <div className="font-mono text-sm">
-                        ${(account.total_equity || account.balance).toLocaleString(undefined, {
+                        ${(account?.total_equity ?? account?.balance ?? 0).toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </div>
                       <div
                         className={`text-xs ${
-                          account.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                          (account?.realized_pnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
                         }`}
                       >
-                        {account.realized_pnl >= 0 ? '+' : ''}
-                        ${account.realized_pnl.toFixed(2)}
+                        {(account?.realized_pnl ?? 0) >= 0 ? '+' : ''}
+                        ${(account?.realized_pnl ?? 0).toFixed(2)}
                       </div>
                     </div>
                   </div>
@@ -222,11 +222,11 @@ export default function StuntManDashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
                 title="Balance"
-                value={`$${currentAccount.balance.toLocaleString(undefined, {
+                value={`$${(currentAccount?.balance ?? 0).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}`}
-                subtitle={currentAccount.is_paper ? 'Paper Trading' : 'Live Trading'}
+                subtitle={currentAccount?.is_paper ? 'Paper Trading' : 'Live Trading'}
                 color="blue"
               />
               <StatCard
@@ -239,23 +239,23 @@ export default function StuntManDashboard() {
               />
               <StatCard
                 title="Realized P&L"
-                value={`${currentAccount.realized_pnl >= 0 ? '+' : ''}$${currentAccount.realized_pnl.toFixed(
+                value={`${(currentAccount?.realized_pnl ?? 0) >= 0 ? '+' : ''}$${(currentAccount?.realized_pnl ?? 0).toFixed(
                   2
                 )}`}
-                subtitle={`${currentAccount.total_trades} total trades`}
-                color={currentAccount.realized_pnl >= 0 ? 'green' : 'red'}
+                subtitle={`${currentAccount?.total_trades ?? 0} total trades`}
+                color={(currentAccount?.realized_pnl ?? 0) >= 0 ? 'green' : 'red'}
               />
               <StatCard
                 title="Win Rate"
                 value={
-                  currentAccount.total_trades > 0
+                  (currentAccount?.total_trades ?? 0) > 0
                     ? `${(
-                        (currentAccount.win_count / currentAccount.total_trades) *
+                        ((currentAccount?.win_count ?? 0) / (currentAccount?.total_trades ?? 1)) *
                         100
                       ).toFixed(1)}%`
                     : 'N/A'
                 }
-                subtitle={`${currentAccount.win_count}W / ${currentAccount.loss_count}L`}
+                subtitle={`${currentAccount?.win_count ?? 0}W / ${currentAccount?.loss_count ?? 0}L`}
                 color="orange"
               />
             </div>
@@ -275,28 +275,28 @@ export default function StuntManDashboard() {
           </Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          {tickers.map((ticker) => (
+          {tickers.filter(t => t && t.instrumentName).map((ticker) => (
             <Link
               key={ticker.instrumentName}
               href={`/stuntman/trade?instrument=${ticker.instrumentName}`}
               className="p-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors"
             >
               <div className="text-xs text-zinc-400 mb-1">
-                {ticker.instrumentName.replace('_', '/')}
+                {(ticker.instrumentName || '').replace('_', '/')}
               </div>
               <div className="font-mono font-medium">
-                ${ticker.lastPrice.toLocaleString(undefined, {
+                ${(ticker.lastPrice ?? 0).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
-                  maximumFractionDigits: ticker.lastPrice < 1 ? 6 : 2,
+                  maximumFractionDigits: (ticker.lastPrice ?? 0) < 1 ? 6 : 2,
                 })}
               </div>
               <div
                 className={`text-xs ${
-                  ticker.priceChangePercent24h >= 0 ? 'text-green-400' : 'text-red-400'
+                  (ticker.priceChangePercent24h ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}
               >
-                {ticker.priceChangePercent24h >= 0 ? '+' : ''}
-                {ticker.priceChangePercent24h.toFixed(2)}%
+                {(ticker.priceChangePercent24h ?? 0) >= 0 ? '+' : ''}
+                {(ticker.priceChangePercent24h ?? 0).toFixed(2)}%
               </div>
             </Link>
           ))}

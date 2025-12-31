@@ -291,7 +291,7 @@ export default function TradingPage() {
             >
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
-                  {acc.name} - ${acc.balance.toFixed(2)}
+                  {acc.name} - ${(acc.balance ?? 0).toFixed(2)}
                 </option>
               ))}
             </select>
@@ -352,18 +352,18 @@ export default function TradingPage() {
               {ticker && (
                 <>
                   <div className="text-2xl font-mono font-bold">
-                    ${ticker.lastPrice.toLocaleString(undefined, {
+                    ${(ticker.lastPrice ?? 0).toLocaleString(undefined, {
                       minimumFractionDigits: 2,
-                      maximumFractionDigits: ticker.lastPrice < 1 ? 6 : 2,
+                      maximumFractionDigits: (ticker.lastPrice ?? 0) < 1 ? 6 : 2,
                     })}
                   </div>
                   <div
                     className={`text-lg ${
-                      ticker.priceChangePercent24h >= 0 ? 'text-green-400' : 'text-red-400'
+                      (ticker.priceChangePercent24h ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}
                   >
-                    {ticker.priceChangePercent24h >= 0 ? '+' : ''}
-                    {ticker.priceChangePercent24h.toFixed(2)}%
+                    {(ticker.priceChangePercent24h ?? 0) >= 0 ? '+' : ''}
+                    {(ticker.priceChangePercent24h ?? 0).toFixed(2)}%
                   </div>
                 </>
               )}
@@ -373,16 +373,16 @@ export default function TradingPage() {
                 <>
                   <div>
                     <span className="text-zinc-500">24h High:</span>{' '}
-                    <span className="font-mono">${ticker.highPrice.toLocaleString()}</span>
+                    <span className="font-mono">${(ticker.highPrice ?? 0).toLocaleString()}</span>
                   </div>
                   <div>
                     <span className="text-zinc-500">24h Low:</span>{' '}
-                    <span className="font-mono">${ticker.lowPrice.toLocaleString()}</span>
+                    <span className="font-mono">${(ticker.lowPrice ?? 0).toLocaleString()}</span>
                   </div>
                   <div>
                     <span className="text-zinc-500">Volume:</span>{' '}
                     <span className="font-mono">
-                      ${(ticker.quoteVolume / 1000000).toFixed(2)}M
+                      ${((ticker.quoteVolume ?? 0) / 1000000).toFixed(2)}M
                     </span>
                   </div>
                 </>
@@ -630,7 +630,7 @@ export default function TradingPage() {
             {/* Balance Display */}
             {currentAccount && (
               <div className="mt-4 text-center text-sm text-zinc-500">
-                Available: ${currentAccount.balance.toFixed(2)} USDT
+                Available: ${(currentAccount.balance ?? 0).toFixed(2)} USDT
               </div>
             )}
           </div>

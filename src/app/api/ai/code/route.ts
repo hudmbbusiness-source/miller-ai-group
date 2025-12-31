@@ -23,12 +23,6 @@ function getCerebrasClient(): Cerebras | null {
   return cerebrasClient
 }
 
-// Provider configurations
-const PROVIDERS = [
-  { name: 'groq', model: 'llama-3.1-8b-instant', getClient: getGroqClient },
-  { name: 'cerebras', model: 'llama-3.3-70b', getClient: getCerebrasClient },
-]
-
 // Try providers with retry logic
 async function callWithRetry(
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
@@ -37,19 +31,18 @@ async function callWithRetry(
   const maxRetries = 2
   const baseDelay = 3000
 
-  for (const provider of PROVIDERS) {
-    const client = provider.getClient()
-    if (!client) continue
-
+  // Try Groq first
+  const groq = getGroqClient()
+  if (groq) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const completion = await client.chat.completions.create({
+        const completion = await groq.chat.completions.create({
           messages,
-          model: provider.model,
+          model: 'llama-3.1-8b-instant',
           temperature: options.temperature,
           max_tokens: options.max_tokens,
         })
-        return { completion, model: provider.model, provider: provider.name }
+        return { completion, model: 'llama-3.1-8b-instant', provider: 'groq' }
       } catch (error) {
         const isRateLimit = error instanceof Error &&
           (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
@@ -58,9 +51,34 @@ async function callWithRetry(
           const delay = baseDelay * Math.pow(2, attempt)
           await new Promise(resolve => setTimeout(resolve, delay))
         } else if (isRateLimit) {
-          // Try next provider
-          break
+          break // Try Cerebras
         } else {
+          throw error
+        }
+      }
+    }
+  }
+
+  // Fallback to Cerebras
+  const cerebras = getCerebrasClient()
+  if (cerebras) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const completion = await cerebras.chat.completions.create({
+          messages,
+          model: 'llama-3.3-70b',
+          temperature: options.temperature,
+          max_tokens: options.max_tokens,
+        })
+        return { completion, model: 'llama-3.3-70b', provider: 'cerebras' }
+      } catch (error) {
+        const isRateLimit = error instanceof Error &&
+          (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
+
+        if (isRateLimit && attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        } else if (!isRateLimit) {
           throw error
         }
       }

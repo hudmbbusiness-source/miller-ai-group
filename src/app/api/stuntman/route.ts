@@ -23,17 +23,8 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action') || 'dashboard'
     const instrument = searchParams.get('instrument') || 'BTC_USDT'
 
-    // Create Crypto.com client
-    let client
-    try {
-      client = createCryptoComClient()
-    } catch (error) {
-      return NextResponse.json({
-        success: false,
-        error: 'Stuntman is not configured. Please add STUNTMAN_CRYPTO_API_KEY to environment.',
-        isConfigured: false,
-      }, { status: 500 })
-    }
+    // Create Crypto.com client (works for public endpoints without API key)
+    const client = createCryptoComClient()
 
     switch (action) {
       case 'dashboard': {
@@ -170,15 +161,7 @@ export async function POST(request: NextRequest) {
     const { action } = body
 
     // Create Crypto.com client
-    let client
-    try {
-      client = createCryptoComClient()
-    } catch {
-      return NextResponse.json({
-        success: false,
-        error: 'Stuntman is not configured.',
-      }, { status: 500 })
-    }
+    const client = createCryptoComClient()
 
     if (!client.canAuthenticate()) {
       return NextResponse.json({

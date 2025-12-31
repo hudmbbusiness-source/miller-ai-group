@@ -398,14 +398,11 @@ export class CryptoComClient {
 
 /**
  * Create a Crypto.com client instance from environment variables
+ * API key is optional for public endpoints (market data)
  */
 export function createCryptoComClient(): CryptoComClient {
-  const apiKey = process.env.STUNTMAN_CRYPTO_API_KEY
+  const apiKey = process.env.STUNTMAN_CRYPTO_API_KEY || ''
   const apiSecret = process.env.STUNTMAN_CRYPTO_SECRET
-
-  if (!apiKey) {
-    throw new Error('STUNTMAN_CRYPTO_API_KEY environment variable is required')
-  }
 
   return new CryptoComClient({
     apiKey,

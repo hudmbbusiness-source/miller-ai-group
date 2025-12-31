@@ -15,51 +15,36 @@ function getGroqClient(): Groq {
   return groqClient
 }
 
-// Models in order of preference (try larger first, fall back to smaller)
-const MODELS = [
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant', // Faster, higher rate limits
-]
+// Use smaller model - much higher rate limits on free tier
+const MODEL = 'llama-3.1-8b-instant'
 
-// Retry with exponential backoff and model fallback
+// Retry with exponential backoff
 async function callWithRetry(
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
   options: { temperature: number; max_tokens: number }
 ) {
-  const maxRetries = 3
-  const baseDelay = 2000 // 2 seconds
+  const maxRetries = 4
+  const baseDelay = 5000 // 5 seconds
 
-  for (let modelIndex = 0; modelIndex < MODELS.length; modelIndex++) {
-    const model = MODELS[modelIndex]
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const completion = await getGroqClient().chat.completions.create({
+        messages,
+        model: MODEL,
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
+      })
+      return { completion, model: MODEL }
+    } catch (error) {
+      const isRateLimit = error instanceof Error &&
+        (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const completion = await getGroqClient().chat.completions.create({
-          messages,
-          model,
-          temperature: options.temperature,
-          max_tokens: options.max_tokens,
-        })
-        return { completion, model }
-      } catch (error) {
-        const isRateLimit = error instanceof Error &&
-          (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
-
-        if (isRateLimit) {
-          // If rate limited on last model, last attempt - throw
-          if (modelIndex === MODELS.length - 1 && attempt === maxRetries - 1) {
-            throw error
-          }
-
-          // If rate limited, try next model or wait and retry
-          if (attempt < maxRetries - 1) {
-            const delay = baseDelay * Math.pow(2, attempt) // 2s, 4s, 8s
-            await new Promise(resolve => setTimeout(resolve, delay))
-          }
-        } else {
-          // Non-rate-limit error, throw immediately
-          throw error
-        }
+      if (isRateLimit && attempt < maxRetries - 1) {
+        // Wait longer each time: 5s, 10s, 20s, 40s
+        const delay = baseDelay * Math.pow(2, attempt)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      } else {
+        throw error
       }
     }
   }

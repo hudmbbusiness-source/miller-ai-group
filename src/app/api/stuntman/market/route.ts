@@ -431,6 +431,52 @@ export async function GET(request: NextRequest) {
         })
       }
 
+      // ==========================================================================
+      // HISTORY - Historical price data for charts (REAL DATA)
+      // ==========================================================================
+      case 'history': {
+        const historyTimeframe = searchParams.get('timeframe') || '1D'
+
+        // Map timeframe to Crypto.com format and count
+        const historyConfig: Record<string, { tf: string; count: number }> = {
+          '1H': { tf: '1m', count: 60 },
+          '1D': { tf: '15m', count: 96 },
+          '1W': { tf: '1h', count: 168 },
+          '1M': { tf: '4h', count: 180 },
+        }
+
+        const config = historyConfig[historyTimeframe] || historyConfig['1D']
+
+        const raw = await fetchCryptoCom<RawCandlestick[]>(
+          `get-candlestick?instrument_name=${instrument}&timeframe=${config.tf}&count=${config.count}`
+        )
+
+        if (!raw || raw.length === 0) {
+          return NextResponse.json({
+            success: false,
+            error: 'Failed to fetch history',
+          }, { status: 502 })
+        }
+
+        // Convert to simple format for charts
+        const history = raw.map((c) => ({
+          time: Math.floor(c.t / 1000), // Convert to seconds for lightweight-charts
+          open: parseFloat(c.o),
+          high: parseFloat(c.h),
+          low: parseFloat(c.l),
+          close: parseFloat(c.c),
+          volume: parseFloat(c.v),
+        })).sort((a, b) => a.time - b.time)
+
+        return NextResponse.json({
+          success: true,
+          instrument,
+          timeframe: historyTimeframe,
+          history,
+          count: history.length,
+        })
+      }
+
       default:
         return NextResponse.json({
           success: false,

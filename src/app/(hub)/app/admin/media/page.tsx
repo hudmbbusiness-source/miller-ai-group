@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
   DialogContent,
@@ -56,10 +57,36 @@ import {
   Download,
   Eye,
   RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Clipboard,
+  Plus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MediaAsset, MediaCategory, MediaFileType } from '@/lib/actions/media-assets'
 import { ensureDefaultCategories, getMediaCategories, createMediaCategory, deleteMediaCategory } from '@/lib/actions/media-assets'
+
+// Upload queue item type
+interface UploadQueueItem {
+  id: string
+  file: File
+  name: string
+  status: 'pending' | 'uploading' | 'success' | 'error'
+  progress: number
+  error?: string
+  asset?: MediaAsset
+}
+
+const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
+const ALLOWED_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif',
+  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/aac',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/json',
+]
 
 const FILE_TYPE_ICONS: Record<MediaFileType, React.ElementType> = {
   image: ImageIcon,
@@ -106,7 +133,11 @@ export default function MediaLibraryPage() {
   const [newCategoryName, setNewCategoryName] = useState('')
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [globalDragging, setGlobalDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dropZoneRef = useRef<HTMLDivElement>(null)
 
   // Load assets and categories
   const loadData = useCallback(async () => {
@@ -144,30 +175,111 @@ export default function MediaLibraryPage() {
     loadData()
   }, [loadData])
 
-  // Handle file upload
-  const handleFileUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+  // Validate file before adding to queue
+  const validateFile = (file: File): { valid: boolean; error?: string } => {
+    if (file.size > MAX_FILE_SIZE) {
+      return { valid: false, error: `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit` }
+    }
+    if (!ALLOWED_TYPES.includes(file.type) && file.type !== '') {
+      return { valid: false, error: `File type ${file.type || 'unknown'} not supported` }
+    }
+    return { valid: true }
+  }
 
-    setUploading(true)
-    const uploadedAssets: MediaAsset[] = []
+  // Add files to upload queue
+  const addFilesToQueue = (files: FileList | File[]) => {
+    const newItems: UploadQueueItem[] = []
 
     for (const file of Array.from(files)) {
-      try {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('name', file.name.replace(/\.[^.]+$/, ''))
+      const validation = validateFile(file)
+      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-        const response = await fetch('/api/admin/media', {
-          method: 'POST',
-          body: formData,
-        })
+      newItems.push({
+        id,
+        file,
+        name: file.name,
+        status: validation.valid ? 'pending' : 'error',
+        progress: 0,
+        error: validation.error,
+      })
+    }
 
-        const result = await response.json()
-        if (result.success && result.asset) {
-          uploadedAssets.push(result.asset)
+    setUploadQueue(prev => [...prev, ...newItems])
+    setUploadDialogOpen(true)
+  }
+
+  // Upload a single file with progress
+  const uploadFile = async (item: UploadQueueItem): Promise<MediaAsset | null> => {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest()
+      const formData = new FormData()
+      formData.append('file', item.file)
+      formData.append('name', item.file.name.replace(/\.[^.]+$/, ''))
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100)
+          setUploadQueue(prev =>
+            prev.map(i => i.id === item.id ? { ...i, progress } : i)
+          )
         }
-      } catch (error) {
-        console.error('Error uploading file:', error)
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const result = JSON.parse(xhr.responseText)
+            if (result.success && result.asset) {
+              setUploadQueue(prev =>
+                prev.map(i => i.id === item.id ? { ...i, status: 'success', progress: 100, asset: result.asset } : i)
+              )
+              resolve(result.asset)
+            } else {
+              setUploadQueue(prev =>
+                prev.map(i => i.id === item.id ? { ...i, status: 'error', error: result.error || 'Upload failed' } : i)
+              )
+              resolve(null)
+            }
+          } catch {
+            setUploadQueue(prev =>
+              prev.map(i => i.id === item.id ? { ...i, status: 'error', error: 'Invalid response' } : i)
+            )
+            resolve(null)
+          }
+        } else {
+          setUploadQueue(prev =>
+            prev.map(i => i.id === item.id ? { ...i, status: 'error', error: `HTTP ${xhr.status}` } : i)
+          )
+          resolve(null)
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        setUploadQueue(prev =>
+          prev.map(i => i.id === item.id ? { ...i, status: 'error', error: 'Network error' } : i)
+        )
+        resolve(null)
+      })
+
+      xhr.open('POST', '/api/admin/media')
+      xhr.send(formData)
+
+      setUploadQueue(prev =>
+        prev.map(i => i.id === item.id ? { ...i, status: 'uploading' } : i)
+      )
+    })
+  }
+
+  // Process upload queue
+  const processUploadQueue = async () => {
+    setUploading(true)
+    const pendingItems = uploadQueue.filter(i => i.status === 'pending')
+    const uploadedAssets: MediaAsset[] = []
+
+    for (const item of pendingItems) {
+      const asset = await uploadFile(item)
+      if (asset) {
+        uploadedAssets.push(asset)
       }
     }
 
@@ -177,7 +289,91 @@ export default function MediaLibraryPage() {
     }
 
     setUploading(false)
-    setUploadDialogOpen(false)
+  }
+
+  // Clear completed/failed from queue
+  const clearCompletedFromQueue = () => {
+    setUploadQueue(prev => prev.filter(i => i.status === 'pending' || i.status === 'uploading'))
+  }
+
+  // Remove item from queue
+  const removeFromQueue = (id: string) => {
+    setUploadQueue(prev => prev.filter(i => i.id !== id))
+  }
+
+  // Retry failed upload
+  const retryUpload = (id: string) => {
+    setUploadQueue(prev =>
+      prev.map(i => i.id === id ? { ...i, status: 'pending', progress: 0, error: undefined } : i)
+    )
+  }
+
+  // Handle paste from clipboard
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    const files: File[] = []
+    for (const item of Array.from(items)) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault()
+      addFilesToQueue(files)
+    }
+  }, [])
+
+  // Global drag and drop
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault()
+      if (e.dataTransfer?.types.includes('Files')) {
+        setGlobalDragging(true)
+      }
+    }
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault()
+      if (e.relatedTarget === null) {
+        setGlobalDragging(false)
+      }
+    }
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault()
+    }
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault()
+      setGlobalDragging(false)
+      if (e.dataTransfer?.files.length) {
+        addFilesToQueue(e.dataTransfer.files)
+      }
+    }
+
+    document.addEventListener('dragenter', handleDragEnter)
+    document.addEventListener('dragleave', handleDragLeave)
+    document.addEventListener('dragover', handleDragOver)
+    document.addEventListener('drop', handleDrop)
+    document.addEventListener('paste', handlePaste)
+
+    return () => {
+      document.removeEventListener('dragenter', handleDragEnter)
+      document.removeEventListener('dragleave', handleDragLeave)
+      document.removeEventListener('dragover', handleDragOver)
+      document.removeEventListener('drop', handleDrop)
+      document.removeEventListener('paste', handlePaste)
+    }
+  }, [handlePaste])
+
+  // Legacy handler for file input
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    addFilesToQueue(files)
   }
 
   // Handle asset deletion
@@ -666,55 +862,219 @@ export default function MediaLibraryPage() {
         </Card>
       )}
 
+      {/* Global Drop Overlay */}
+      {globalDragging && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="border-4 border-dashed border-violet-500 rounded-3xl p-20 text-center">
+            <Upload className="w-16 h-16 mx-auto text-violet-400 mb-4" />
+            <h3 className="text-2xl font-bold text-white mb-2">Drop files to upload</h3>
+            <p className="text-neutral-400">Release to add files to the upload queue</p>
+          </div>
+        </div>
+      )}
+
       {/* Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
+        setUploadDialogOpen(open)
+        if (!open && !uploading) {
+          setUploadQueue([])
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Upload Media</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Upload Media
+            </DialogTitle>
             <DialogDescription>
-              Drag and drop files or click to browse
+              Drag and drop files, paste from clipboard, or click to browse
             </DialogDescription>
           </DialogHeader>
 
+          {/* Drop Zone */}
           <div
+            ref={dropZoneRef}
             className={cn(
-              'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
-              'hover:border-violet-500/50 hover:bg-violet-500/5',
+              'border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer',
+              isDragging
+                ? 'border-violet-500 bg-violet-500/10 scale-[1.02]'
+                : 'border-neutral-700 hover:border-violet-500/50 hover:bg-violet-500/5',
               uploading && 'opacity-50 pointer-events-none'
             )}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+            onDragEnter={(e) => { e.preventDefault(); setIsDragging(true) }}
+            onDragLeave={(e) => { e.preventDefault(); setIsDragging(false) }}
+            onDragOver={(e) => { e.preventDefault() }}
             onDrop={(e) => {
               e.preventDefault()
-              e.stopPropagation()
-              handleFileUpload(e.dataTransfer.files)
+              setIsDragging(false)
+              if (e.dataTransfer.files.length) {
+                addFilesToQueue(e.dataTransfer.files)
+              }
             }}
             onClick={() => fileInputRef.current?.click()}
           >
-            {uploading ? (
-              <Loader2 className="w-8 h-8 mx-auto animate-spin text-violet-500 mb-2" />
-            ) : (
-              <Upload className="w-8 h-8 mx-auto text-neutral-500 mb-2" />
-            )}
-            <p className="text-sm text-muted-foreground">
-              {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
+            <div className="flex items-center justify-center gap-4">
+              <div className="p-3 rounded-full bg-violet-500/10">
+                <Upload className="w-6 h-6 text-violet-400" />
+              </div>
+              <div className="p-3 rounded-full bg-cyan-500/10">
+                <Clipboard className="w-6 h-6 text-cyan-400" />
+              </div>
+            </div>
+            <p className="text-sm font-medium mt-3">
+              Drop files, paste images, or click to browse
             </p>
-            <p className="text-xs text-neutral-600 mt-2">
-              Images, videos, audio, documents up to 100MB
+            <p className="text-xs text-neutral-500 mt-1">
+              Images, videos, audio, documents, animations • Max 100MB each
             </p>
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.json"
+              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.json,.svg"
               className="hidden"
-              onChange={(e) => handleFileUpload(e.target.files)}
+              onChange={(e) => {
+                if (e.target.files?.length) {
+                  addFilesToQueue(e.target.files)
+                  e.target.value = ''
+                }
+              }}
             />
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
-              Cancel
+          {/* Upload Queue */}
+          {uploadQueue.length > 0 && (
+            <div className="flex-1 min-h-0">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">
+                  Upload Queue ({uploadQueue.length} file{uploadQueue.length > 1 ? 's' : ''})
+                </span>
+                {uploadQueue.some(i => i.status === 'success' || i.status === 'error') && (
+                  <Button variant="ghost" size="sm" onClick={clearCompletedFromQueue}>
+                    Clear completed
+                  </Button>
+                )}
+              </div>
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="space-y-2">
+                  {uploadQueue.map((item) => (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        'p-3 rounded-lg border transition-colors',
+                        item.status === 'success' && 'border-green-500/30 bg-green-500/5',
+                        item.status === 'error' && 'border-red-500/30 bg-red-500/5',
+                        item.status === 'uploading' && 'border-violet-500/30 bg-violet-500/5',
+                        item.status === 'pending' && 'border-neutral-700 bg-neutral-900'
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* File icon */}
+                        <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                          {item.file.type.startsWith('image/') ? (
+                            <img
+                              src={URL.createObjectURL(item.file)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <File className="w-5 h-5 text-neutral-500" />
+                          )}
+                        </div>
+
+                        {/* File info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-neutral-500">
+                            <span>{formatFileSize(item.file.size)}</span>
+                            {item.status === 'uploading' && (
+                              <span className="text-violet-400">{item.progress}%</span>
+                            )}
+                            {item.status === 'success' && (
+                              <span className="text-green-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Uploaded
+                              </span>
+                            )}
+                            {item.status === 'error' && (
+                              <span className="text-red-400 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" /> {item.error}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Progress bar */}
+                          {item.status === 'uploading' && (
+                            <Progress value={item.progress} className="h-1 mt-2" />
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {item.status === 'error' && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => retryUpload(item.id)}
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {item.status !== 'uploading' && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-neutral-500 hover:text-red-400"
+                              onClick={() => removeFromQueue(item.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {item.status === 'uploading' && (
+                            <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <div className="flex items-center gap-2 text-xs text-neutral-500 mr-auto">
+              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Ctrl+V</kbd>
+              <span>to paste images</span>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setUploadDialogOpen(false)
+                if (!uploading) setUploadQueue([])
+              }}
+            >
+              {uploading ? 'Close' : 'Cancel'}
             </Button>
+            {uploadQueue.some(i => i.status === 'pending') && (
+              <Button
+                onClick={processUploadQueue}
+                disabled={uploading}
+                className="gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Upload {uploadQueue.filter(i => i.status === 'pending').length} file{uploadQueue.filter(i => i.status === 'pending').length > 1 ? 's' : ''}
+                  </>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

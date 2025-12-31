@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Diagnostics System Types
 
 export type HealthStatus = 'healthy' | 'degraded' | 'critical' | 'unknown'

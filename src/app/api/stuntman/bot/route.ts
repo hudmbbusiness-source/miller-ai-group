@@ -1,349 +1,84 @@
 // @ts-nocheck
 // =============================================================================
-// STUNTMAN AI - AUTOMATED TRADING BOT
+// STUNTMAN AI - ADVANCED TRADING BOT
 // =============================================================================
-// Runs proven strategies automatically and executes trades
+// Uses smart money concepts, whale tracking, and multi-source signals
+// NOT basic RSI/MACD - this is the real deal
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { INSTRUMENTS } from '@/lib/stuntman/constants'
+import {
+  generateAdvancedSignal,
+  generateAllSignals,
+  getBestOpportunities,
+  type AdvancedSignal
+} from '@/lib/stuntman/signal-generator'
 
 // =============================================================================
-// PROVEN TRADING STRATEGIES
+// POSITION SIZING - KELLY CRITERION BASED
 // =============================================================================
 
-// RSI (Relative Strength Index) - Overbought/Oversold
-function calculateRSI(prices: number[], period = 14): number {
-  if (prices.length < period + 1) return 50
+function calculatePositionSize(
+  signal: AdvancedSignal,
+  balance: number,
+  openPositions: number
+): number {
+  // Kelly Criterion: f* = (bp - q) / b
+  // where b = odds, p = win probability, q = 1-p
 
-  let gains = 0
-  let losses = 0
+  const winProb = signal.confidence / 100
+  const riskRewardRatio = signal.take_profit / signal.stop_loss
 
-  for (let i = 1; i <= period; i++) {
-    const change = prices[i] - prices[i - 1]
-    if (change > 0) gains += change
-    else losses -= change
-  }
+  // Simplified Kelly
+  const kelly = (winProb * riskRewardRatio - (1 - winProb)) / riskRewardRatio
 
-  const avgGain = gains / period
-  const avgLoss = losses / period
+  // Use fractional Kelly (25%) to be conservative
+  const kellyFraction = Math.max(0, kelly * 0.25)
 
-  if (avgLoss === 0) return 100
-  const rs = avgGain / avgLoss
-  return 100 - (100 / (1 + rs))
-}
+  // Apply constraints
+  const maxPositionPercent = 0.15 // Max 15% per trade
+  const minPositionPercent = 0.02 // Min 2% per trade
+  const maxOpenPositions = 5
 
-// MACD (Moving Average Convergence Divergence)
-function calculateEMA(prices: number[], period: number): number {
-  if (prices.length === 0) return 0
-  const k = 2 / (period + 1)
-  let ema = prices[0]
-  for (let i = 1; i < prices.length; i++) {
-    ema = prices[i] * k + ema * (1 - k)
-  }
-  return ema
-}
+  // Reduce size based on open positions
+  const positionMultiplier = Math.max(0.2, 1 - (openPositions / maxOpenPositions))
 
-function calculateMACD(prices: number[]): { macd: number; signal: number; histogram: number } {
-  if (prices.length < 26) return { macd: 0, signal: 0, histogram: 0 }
+  let positionPercent = Math.min(kellyFraction, maxPositionPercent) * positionMultiplier
+  positionPercent = Math.max(positionPercent, minPositionPercent)
 
-  const ema12 = calculateEMA(prices.slice(-12), 12)
-  const ema26 = calculateEMA(prices.slice(-26), 26)
-  const macd = ema12 - ema26
+  // Minimum trade value $10
+  const positionValue = balance * positionPercent
+  if (positionValue < 10) return 0
 
-  // Signal line is 9-period EMA of MACD
-  const signal = macd * 0.2 // Simplified
-  const histogram = macd - signal
-
-  return { macd, signal, histogram }
-}
-
-// Bollinger Bands
-function calculateBollingerBands(prices: number[], period = 20): {
-  upper: number
-  middle: number
-  lower: number
-  percentB: number
-} {
-  if (prices.length < period) {
-    const last = prices[prices.length - 1] || 0
-    return { upper: last, middle: last, lower: last, percentB: 0.5 }
-  }
-
-  const slice = prices.slice(-period)
-  const middle = slice.reduce((a, b) => a + b, 0) / period
-  const variance = slice.reduce((sum, p) => sum + Math.pow(p - middle, 2), 0) / period
-  const stdDev = Math.sqrt(variance)
-
-  const upper = middle + 2 * stdDev
-  const lower = middle - 2 * stdDev
-  const currentPrice = prices[prices.length - 1]
-  const percentB = (currentPrice - lower) / (upper - lower)
-
-  return { upper, middle, lower, percentB }
-}
-
-// Simple Moving Average
-function calculateSMA(prices: number[], period: number): number {
-  if (prices.length < period) return prices[prices.length - 1] || 0
-  const slice = prices.slice(-period)
-  return slice.reduce((a, b) => a + b, 0) / period
+  return positionValue
 }
 
 // =============================================================================
-// STRATEGY SIGNALS
-// =============================================================================
-
-interface StrategySignal {
-  strategy: string
-  action: 'BUY' | 'SELL' | 'HOLD'
-  confidence: number
-  reason: string
-}
-
-function analyzeWithRSI(prices: number[]): StrategySignal {
-  const rsi = calculateRSI(prices)
-
-  if (rsi <= 30) {
-    return {
-      strategy: 'RSI',
-      action: 'BUY',
-      confidence: Math.min((30 - rsi) / 30, 1),
-      reason: `RSI at ${rsi.toFixed(1)} - Oversold`,
-    }
-  } else if (rsi >= 70) {
-    return {
-      strategy: 'RSI',
-      action: 'SELL',
-      confidence: Math.min((rsi - 70) / 30, 1),
-      reason: `RSI at ${rsi.toFixed(1)} - Overbought`,
-    }
-  }
-
-  return {
-    strategy: 'RSI',
-    action: 'HOLD',
-    confidence: 0,
-    reason: `RSI at ${rsi.toFixed(1)} - Neutral`,
-  }
-}
-
-function analyzeWithMACD(prices: number[]): StrategySignal {
-  const { macd, signal, histogram } = calculateMACD(prices)
-
-  if (histogram > 0 && macd > 0) {
-    return {
-      strategy: 'MACD',
-      action: 'BUY',
-      confidence: Math.min(Math.abs(histogram) * 100, 1),
-      reason: 'MACD bullish crossover',
-    }
-  } else if (histogram < 0 && macd < 0) {
-    return {
-      strategy: 'MACD',
-      action: 'SELL',
-      confidence: Math.min(Math.abs(histogram) * 100, 1),
-      reason: 'MACD bearish crossover',
-    }
-  }
-
-  return {
-    strategy: 'MACD',
-    action: 'HOLD',
-    confidence: 0,
-    reason: 'MACD neutral',
-  }
-}
-
-function analyzeWithBollingerBands(prices: number[]): StrategySignal {
-  const bb = calculateBollingerBands(prices)
-
-  if (bb.percentB <= 0) {
-    return {
-      strategy: 'Bollinger Bands',
-      action: 'BUY',
-      confidence: Math.min(Math.abs(bb.percentB), 1),
-      reason: 'Price below lower band - potential bounce',
-    }
-  } else if (bb.percentB >= 1) {
-    return {
-      strategy: 'Bollinger Bands',
-      action: 'SELL',
-      confidence: Math.min(bb.percentB - 1, 1),
-      reason: 'Price above upper band - potential reversal',
-    }
-  }
-
-  return {
-    strategy: 'Bollinger Bands',
-    action: 'HOLD',
-    confidence: 0,
-    reason: 'Price within bands',
-  }
-}
-
-function analyzeWithMovingAverages(prices: number[]): StrategySignal {
-  const sma20 = calculateSMA(prices, 20)
-  const sma50 = calculateSMA(prices, 50)
-  const currentPrice = prices[prices.length - 1]
-
-  if (sma20 > sma50 && currentPrice > sma20) {
-    return {
-      strategy: 'Moving Averages',
-      action: 'BUY',
-      confidence: 0.7,
-      reason: 'Golden cross - SMA20 above SMA50, price above SMA20',
-    }
-  } else if (sma20 < sma50 && currentPrice < sma20) {
-    return {
-      strategy: 'Moving Averages',
-      action: 'SELL',
-      confidence: 0.7,
-      reason: 'Death cross - SMA20 below SMA50, price below SMA20',
-    }
-  }
-
-  return {
-    strategy: 'Moving Averages',
-    action: 'HOLD',
-    confidence: 0,
-    reason: 'No clear trend',
-  }
-}
-
-// =============================================================================
-// COMBINED STRATEGY DECISION
-// =============================================================================
-
-interface TradeDecision {
-  instrument: string
-  action: 'BUY' | 'SELL' | 'HOLD'
-  confidence: number
-  strategies: StrategySignal[]
-  reason: string
-}
-
-function makeTradeDecision(instrument: string, prices: number[]): TradeDecision {
-  const strategies = [
-    analyzeWithRSI(prices),
-    analyzeWithMACD(prices),
-    analyzeWithBollingerBands(prices),
-    analyzeWithMovingAverages(prices),
-  ]
-
-  // Count votes
-  let buyVotes = 0
-  let sellVotes = 0
-  let totalConfidence = 0
-
-  strategies.forEach((s) => {
-    if (s.action === 'BUY') {
-      buyVotes++
-      totalConfidence += s.confidence
-    } else if (s.action === 'SELL') {
-      sellVotes++
-      totalConfidence += s.confidence
-    }
-  })
-
-  // Need at least 2 strategies to agree with decent confidence
-  const minVotes = 2
-  const minConfidence = 0.5
-
-  if (buyVotes >= minVotes && totalConfidence / buyVotes >= minConfidence) {
-    return {
-      instrument,
-      action: 'BUY',
-      confidence: totalConfidence / buyVotes,
-      strategies,
-      reason: `${buyVotes} strategies signal BUY`,
-    }
-  } else if (sellVotes >= minVotes && totalConfidence / sellVotes >= minConfidence) {
-    return {
-      instrument,
-      action: 'SELL',
-      confidence: totalConfidence / sellVotes,
-      strategies,
-      reason: `${sellVotes} strategies signal SELL`,
-    }
-  }
-
-  return {
-    instrument,
-    action: 'HOLD',
-    confidence: 0,
-    strategies,
-    reason: 'No consensus among strategies',
-  }
-}
-
-// =============================================================================
-// FETCH MARKET DATA
-// =============================================================================
-
-async function fetchPriceHistory(instrument: string): Promise<number[]> {
-  try {
-    const response = await fetch(
-      `https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name=${instrument}&timeframe=15m&count=100`
-    )
-    const data = await response.json()
-
-    if (data.code === 0 && data.result?.data) {
-      return data.result.data.map((c: { c: string }) => parseFloat(c.c))
-    }
-  } catch (error) {
-    console.error(`Failed to fetch prices for ${instrument}:`, error)
-  }
-  return []
-}
-
-async function getCurrentPrice(instrument: string): Promise<number> {
-  try {
-    const response = await fetch(
-      `https://api.crypto.com/exchange/v1/public/get-ticker?instrument_name=${instrument}`
-    )
-    const data = await response.json()
-
-    if (data.code === 0 && data.result?.data?.[0]) {
-      return parseFloat(data.result.data[0].a)
-    }
-  } catch (error) {
-    console.error(`Failed to fetch current price for ${instrument}:`, error)
-  }
-  return 0
-}
-
-// =============================================================================
-// EXECUTE TRADE (Paper Trading)
+// EXECUTE TRADE
 // =============================================================================
 
 async function executeTrade(
   supabase: any,
   accountId: string,
-  decision: TradeDecision,
+  signal: AdvancedSignal,
   currentPrice: number,
-  balance: number
+  positionValue: number
 ): Promise<{ success: boolean; message: string; orderId?: string }> {
-  // Position sizing: Use 10% of balance per trade max
-  const maxPositionSize = balance * 0.1
-  const quantity = maxPositionSize / currentPrice
+  const quantity = positionValue / currentPrice
+  const side = signal.action.includes('BUY') ? 'buy' : 'sell'
 
-  if (quantity <= 0 || maxPositionSize < 10) {
-    return { success: false, message: 'Insufficient balance for trade' }
-  }
-
-  // Calculate fees (0.1% taker fee)
-  const orderValue = quantity * currentPrice
-  const fee = orderValue * 0.001
+  // Calculate fees (0.1% taker)
+  const fee = positionValue * 0.001
 
   // Create order
   const { data: order, error: orderError } = await supabase
     .from('stuntman_orders')
     .insert({
       account_id: accountId,
-      instrument_name: decision.instrument,
-      side: decision.action.toLowerCase(),
+      instrument_name: signal.instrument,
+      side,
       type: 'market',
       quantity,
       price: currentPrice,
@@ -351,7 +86,7 @@ async function executeTrade(
       filled_price: currentPrice,
       fee,
       status: 'filled',
-      source: 'bot',
+      source: 'advanced_bot',
     })
     .select()
     .single()
@@ -360,68 +95,98 @@ async function executeTrade(
     return { success: false, message: orderError.message }
   }
 
-  // Update account balance
-  const newBalance = decision.action === 'BUY'
-    ? balance - orderValue - fee
-    : balance + orderValue - fee
+  // Get current balance
+  const { data: account } = await supabase
+    .from('stuntman_accounts')
+    .select('balance')
+    .eq('id', accountId)
+    .single()
+
+  // Update balance
+  const newBalance = side === 'buy'
+    ? account.balance - positionValue - fee
+    : account.balance + positionValue - fee
 
   await supabase
     .from('stuntman_accounts')
     .update({ balance: newBalance })
     .eq('id', accountId)
 
-  // Create position (for BUY) or close position (for SELL)
-  if (decision.action === 'BUY') {
+  // Create position (for buy) with stop loss and take profit
+  if (side === 'buy') {
+    const stopLossPrice = currentPrice * (1 - signal.stop_loss / 100)
+    const takeProfitPrice = currentPrice * (1 + signal.take_profit / 100)
+
     await supabase.from('stuntman_positions').insert({
       account_id: accountId,
-      instrument_name: decision.instrument,
+      instrument_name: signal.instrument,
       side: 'long',
       quantity,
       entry_price: currentPrice,
       current_price: currentPrice,
       unrealized_pnl: 0,
+      stop_loss: stopLossPrice,
+      take_profit: takeProfitPrice,
       status: 'open',
     })
   }
 
-  // Log the trade
+  // Log trade
   await supabase.from('stuntman_trades').insert({
     account_id: accountId,
     order_id: order.id,
-    instrument_name: decision.instrument,
-    side: decision.action.toLowerCase(),
+    instrument_name: signal.instrument,
+    side,
     price: currentPrice,
     quantity,
     fee,
     pnl: 0,
-    source: 'bot',
+    source: 'advanced_bot',
   })
 
   // Save signal
   await supabase.from('stuntman_signals').insert({
     account_id: accountId,
-    instrument_name: decision.instrument,
-    strategy_id: null,
-    side: decision.action.toLowerCase(),
-    strength: decision.confidence,
-    confidence: decision.confidence,
-    source: decision.strategies.map(s => s.strategy).join(', '),
-    indicators: decision.strategies,
+    instrument_name: signal.instrument,
+    side,
+    strength: signal.confidence / 100,
+    confidence: signal.confidence / 100,
+    source: signal.sources.map(s => s.name).join(', '),
+    indicators: signal.sources,
     status: 'executed',
   })
 
   return {
     success: true,
-    message: `${decision.action} ${quantity.toFixed(6)} ${decision.instrument} @ $${currentPrice.toFixed(2)}`,
+    message: `${side.toUpperCase()} ${quantity.toFixed(6)} ${signal.instrument} @ $${currentPrice.toFixed(2)} | SL: ${signal.stop_loss}% | TP: ${signal.take_profit}%`,
     orderId: order.id,
   }
 }
 
 // =============================================================================
-// BOT MAIN LOOP
+// FETCH CURRENT PRICE
 // =============================================================================
 
-async function runBot(supabase: any, accountId: string) {
+async function getCurrentPrice(instrument: string): Promise<number> {
+  try {
+    const res = await fetch(
+      `https://api.crypto.com/exchange/v1/public/get-ticker?instrument_name=${instrument}`
+    )
+    const data = await res.json()
+    if (data.code === 0 && data.result?.data?.[0]) {
+      return parseFloat(data.result.data[0].a)
+    }
+  } catch (error) {
+    console.error(`Failed to fetch price for ${instrument}:`, error)
+  }
+  return 0
+}
+
+// =============================================================================
+// BOT EXECUTION
+// =============================================================================
+
+async function runAdvancedBot(supabase: any, accountId: string, mode: 'full' | 'analyze' = 'full') {
   const results: any[] = []
 
   // Get account
@@ -431,59 +196,74 @@ async function runBot(supabase: any, accountId: string) {
     .eq('id', accountId)
     .single()
 
-  if (!account || !account.is_paper) {
-    return { error: 'Invalid or non-paper account' }
+  if (!account) {
+    return { error: 'Account not found' }
   }
 
-  // Check enabled strategies
-  const { data: strategies } = await supabase
-    .from('stuntman_strategies')
-    .select('*')
+  if (!account.is_paper && mode === 'full') {
+    return { error: 'Live trading not enabled' }
+  }
+
+  // Get open positions count
+  const { data: openPositions } = await supabase
+    .from('stuntman_positions')
+    .select('id')
     .eq('account_id', accountId)
-    .eq('is_active', true)
+    .eq('status', 'open')
 
-  // Get instruments to trade (from strategies or default)
-  const instruments = strategies?.length > 0
-    ? [...new Set(strategies.flatMap((s: any) => s.instruments || INSTRUMENTS.primary))]
-    : INSTRUMENTS.primary
+  const openCount = openPositions?.length || 0
 
-  // Analyze each instrument
-  for (const instrument of instruments) {
-    try {
-      const prices = await fetchPriceHistory(instrument)
-      if (prices.length < 50) continue
+  // Get best opportunities (minimum 50% confidence)
+  const opportunities = await getBestOpportunities(50)
 
-      const currentPrice = await getCurrentPrice(instrument)
-      if (currentPrice <= 0) continue
+  for (const signal of opportunities) {
+    const currentPrice = await getCurrentPrice(signal.instrument)
+    if (currentPrice <= 0) continue
 
-      const decision = makeTradeDecision(instrument, prices)
+    // Calculate position size
+    const positionValue = calculatePositionSize(signal, account.balance, openCount)
 
-      results.push({
-        instrument,
-        decision: decision.action,
-        confidence: decision.confidence,
-        reason: decision.reason,
-        strategies: decision.strategies,
-        currentPrice,
-      })
-
-      // Execute trade if actionable and confidence is high enough
-      if (decision.action !== 'HOLD' && decision.confidence >= 0.6) {
-        const tradeResult = await executeTrade(
-          supabase,
-          accountId,
-          decision,
-          currentPrice,
-          account.balance
-        )
-        results[results.length - 1].trade = tradeResult
-      }
-    } catch (error) {
-      console.error(`Bot error for ${instrument}:`, error)
+    const result = {
+      instrument: signal.instrument,
+      action: signal.action,
+      confidence: signal.confidence,
+      risk_score: signal.risk_score,
+      position_size_pct: signal.position_size,
+      position_value: positionValue,
+      stop_loss: signal.stop_loss,
+      take_profit: signal.take_profit,
+      sources: signal.sources.map(s => ({
+        name: s.name,
+        signal: s.signal,
+        strength: s.strength
+      })),
+      currentPrice,
+      trade: null as any
     }
+
+    // Execute if we have sufficient position value and in full mode
+    if (mode === 'full' && positionValue >= 10 && signal.confidence >= 60) {
+      const tradeResult = await executeTrade(
+        supabase,
+        accountId,
+        signal,
+        currentPrice,
+        positionValue
+      )
+      result.trade = tradeResult
+    }
+
+    results.push(result)
   }
 
-  return { results, timestamp: Date.now() }
+  return {
+    results,
+    timestamp: Date.now(),
+    balance: account.balance,
+    open_positions: openCount,
+    opportunities_found: opportunities.length,
+    mode
+  }
 }
 
 // =============================================================================
@@ -501,43 +281,71 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action') || 'status'
-    const accountId = searchParams.get('accountId')
+    const instrument = searchParams.get('instrument')
 
     switch (action) {
       case 'status': {
-        // Get bot status for all accounts
         const { data: accounts } = await supabase
           .from('stuntman_accounts')
           .select('id, name, is_paper, balance')
           .eq('user_id', user.id)
 
-        // Get recent signals
-        const { data: signals } = await supabase
+        const { data: recentSignals } = await supabase
           .from('stuntman_signals')
           .select('*')
-          .eq('source', 'bot')
           .order('created_at', { ascending: false })
           .limit(20)
 
         return NextResponse.json({
           success: true,
           accounts,
-          recentSignals: signals || [],
+          recentSignals: recentSignals || [],
         })
       }
 
       case 'analyze': {
-        // Analyze market without trading
-        const instrument = searchParams.get('instrument') || 'BTC_USDT'
-        const prices = await fetchPriceHistory(instrument)
-        const currentPrice = await getCurrentPrice(instrument)
-        const decision = makeTradeDecision(instrument, prices)
+        // Analyze single instrument
+        const targetInstrument = instrument || 'BTC_USDT'
+        const signal = await generateAdvancedSignal(targetInstrument)
 
         return NextResponse.json({
           success: true,
-          instrument,
-          currentPrice,
-          decision,
+          signal,
+          explanation: {
+            summary: `${signal.action} with ${signal.confidence}% confidence`,
+            bullish: signal.sources.filter(s => s.signal === 'bullish'),
+            bearish: signal.sources.filter(s => s.signal === 'bearish'),
+            risk: `Risk score: ${signal.risk_score}/10`,
+            suggestion: signal.action === 'HOLD'
+              ? 'No clear signal - wait for better opportunity'
+              : `${signal.action} with ${signal.position_size}% of portfolio, SL: ${signal.stop_loss}%, TP: ${signal.take_profit}%`
+          }
+        })
+      }
+
+      case 'opportunities': {
+        const minConfidence = parseInt(searchParams.get('minConfidence') || '50')
+        const opportunities = await getBestOpportunities(minConfidence)
+
+        return NextResponse.json({
+          success: true,
+          opportunities,
+          count: opportunities.length,
+        })
+      }
+
+      case 'scan': {
+        // Full market scan
+        const allSignals = await generateAllSignals()
+
+        return NextResponse.json({
+          success: true,
+          signals: allSignals,
+          strongBuy: allSignals.filter(s => s.action === 'STRONG_BUY'),
+          buy: allSignals.filter(s => s.action === 'BUY'),
+          sell: allSignals.filter(s => s.action === 'SELL'),
+          strongSell: allSignals.filter(s => s.action === 'STRONG_SELL'),
+          hold: allSignals.filter(s => s.action === 'HOLD'),
         })
       }
 
@@ -563,16 +371,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { action, accountId } = body
+    const { action, accountId, mode = 'full' } = body
 
     switch (action) {
       case 'run': {
-        // Run bot for specific account
         if (!accountId) {
           return NextResponse.json({ error: 'accountId required' }, { status: 400 })
         }
 
-        // Verify account belongs to user
+        // Verify account
         const { data: account } = await supabase
           .from('stuntman_accounts')
           .select('*')
@@ -584,7 +391,21 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Account not found' }, { status: 404 })
         }
 
-        const result = await runBot(supabase, accountId)
+        const result = await runAdvancedBot(supabase, accountId, mode)
+
+        return NextResponse.json({
+          success: true,
+          ...result,
+        })
+      }
+
+      case 'analyze': {
+        // Analyze without trading
+        if (!accountId) {
+          return NextResponse.json({ error: 'accountId required' }, { status: 400 })
+        }
+
+        const result = await runAdvancedBot(supabase, accountId, 'analyze')
 
         return NextResponse.json({
           success: true,

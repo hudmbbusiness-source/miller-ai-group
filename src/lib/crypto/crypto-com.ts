@@ -9,7 +9,7 @@ import crypto from 'crypto'
 
 // API Configuration
 const CRYPTO_COM_API_URL = 'https://api.crypto.com/exchange/v1'
-const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/v2/public'
+const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/exchange/v1/public'
 
 // Types
 export interface CryptoComCredentials {
@@ -171,12 +171,24 @@ export class CryptoComClient {
   async getTicker(instrumentName: string): Promise<Ticker | null> {
     try {
       const response = await fetch(
-        `${CRYPTO_COM_PUBLIC_API_URL}/get-ticker?instrument_name=${instrumentName}`
+        `${CRYPTO_COM_PUBLIC_API_URL}/get-tickers?instrument_name=${instrumentName}`
       )
       const data = await response.json()
 
-      if (data.code === 0 && data.result?.data) {
-        return data.result.data as Ticker
+      if (data.code === 0 && data.result?.data?.[0]) {
+        const t = data.result.data[0]
+        return {
+          instrument_name: t.i,
+          last_traded_price: t.a,
+          bid_price: t.b,
+          ask_price: t.k,
+          high_price: t.h,
+          low_price: t.l,
+          volume: t.v,
+          timestamp: t.t,
+          price_change_24h: String(parseFloat(t.a) * parseFloat(t.c)),
+          price_change_percentage_24h: String(parseFloat(t.c) * 100),
+        }
       }
       return null
     } catch (error) {
@@ -190,11 +202,22 @@ export class CryptoComClient {
    */
   async getAllTickers(): Promise<Ticker[]> {
     try {
-      const response = await fetch(`${CRYPTO_COM_PUBLIC_API_URL}/get-ticker`)
+      const response = await fetch(`${CRYPTO_COM_PUBLIC_API_URL}/get-tickers`)
       const data = await response.json()
 
       if (data.code === 0 && data.result?.data) {
-        return data.result.data as Ticker[]
+        return data.result.data.map((t: any) => ({
+          instrument_name: t.i,
+          last_traded_price: t.a,
+          bid_price: t.b,
+          ask_price: t.k,
+          high_price: t.h,
+          low_price: t.l,
+          volume: t.v,
+          timestamp: t.t,
+          price_change_24h: String(parseFloat(t.a) * parseFloat(t.c)),
+          price_change_percentage_24h: String(parseFloat(t.c) * 100),
+        }))
       }
       return []
     } catch (error) {
@@ -216,10 +239,11 @@ export class CryptoComClient {
       )
       const data = await response.json()
 
-      if (data.code === 0 && data.result?.data) {
-        return data.result.data[0] as {
-          bids: Array<{ price: string; quantity: string }>
-          asks: Array<{ price: string; quantity: string }>
+      if (data.code === 0 && data.result?.data?.[0]) {
+        const book = data.result.data[0]
+        return {
+          bids: (book.bids || []).map((b: [string, string, number]) => ({ price: b[0], quantity: b[1] })),
+          asks: (book.asks || []).map((a: [string, string, number]) => ({ price: a[0], quantity: a[1] })),
         }
       }
       return null
@@ -245,7 +269,7 @@ export class CryptoComClient {
       const data = await response.json()
 
       if (data.code === 0 && data.result?.data) {
-        return data.result.data.map((trade: { p: string; q: string; s: string; t: number }) => ({
+        return data.result.data.map((trade: { p: string; q: string; s: string; t: number; d: string }) => ({
           price: trade.p,
           quantity: trade.q,
           side: trade.s as 'BUY' | 'SELL',

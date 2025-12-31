@@ -143,12 +143,12 @@ export async function createMediaAsset(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Not authenticated' }
 
-  const { data, error } = await supabase
-    .from('media_assets')
+  const { data, error } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .insert({
       ...asset,
       user_id: user.id,
-    })
+    } as Record<string, unknown>)
     .select()
     .single()
 
@@ -173,9 +173,9 @@ export async function updateMediaAsset(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Not authenticated' }
 
-  const { error } = await supabase
-    .from('media_assets')
-    .update(updates)
+  const { error } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
+    .update(updates as Record<string, unknown>)
     .eq('id', id)
     .eq('user_id', user.id)
 
@@ -198,22 +198,24 @@ export async function deleteMediaAsset(id: string): Promise<{ success: boolean; 
   if (!user) return { success: false, error: 'Not authenticated' }
 
   // First get the asset to find the storage path
-  const { data: asset, error: fetchError } = await supabase
-    .from('media_assets')
+  const { data: asset, error: fetchError } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .select('storage_path, storage_bucket')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
 
-  if (fetchError || !asset) {
+  const assetData = asset as { storage_path: string; storage_bucket: string } | null
+
+  if (fetchError || !assetData) {
     console.error('Error fetching media asset for deletion:', fetchError)
     return { success: false, error: 'Asset not found' }
   }
 
   // Delete from storage
   const { error: storageError } = await supabase.storage
-    .from(asset.storage_bucket)
-    .remove([asset.storage_path])
+    .from(assetData.storage_bucket)
+    .remove([assetData.storage_path])
 
   if (storageError) {
     console.error('Error deleting file from storage:', storageError)
@@ -221,8 +223,8 @@ export async function deleteMediaAsset(id: string): Promise<{ success: boolean; 
   }
 
   // Delete from database
-  const { error: deleteError } = await supabase
-    .from('media_assets')
+  const { error: deleteError } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
@@ -250,11 +252,13 @@ export async function bulkDeleteMediaAssets(ids: string[]): Promise<{
   if (!user) return { success: false, deleted: 0, error: 'Not authenticated' }
 
   // Get all assets to find their storage paths
-  const { data: assets, error: fetchError } = await supabase
-    .from('media_assets')
+  const { data: assets, error: fetchError } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .select('id, storage_path, storage_bucket')
     .in('id', ids)
     .eq('user_id', user.id)
+
+  const assetsData = assets as { id: string; storage_path: string; storage_bucket: string }[] | null
 
   if (fetchError) {
     console.error('Error fetching media assets for bulk deletion:', fetchError)
@@ -263,7 +267,7 @@ export async function bulkDeleteMediaAssets(ids: string[]): Promise<{
 
   // Delete from storage (grouped by bucket)
   const bucketPaths: Record<string, string[]> = {}
-  for (const asset of assets || []) {
+  for (const asset of assetsData || []) {
     if (!bucketPaths[asset.storage_bucket]) {
       bucketPaths[asset.storage_bucket] = []
     }
@@ -280,8 +284,8 @@ export async function bulkDeleteMediaAssets(ids: string[]): Promise<{
   }
 
   // Delete from database
-  const { error: deleteError } = await supabase
-    .from('media_assets')
+  const { error: deleteError } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .delete()
     .in('id', ids)
     .eq('user_id', user.id)
@@ -292,7 +296,7 @@ export async function bulkDeleteMediaAssets(ids: string[]): Promise<{
   }
 
   revalidatePath('/app/admin/media')
-  return { success: true, deleted: assets?.length || 0 }
+  return { success: true, deleted: assetsData?.length || 0 }
 }
 
 // Toggle favorite status
@@ -305,21 +309,23 @@ export async function toggleMediaFavorite(id: string): Promise<{ success: boolea
   if (!user) return { success: false, error: 'Not authenticated' }
 
   // Get current favorite status
-  const { data: asset, error: fetchError } = await supabase
-    .from('media_assets')
+  const { data: asset, error: fetchError } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .select('is_favorite')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
 
-  if (fetchError || !asset) {
+  const assetData = asset as { is_favorite: boolean } | null
+
+  if (fetchError || !assetData) {
     return { success: false, error: 'Asset not found' }
   }
 
   // Toggle it
-  const { error: updateError } = await supabase
-    .from('media_assets')
-    .update({ is_favorite: !asset.is_favorite })
+  const { error: updateError } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
+    .update({ is_favorite: !assetData.is_favorite } as Record<string, unknown>)
     .eq('id', id)
     .eq('user_id', user.id)
 
@@ -367,12 +373,12 @@ export async function createMediaCategory(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Not authenticated' }
 
-  const { data, error } = await supabase
-    .from('media_categories')
+  const { data, error } = await (supabase
+    .from('media_categories') as ReturnType<typeof supabase.from>)
     .insert({
       ...category,
       user_id: user.id,
-    })
+    } as Record<string, unknown>)
     .select()
     .single()
 
@@ -397,9 +403,9 @@ export async function updateMediaCategory(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Not authenticated' }
 
-  const { error } = await supabase
-    .from('media_categories')
-    .update(updates)
+  const { error } = await (supabase
+    .from('media_categories') as ReturnType<typeof supabase.from>)
+    .update(updates as Record<string, unknown>)
     .eq('id', id)
     .eq('user_id', user.id)
 
@@ -421,8 +427,8 @@ export async function deleteMediaCategory(id: string): Promise<{ success: boolea
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Not authenticated' }
 
-  const { error } = await supabase
-    .from('media_categories')
+  const { error } = await (supabase
+    .from('media_categories') as ReturnType<typeof supabase.from>)
     .delete()
     .eq('id', id)
     .eq('user_id', user.id)
@@ -465,9 +471,9 @@ export async function ensureDefaultCategories(): Promise<void> {
     { name: 'Animations', slug: 'animations', color: '#eab308', icon: 'sparkles', order_index: 6 },
   ]
 
-  await supabase
-    .from('media_categories')
-    .insert(defaultCategories.map(cat => ({ ...cat, user_id: user.id })))
+  await (supabase
+    .from('media_categories') as ReturnType<typeof supabase.from>)
+    .insert(defaultCategories.map(cat => ({ ...cat, user_id: user.id })) as Record<string, unknown>[])
 }
 
 // Get asset counts by file type
@@ -479,17 +485,19 @@ export async function getMediaAssetCounts(): Promise<Record<MediaFileType | 'all
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { all: 0, image: 0, video: 0, audio: 0, document: 0, animation: 0, svg: 0, other: 0 }
 
-  const { data, error } = await supabase
-    .from('media_assets')
+  const { data, error } = await (supabase
+    .from('media_assets') as ReturnType<typeof supabase.from>)
     .select('file_type')
     .eq('user_id', user.id)
 
-  if (error || !data) {
+  const typedData = data as { file_type: string }[] | null
+
+  if (error || !typedData) {
     return { all: 0, image: 0, video: 0, audio: 0, document: 0, animation: 0, svg: 0, other: 0 }
   }
 
   const counts: Record<MediaFileType | 'all', number> = {
-    all: data.length,
+    all: typedData.length,
     image: 0,
     video: 0,
     audio: 0,
@@ -499,7 +507,7 @@ export async function getMediaAssetCounts(): Promise<Record<MediaFileType | 'all
     other: 0,
   }
 
-  for (const asset of data) {
+  for (const asset of typedData) {
     const type = asset.file_type as MediaFileType
     if (counts[type] !== undefined) {
       counts[type]++

@@ -7,7 +7,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createChart, ColorType, IChartApi, ISeriesApi, LineData, Time } from 'lightweight-charts'
+import { createChart, ColorType, IChartApi, ISeriesApi, LineData, Time, AreaSeries } from 'lightweight-charts'
 
 interface PriceChartProps {
   instrument: string
@@ -64,7 +64,7 @@ export function PriceChart({ instrument, height = 400, className = '' }: PriceCh
       handleScroll: { vertTouchDrag: false },
     })
 
-    const areaSeries = chart.addAreaSeries({
+    const areaSeries = chart.addSeries(AreaSeries, {
       lineColor: '#10b981',
       topColor: 'rgba(16, 185, 129, 0.3)',
       bottomColor: 'rgba(16, 185, 129, 0.0)',

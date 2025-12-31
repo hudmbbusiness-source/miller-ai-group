@@ -36,6 +36,8 @@ import {
   Bell,
   User,
   Command,
+  ImageIcon,
+  Stethoscope,
 } from 'lucide-react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { useState, useEffect } from 'react'
@@ -57,6 +59,8 @@ const toolItems = [
 
 const adminItems = [
   { href: '/app/admin/verify', label: 'System Verify', icon: Shield },
+  { href: '/app/admin/media', label: 'Media Library', icon: ImageIcon },
+  { href: '/app/admin/diagnostics', label: 'AI Diagnostics', icon: Stethoscope },
 ]
 
 // Audio control component

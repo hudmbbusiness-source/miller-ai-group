@@ -625,6 +625,239 @@ export interface Database {
           updated_at?: string
         }
       }
+      media_categories: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          slug: string
+          description: string | null
+          color: string
+          icon: string
+          order_index: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          slug: string
+          description?: string | null
+          color?: string
+          icon?: string
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          slug?: string
+          description?: string | null
+          color?: string
+          icon?: string
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      media_assets: {
+        Row: {
+          id: string
+          user_id: string
+          filename: string
+          original_filename: string
+          storage_path: string
+          storage_bucket: string
+          file_type: 'image' | 'video' | 'audio' | 'document' | 'animation' | 'svg' | 'other'
+          mime_type: string
+          file_size: number
+          width: number | null
+          height: number | null
+          duration: number | null
+          name: string
+          description: string | null
+          alt_text: string | null
+          category_id: string | null
+          tags: string[]
+          public_url: string
+          thumbnail_url: string | null
+          metadata: Json
+          order_index: number
+          is_favorite: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          filename: string
+          original_filename: string
+          storage_path: string
+          storage_bucket?: string
+          file_type: 'image' | 'video' | 'audio' | 'document' | 'animation' | 'svg' | 'other'
+          mime_type: string
+          file_size: number
+          width?: number | null
+          height?: number | null
+          duration?: number | null
+          name: string
+          description?: string | null
+          alt_text?: string | null
+          category_id?: string | null
+          tags?: string[]
+          public_url: string
+          thumbnail_url?: string | null
+          metadata?: Json
+          order_index?: number
+          is_favorite?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          filename?: string
+          original_filename?: string
+          storage_path?: string
+          storage_bucket?: string
+          file_type?: 'image' | 'video' | 'audio' | 'document' | 'animation' | 'svg' | 'other'
+          mime_type?: string
+          file_size?: number
+          width?: number | null
+          height?: number | null
+          duration?: number | null
+          name?: string
+          description?: string | null
+          alt_text?: string | null
+          category_id?: string | null
+          tags?: string[]
+          public_url?: string
+          thumbnail_url?: string | null
+          metadata?: Json
+          order_index?: number
+          is_favorite?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      system_health_snapshots: {
+        Row: {
+          id: string
+          user_id: string
+          api_status: Json
+          database_status: Json
+          storage_status: Json
+          env_status: Json
+          overall_status: 'healthy' | 'degraded' | 'critical' | 'unknown'
+          issues_count: number
+          warnings_count: number
+          check_duration_ms: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          api_status: Json
+          database_status: Json
+          storage_status: Json
+          env_status: Json
+          overall_status?: 'healthy' | 'degraded' | 'critical' | 'unknown'
+          issues_count?: number
+          warnings_count?: number
+          check_duration_ms?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          api_status?: Json
+          database_status?: Json
+          storage_status?: Json
+          env_status?: Json
+          overall_status?: 'healthy' | 'degraded' | 'critical' | 'unknown'
+          issues_count?: number
+          warnings_count?: number
+          check_duration_ms?: number | null
+          created_at?: string
+        }
+      }
+      diagnostic_logs: {
+        Row: {
+          id: string
+          user_id: string
+          session_id: string
+          type: 'health_check' | 'issue_analysis' | 'code_analysis' | 'auto_fix' | 'rollback'
+          request_description: string | null
+          request_context: Json
+          analysis_result: Json | null
+          issues_found: Json
+          suggestions: Json
+          proposed_fix: Json | null
+          fix_description: string | null
+          fix_status: 'pending' | 'approved' | 'rejected' | 'applied' | 'failed' | 'rolled_back'
+          fix_applied_at: string | null
+          fix_result: Json | null
+          rollback_data: Json | null
+          can_rollback: boolean
+          ai_provider: string | null
+          ai_model: string | null
+          tokens_used: number | null
+          duration_ms: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_id?: string
+          type: 'health_check' | 'issue_analysis' | 'code_analysis' | 'auto_fix' | 'rollback'
+          request_description?: string | null
+          request_context?: Json
+          analysis_result?: Json | null
+          issues_found?: Json
+          suggestions?: Json
+          proposed_fix?: Json | null
+          fix_description?: string | null
+          fix_status?: 'pending' | 'approved' | 'rejected' | 'applied' | 'failed' | 'rolled_back'
+          fix_applied_at?: string | null
+          fix_result?: Json | null
+          rollback_data?: Json | null
+          can_rollback?: boolean
+          ai_provider?: string | null
+          ai_model?: string | null
+          tokens_used?: number | null
+          duration_ms?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          session_id?: string
+          type?: 'health_check' | 'issue_analysis' | 'code_analysis' | 'auto_fix' | 'rollback'
+          request_description?: string | null
+          request_context?: Json
+          analysis_result?: Json | null
+          issues_found?: Json
+          suggestions?: Json
+          proposed_fix?: Json | null
+          fix_description?: string | null
+          fix_status?: 'pending' | 'approved' | 'rejected' | 'applied' | 'failed' | 'rolled_back'
+          fix_applied_at?: string | null
+          fix_result?: Json | null
+          rollback_data?: Json | null
+          can_rollback?: boolean
+          ai_provider?: string | null
+          ai_model?: string | null
+          tokens_used?: number | null
+          duration_ms?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

@@ -82,7 +82,7 @@ async function callWithRetry(
           model: 'llama-3.3-70b',
           temperature: options.temperature,
           max_tokens: options.max_tokens,
-        })
+        }) as { choices: { message: { content: string } }[]; usage?: { totalTokens?: number } }
         return {
           content: completion.choices[0]?.message?.content || '',
           tokensUsed: completion.usage?.totalTokens || 0,

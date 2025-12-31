@@ -31,7 +31,7 @@ interface CompletionResult {
   provider: string
 }
 
-// Try providers with retry logic
+// Try providers with retry logic - Cerebras first (70B model, 1M tokens/day free)
 async function callWithRetry(
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
   options: { temperature: number; max_tokens: number }
@@ -39,40 +39,7 @@ async function callWithRetry(
   const maxRetries = 2
   const baseDelay = 3000
 
-  // Try Groq first
-  const groq = getGroqClient()
-  if (groq) {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const completion = await groq.chat.completions.create({
-          messages,
-          model: 'llama-3.1-8b-instant',
-          temperature: options.temperature,
-          max_tokens: options.max_tokens,
-        })
-        return {
-          content: completion.choices[0]?.message?.content || '',
-          tokensUsed: completion.usage?.total_tokens || 0,
-          model: 'llama-3.1-8b-instant',
-          provider: 'groq'
-        }
-      } catch (error) {
-        const isRateLimit = error instanceof Error &&
-          (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
-
-        if (isRateLimit && attempt < maxRetries - 1) {
-          const delay = baseDelay * Math.pow(2, attempt)
-          await new Promise(resolve => setTimeout(resolve, delay))
-        } else if (isRateLimit) {
-          break // Try Cerebras
-        } else {
-          throw error
-        }
-      }
-    }
-  }
-
-  // Fallback to Cerebras
+  // Try Cerebras first - better model (70B) with generous limits
   const cerebras = getCerebrasClient()
   if (cerebras) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -88,6 +55,39 @@ async function callWithRetry(
           tokensUsed: completion.usage?.totalTokens || 0,
           model: 'llama-3.3-70b',
           provider: 'cerebras'
+        }
+      } catch (error) {
+        const isRateLimit = error instanceof Error &&
+          (error.message.includes('rate') || error.message.includes('429') || error.message.includes('limit'))
+
+        if (isRateLimit && attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        } else if (isRateLimit) {
+          break // Try Groq
+        } else {
+          throw error
+        }
+      }
+    }
+  }
+
+  // Fallback to Groq
+  const groq = getGroqClient()
+  if (groq) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const completion = await groq.chat.completions.create({
+          messages,
+          model: 'llama-3.3-70b-versatile',
+          temperature: options.temperature,
+          max_tokens: options.max_tokens,
+        })
+        return {
+          content: completion.choices[0]?.message?.content || '',
+          tokensUsed: completion.usage?.total_tokens || 0,
+          model: 'llama-3.3-70b-versatile',
+          provider: 'groq'
         }
       } catch (error) {
         const isRateLimit = error instanceof Error &&

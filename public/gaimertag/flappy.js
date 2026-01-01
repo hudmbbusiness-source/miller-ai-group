@@ -713,6 +713,9 @@ class FlappyGame {
     }
 
     start() {
+        // Ensure canvas has proper dimensions before starting
+        this.resize();
+
         this.loadEquipped();
         this.audio.init();
         this.audio.startMusic();

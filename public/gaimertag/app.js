@@ -329,9 +329,9 @@ class App {
         const card = document.createElement('div');
         card.className = `game-card ${isUnlocked ? 'unlocked' : 'locked'} ${isFeatured ? 'featured' : ''}`;
 
-        // Get high score for this game
-        const highScore = progression.data.highScore || 0;
-        const gamesPlayed = progression.data.gamesPlayed || 0;
+        // Get game-specific stats (only runner has stats currently)
+        const isRunner = gameData.id === 'runner';
+        const highScore = isRunner ? (progression.data.highScore || 0) : 0;
 
         // Calculate unlock progress
         let unlockProgress = 100;
@@ -360,18 +360,20 @@ class App {
             `;
         }
 
+        // Only show high score badge if game has actual stats
+        const badgeContent = isUnlocked
+            ? (highScore > 0 ? `<div class="game-card-badge">🏆 ${highScore.toLocaleString()}</div>` : '')
+            : '<div class="game-card-lock">🔒</div>';
+
         card.innerHTML = `
             <div class="game-card-banner" style="background: linear-gradient(135deg, ${gameData.gradient[0]} 0%, ${gameData.gradient[1]} 100%)">
                 <div class="game-card-icon">${gameData.icon}</div>
-                ${isUnlocked ? `<div class="game-card-badge">🏆 ${highScore.toLocaleString()}</div>` : '<div class="game-card-lock">🔒</div>'}
+                ${badgeContent}
             </div>
             <div class="game-card-body">
                 <div class="game-card-title">${gameData.name}</div>
                 <div class="game-card-desc">${gameData.description}</div>
                 ${isUnlocked ? `
-                    <div class="game-card-stats">
-                        <span class="stat">🎮 ${gamesPlayed} plays</span>
-                    </div>
                     <button class="game-card-play-btn">
                         <span class="play-icon">▶</span>
                         <span>PLAY NOW</span>

@@ -1131,6 +1131,9 @@ class Game {
     }
 
     start() {
+        // Ensure canvas has proper dimensions before starting
+        this.resize();
+
         this.loadEquipped();
         this.audio.init();
         this.audio.startMusic();
@@ -1367,5 +1370,15 @@ class Game {
     }
 }
 
-// Create global instance
-window.game = new Game();
+// Create global instance only when DOM is ready
+function initGame() {
+    if (!window.game) {
+        window.game = new Game();
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initGame);
+} else {
+    initGame();
+}

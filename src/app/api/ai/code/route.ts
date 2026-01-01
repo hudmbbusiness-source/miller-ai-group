@@ -257,9 +257,10 @@ Keep the visual quality high - gradients, glows, animations.`
         // Last resort: try to extract code blocks manually
         try {
           const descMatch = content.match(/"description"\s*:\s*"([^"]*)"/)
-          const htmlMatch = content.match(/"html"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
-          const cssMatch = content.match(/"css"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
-          const jsMatch = content.match(/"js"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
+          const htmlMatch = content.match(/"html"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+          const cssMatch = content.match(/"css"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+          const jsMatch = content.match(/"js"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+
 
           if (htmlMatch || cssMatch || jsMatch) {
             return NextResponse.json({

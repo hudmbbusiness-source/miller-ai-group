@@ -182,6 +182,10 @@ export default function StuntManDashboard() {
   const [realBalances, setRealBalances] = useState<RealBalance[]>([])
   const [realTotalUSD, setRealTotalUSD] = useState(0)
   const [realConnected, setRealConnected] = useState(false)
+  const [autoTrading, setAutoTrading] = useState(false)
+  const [tradingStatus, setTradingStatus] = useState<string>('')
+  const [recentTrades, setRecentTrades] = useState<any[]>([])
+  const [liveSignals, setLiveSignals] = useState<any[]>([])
 
   // Fetch real Crypto.com balance
   useEffect(() => {
@@ -203,6 +207,77 @@ export default function StuntManDashboard() {
     const interval = setInterval(fetchRealBalance, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  // Auto-trading loop
+  useEffect(() => {
+    if (!autoTrading) return
+
+    const runAutoTrade = async () => {
+      setTradingStatus('Scanning markets...')
+      try {
+        const res = await fetch('/api/stuntman/live-trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'trade' }),
+        })
+        const data = await res.json()
+
+        if (data.success) {
+          setLiveSignals(data.signals || [])
+          if (data.trades?.length > 0) {
+            setRecentTrades(prev => [...data.trades, ...prev].slice(0, 10))
+            setTradingStatus(`Executed ${data.trades.length} trade(s)`)
+          } else {
+            setTradingStatus('No trades - waiting for opportunities')
+          }
+        } else {
+          setTradingStatus(`Error: ${data.error}`)
+        }
+      } catch (e) {
+        setTradingStatus('Trading error - retrying...')
+      }
+    }
+
+    // Run immediately
+    runAutoTrade()
+
+    // Then run every 2 minutes
+    const interval = setInterval(runAutoTrade, 120000)
+    return () => clearInterval(interval)
+  }, [autoTrading])
+
+  // Toggle auto-trading
+  const toggleAutoTrading = () => {
+    if (!autoTrading) {
+      if (!confirm('Start LIVE automated trading? This will use REAL funds on Crypto.com.')) {
+        return
+      }
+    }
+    setAutoTrading(!autoTrading)
+    setTradingStatus(autoTrading ? 'Stopped' : 'Starting...')
+  }
+
+  // Manual scan
+  const scanMarkets = async () => {
+    setBotRunning(true)
+    setTradingStatus('Scanning...')
+    try {
+      const res = await fetch('/api/stuntman/live-trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyze' }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setLiveSignals(data.signals || [])
+        setTradingStatus(`Found ${data.signals?.length || 0} opportunities`)
+      }
+    } catch (e) {
+      setTradingStatus('Scan failed')
+    } finally {
+      setBotRunning(false)
+    }
+  }
 
   // Fetch market data
   useEffect(() => {
@@ -330,19 +405,23 @@ export default function StuntManDashboard() {
     <div className="min-h-screen">
       <div className="max-w-6xl mx-auto px-4 py-6">
 
-        {/* Real Exchange Balance */}
+        {/* Real Exchange Balance + Live Trading Controls */}
         {realConnected && (
           <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/10 border border-emerald-500/30 rounded-2xl p-4 mb-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-sm font-semibold text-emerald-400">Crypto.com Exchange - LIVE</span>
+                <div className={`w-2 h-2 rounded-full ${autoTrading ? 'bg-red-500' : 'bg-emerald-500'} animate-pulse`} />
+                <span className="text-sm font-semibold text-emerald-400">
+                  Crypto.com Exchange - {autoTrading ? 'AUTO TRADING' : 'LIVE'}
+                </span>
               </div>
               <span className="text-2xl font-bold text-white">
                 ${realTotalUSD.toFixed(2)}
               </span>
             </div>
-            <div className="flex flex-wrap gap-3">
+
+            {/* Holdings */}
+            <div className="flex flex-wrap gap-3 mb-4">
               {realBalances.map((bal) => (
                 <div key={bal.currency} className="bg-black/30 rounded-lg px-3 py-2">
                   <div className="text-xs text-zinc-400">{bal.currency}</div>
@@ -353,6 +432,77 @@ export default function StuntManDashboard() {
                 </div>
               ))}
             </div>
+
+            {/* Trading Controls */}
+            <div className="flex gap-3 mb-3">
+              <button
+                onClick={scanMarkets}
+                disabled={botRunning}
+                className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-50"
+              >
+                {botRunning ? 'Scanning...' : 'Scan Markets'}
+              </button>
+              <button
+                onClick={toggleAutoTrading}
+                className={`flex-1 py-2 font-medium rounded-lg text-sm transition-colors ${
+                  autoTrading
+                    ? 'bg-red-600 hover:bg-red-500 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                {autoTrading ? 'Stop Auto-Trade' : 'Start Auto-Trade'}
+              </button>
+            </div>
+
+            {/* Status */}
+            {tradingStatus && (
+              <div className="text-xs text-zinc-400 mb-3">
+                Status: {tradingStatus}
+              </div>
+            )}
+
+            {/* Live Signals */}
+            {liveSignals.length > 0 && (
+              <div className="border-t border-emerald-500/20 pt-3">
+                <div className="text-xs text-zinc-400 mb-2">Live Signals:</div>
+                <div className="space-y-2">
+                  {liveSignals.map((sig, i) => (
+                    <div key={i} className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${
+                          sig.action?.includes('BUY') ? 'bg-emerald-500' : 'bg-red-500'
+                        }`} />
+                        <span className="text-sm font-medium">{sig.instrument?.replace('_', '/')}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-sm font-semibold ${
+                          sig.action?.includes('BUY') ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                          {sig.action}
+                        </div>
+                        <div className="text-xs text-zinc-500">{sig.confidence}% conf</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent Trades */}
+            {recentTrades.length > 0 && (
+              <div className="border-t border-emerald-500/20 pt-3 mt-3">
+                <div className="text-xs text-zinc-400 mb-2">Recent Trades:</div>
+                <div className="space-y-1">
+                  {recentTrades.slice(0, 5).map((trade, i) => (
+                    <div key={i} className={`text-xs px-2 py-1 rounded ${
+                      trade.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {trade.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

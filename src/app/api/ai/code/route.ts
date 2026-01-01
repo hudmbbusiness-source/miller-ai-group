@@ -269,7 +269,7 @@ Keep the visual quality high - gradients, glows, animations.`
               html: htmlMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || '',
               css: cssMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || '',
               js: jsMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || '',
-              tokensUsed: completion.usage?.total_tokens || 0,
+              tokensUsed,
             })
           }
         } catch {

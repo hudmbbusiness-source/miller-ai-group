@@ -239,7 +239,7 @@ class App {
     }
 
     // ========================================================================
-    // GAMES SCREEN
+    // GAMES SCREEN - Enhanced with organization and retention features
     // ========================================================================
 
     renderGames() {
@@ -247,55 +247,153 @@ class App {
         grid.innerHTML = '';
 
         let lockedCount = 0;
+        const games = Object.values(GAME_DATA.games);
+        const unlockedGames = games.filter(g => progression.isGameUnlocked(g.id));
+        const lockedGames = games.filter(g => !progression.isGameUnlocked(g.id));
 
-        Object.values(GAME_DATA.games).forEach(gameData => {
-            const isUnlocked = progression.isGameUnlocked(gameData.id);
-            if (!isUnlocked) lockedCount++;
+        // Last played game for "Continue Playing" section
+        const lastPlayed = this.currentGame || 'runner';
+        const lastPlayedGame = GAME_DATA.games[lastPlayed];
 
-            const card = document.createElement('div');
-            card.className = `game-card ${isUnlocked ? '' : 'locked'}`;
-            card.style.background = `linear-gradient(135deg, ${gameData.gradient[0]} 0%, ${gameData.gradient[1]} 100%)`;
-
-            let unlockText = '';
-            if (!isUnlocked && gameData.unlockRequirement) {
-                if (gameData.unlockRequirement.type === 'level') {
-                    unlockText = `<div class="game-card-unlock">🔒 Reach Level ${gameData.unlockRequirement.value}</div>`;
-                } else if (gameData.unlockRequirement.type === 'coins') {
-                    unlockText = `<div class="game-card-unlock">🔒 Collect ${gameData.unlockRequirement.value} total coins</div>`;
-                }
-            }
-
-            card.innerHTML = `
-                <div class="game-card-image">${gameData.icon}</div>
-                <div class="game-card-info">
-                    <div class="game-card-title">${gameData.name}</div>
-                    <div class="game-card-desc">${gameData.description}</div>
-                    ${isUnlocked ?
-                        `<div class="game-card-play">PLAY</div>` :
-                        unlockText
-                    }
+        // Featured / Continue Playing Section
+        if (lastPlayedGame && progression.isGameUnlocked(lastPlayed)) {
+            const featuredSection = document.createElement('div');
+            featuredSection.className = 'games-section featured-section';
+            featuredSection.innerHTML = `
+                <div class="section-header">
+                    <span class="section-icon">🔥</span>
+                    <span class="section-title">Continue Playing</span>
                 </div>
             `;
 
-            if (isUnlocked) {
-                card.addEventListener('click', () => {
-                    if (gameData.id === 'runner') {
-                        this.currentGame = 'runner';
-                        this.showScreen('play');
-                    } else if (gameData.id === 'flappy') {
-                        this.startGame('flappy');
-                    } else {
-                        store.showMessage('Coming soon!');
-                    }
-                });
-            }
+            const featuredCard = this.createGameCard(lastPlayedGame, true, true);
+            featuredSection.appendChild(featuredCard);
+            grid.appendChild(featuredSection);
+        }
 
-            grid.appendChild(card);
-        });
+        // Unlocked Games Section
+        if (unlockedGames.length > 0) {
+            const unlockedSection = document.createElement('div');
+            unlockedSection.className = 'games-section';
+            unlockedSection.innerHTML = `
+                <div class="section-header">
+                    <span class="section-icon">🎮</span>
+                    <span class="section-title">Your Games</span>
+                    <span class="section-count">${unlockedGames.length}</span>
+                </div>
+                <div class="games-row" id="unlockedGamesRow"></div>
+            `;
+            grid.appendChild(unlockedSection);
+
+            const row = unlockedSection.querySelector('#unlockedGamesRow');
+            unlockedGames.forEach(gameData => {
+                if (gameData.id !== lastPlayed) {
+                    row.appendChild(this.createGameCard(gameData, true, false));
+                }
+            });
+
+            // If only one unlocked game and it's the featured one, show message
+            if (unlockedGames.length === 1) {
+                row.innerHTML = `<div class="games-empty">Play more to unlock new games!</div>`;
+            }
+        }
+
+        // Locked Games Section with unlock progress
+        if (lockedGames.length > 0) {
+            lockedCount = lockedGames.length;
+
+            const lockedSection = document.createElement('div');
+            lockedSection.className = 'games-section locked-section';
+            lockedSection.innerHTML = `
+                <div class="section-header">
+                    <span class="section-icon">🔒</span>
+                    <span class="section-title">Unlock More</span>
+                    <span class="section-count">${lockedGames.length} locked</span>
+                </div>
+                <div class="games-row" id="lockedGamesRow"></div>
+            `;
+            grid.appendChild(lockedSection);
+
+            const row = lockedSection.querySelector('#lockedGamesRow');
+            lockedGames.forEach(gameData => {
+                row.appendChild(this.createGameCard(gameData, false, false));
+            });
+        }
 
         // Update locked count badge
         document.getElementById('gamesLocked').textContent = lockedCount;
         document.getElementById('gamesLocked').style.display = lockedCount > 0 ? 'block' : 'none';
+    }
+
+    createGameCard(gameData, isUnlocked, isFeatured) {
+        const card = document.createElement('div');
+        card.className = `game-card ${isUnlocked ? 'unlocked' : 'locked'} ${isFeatured ? 'featured' : ''}`;
+
+        // Get high score for this game
+        const highScore = progression.data.highScore || 0;
+        const gamesPlayed = progression.data.gamesPlayed || 0;
+
+        // Calculate unlock progress
+        let unlockProgress = 100;
+        let unlockText = '';
+        let progressBar = '';
+
+        if (!isUnlocked && gameData.unlockRequirement) {
+            if (gameData.unlockRequirement.type === 'level') {
+                const currentLevel = progression.getLevel();
+                const requiredLevel = gameData.unlockRequirement.value;
+                unlockProgress = Math.min(100, (currentLevel / requiredLevel) * 100);
+                unlockText = `Level ${currentLevel}/${requiredLevel}`;
+            } else if (gameData.unlockRequirement.type === 'coins') {
+                const currentCoins = progression.data.totalCoinsCollected || 0;
+                const requiredCoins = gameData.unlockRequirement.value;
+                unlockProgress = Math.min(100, (currentCoins / requiredCoins) * 100);
+                unlockText = `${currentCoins.toLocaleString()}/${requiredCoins.toLocaleString()} coins`;
+            }
+            progressBar = `
+                <div class="unlock-progress">
+                    <div class="unlock-progress-bar">
+                        <div class="unlock-progress-fill" style="width: ${unlockProgress}%"></div>
+                    </div>
+                    <span class="unlock-progress-text">${unlockText}</span>
+                </div>
+            `;
+        }
+
+        card.innerHTML = `
+            <div class="game-card-banner" style="background: linear-gradient(135deg, ${gameData.gradient[0]} 0%, ${gameData.gradient[1]} 100%)">
+                <div class="game-card-icon">${gameData.icon}</div>
+                ${isUnlocked ? `<div class="game-card-badge">🏆 ${highScore.toLocaleString()}</div>` : '<div class="game-card-lock">🔒</div>'}
+            </div>
+            <div class="game-card-body">
+                <div class="game-card-title">${gameData.name}</div>
+                <div class="game-card-desc">${gameData.description}</div>
+                ${isUnlocked ? `
+                    <div class="game-card-stats">
+                        <span class="stat">🎮 ${gamesPlayed} plays</span>
+                    </div>
+                    <button class="game-card-play-btn">
+                        <span class="play-icon">▶</span>
+                        <span>PLAY NOW</span>
+                    </button>
+                ` : progressBar}
+            </div>
+        `;
+
+        if (isUnlocked) {
+            card.addEventListener('click', () => {
+                if (gameData.id === 'runner') {
+                    this.currentGame = 'runner';
+                    this.showScreen('play');
+                } else if (gameData.id === 'flappy') {
+                    this.startGame('flappy');
+                } else {
+                    store.showMessage('Coming soon!');
+                }
+            });
+        }
+
+        return card;
     }
 
     // ========================================================================

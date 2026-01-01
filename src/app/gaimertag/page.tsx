@@ -37,7 +37,7 @@ export default function GaimertagPage() {
   return (
     <>
       <link
-        href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;800&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Bungee&family=Quicksand:wght@500;700&family=Lilita+One&display=swap"
         rel="stylesheet"
       />
       <link rel="stylesheet" href="/gaimertag/styles.css" />
@@ -327,6 +327,7 @@ export default function GaimertagPage() {
       <Script src="/gaimertag/progression.js" strategy="beforeInteractive" />
       <Script src="/gaimertag/store.js" strategy="beforeInteractive" />
       <Script src="/gaimertag/game.js" strategy="beforeInteractive" />
+      <Script src="/gaimertag/flappy.js" strategy="beforeInteractive" />
       <Script src="/gaimertag/app.js" strategy="afterInteractive" />
     </>
   )

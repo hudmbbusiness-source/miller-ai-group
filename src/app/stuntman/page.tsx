@@ -41,6 +41,12 @@ interface Position {
   take_profit?: number
 }
 
+interface RealBalance {
+  currency: string
+  quantity: number
+  valueUSD: number
+}
+
 interface AdvancedSignal {
   instrument: string
   action: string
@@ -173,6 +179,30 @@ export default function StuntManDashboard() {
   const [botRunning, setBotRunning] = useState(false)
   const [opportunities, setOpportunities] = useState<AdvancedSignal[]>([])
   const [lastScan, setLastScan] = useState<string | null>(null)
+  const [realBalances, setRealBalances] = useState<RealBalance[]>([])
+  const [realTotalUSD, setRealTotalUSD] = useState(0)
+  const [realConnected, setRealConnected] = useState(false)
+
+  // Fetch real Crypto.com balance
+  useEffect(() => {
+    const fetchRealBalance = async () => {
+      try {
+        const res = await fetch('/api/stuntman/balance')
+        const data = await res.json()
+        if (data.success) {
+          setRealBalances(data.balances || [])
+          setRealTotalUSD(data.totalUSD || 0)
+          setRealConnected(true)
+        }
+      } catch (e) {
+        console.error('Real balance error:', e)
+      }
+    }
+
+    fetchRealBalance()
+    const interval = setInterval(fetchRealBalance, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Fetch market data
   useEffect(() => {
@@ -300,10 +330,36 @@ export default function StuntManDashboard() {
     <div className="min-h-screen">
       <div className="max-w-6xl mx-auto px-4 py-6">
 
+        {/* Real Exchange Balance */}
+        {realConnected && (
+          <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/10 border border-emerald-500/30 rounded-2xl p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-sm font-semibold text-emerald-400">Crypto.com Exchange - LIVE</span>
+              </div>
+              <span className="text-2xl font-bold text-white">
+                ${realTotalUSD.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {realBalances.map((bal) => (
+                <div key={bal.currency} className="bg-black/30 rounded-lg px-3 py-2">
+                  <div className="text-xs text-zinc-400">{bal.currency}</div>
+                  <div className="font-mono text-sm text-white">
+                    {bal.quantity < 0.001 ? bal.quantity.toFixed(8) : bal.quantity.toFixed(4)}
+                  </div>
+                  <div className="text-xs text-emerald-400">${bal.valueUSD.toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Portfolio Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-1">
-            <div className="text-zinc-500 text-sm">Portfolio Value</div>
+            <div className="text-zinc-500 text-sm">Paper Trading Value</div>
             {currentAccount?.is_paper && (
               <span className="text-xs text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">PAPER</span>
             )}

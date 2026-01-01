@@ -111,10 +111,13 @@ interface ConversationMessage {
   content: string
 }
 
-const PLAYGROUND_SYSTEM_PROMPT = `You are a creative frontend developer who makes VISUALLY STUNNING web experiences. Your code is professional-grade, like CodePen featured pens.
+const PLAYGROUND_SYSTEM_PROMPT = `You are a creative frontend developer who makes VISUALLY STUNNING web experiences.
 
-OUTPUT FORMAT - Respond with ONLY this JSON:
-{"description":"what you made","html":"<html here>","css":"<css here>","js":"<js here>"}
+CRITICAL - OUTPUT FORMAT:
+You MUST respond with valid JSON. Use double quotes only. Escape newlines as \\n and quotes as \\".
+Example: {"description":"desc","html":"<div>hi</div>","css":"body{color:red}","js":"console.log('hi')"}
+
+DO NOT use backticks or template literals in JSON. All strings must use double quotes.
 
 CRITICAL VISUAL REQUIREMENTS:
 1. NEVER use plain rectangles or basic shapes - add gradients, rounded corners, shadows, glows
@@ -209,6 +212,34 @@ Keep the visual quality high - gradients, glows, animations.`
           jsonStr = jsonMatch[0]
         }
 
+        // Fix backtick strings - convert template literals to proper JSON strings
+        // This handles cases where AI returns: { "css": `body {...}` }
+        jsonStr = jsonStr.replace(/:\s*`([^`]*)`/g, (_, content) => {
+          // Escape special characters for JSON
+          const escaped = content
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t')
+          return `: "${escaped}"`
+        })
+
+        // Also fix standalone backtick strings in arrays or other contexts
+        jsonStr = jsonStr.replace(/`([^`]*)`/g, (match, content) => {
+          // Only replace if it looks like a string value (not already quoted)
+          if (match.includes('\n') || content.length > 10) {
+            const escaped = content
+              .replace(/\\/g, '\\\\')
+              .replace(/"/g, '\\"')
+              .replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r')
+              .replace(/\t/g, '\\t')
+            return `"${escaped}"`
+          }
+          return match
+        })
+
         const parsed = JSON.parse(jsonStr)
 
         return NextResponse.json({
@@ -221,6 +252,29 @@ Keep the visual quality high - gradients, glows, animations.`
         })
       } catch (parseError) {
         console.error('JSON parse failed:', parseError)
+        console.error('Raw content:', content.substring(0, 500))
+
+        // Last resort: try to extract code blocks manually
+        try {
+          const descMatch = content.match(/"description"\s*:\s*"([^"]*)"/)
+          const htmlMatch = content.match(/"html"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
+          const cssMatch = content.match(/"css"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
+          const jsMatch = content.match(/"js"\s*:\s*"((?:[^"\\]|\\.)*)"/s)
+
+          if (htmlMatch || cssMatch || jsMatch) {
+            return NextResponse.json({
+              success: true,
+              description: descMatch?.[1] || 'Code generated',
+              html: htmlMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || '',
+              css: cssMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || '',
+              js: jsMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || '',
+              tokensUsed: completion.usage?.total_tokens || 0,
+            })
+          }
+        } catch {
+          // Fall through to error response
+        }
+
         return NextResponse.json({
           success: false,
           error: 'Failed to parse AI response',

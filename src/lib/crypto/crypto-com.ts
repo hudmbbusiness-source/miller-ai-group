@@ -7,9 +7,10 @@
 
 import crypto from 'crypto'
 
-// API Configuration - Using v2 API (v1 is deprecated)
-const CRYPTO_COM_API_URL = 'https://api.crypto.com/v2/private'
-const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/v2/public'
+// API Configuration - Using Exchange v1 API (the current live API)
+// Note: The old /v2 Spot API was decommissioned in July 2024
+const CRYPTO_COM_API_URL = 'https://api.crypto.com/exchange/v1/private'
+const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/exchange/v1/public'
 
 // Types
 export interface CryptoComCredentials {
@@ -100,7 +101,49 @@ export class CryptoComClient {
   }
 
   /**
+   * Convert params object to sorted string format required by Crypto.com
+   * Keys are sorted alphabetically, values are concatenated without delimiters
+   * Handles nested objects and arrays up to 3 levels deep
+   */
+  private paramsToString(obj: Record<string, unknown>, level: number = 0): string {
+    if (level >= 3) {
+      return String(obj)
+    }
+
+    if (!obj || typeof obj !== 'object') {
+      return ''
+    }
+
+    const keys = Object.keys(obj).sort()
+    let result = ''
+
+    for (const key of keys) {
+      const value = obj[key]
+      result += key
+
+      if (value === null || value === undefined) {
+        result += 'null'
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          if (typeof item === 'object' && item !== null) {
+            result += this.paramsToString(item as Record<string, unknown>, level + 1)
+          } else {
+            result += String(item)
+          }
+        }
+      } else if (typeof value === 'object') {
+        result += this.paramsToString(value as Record<string, unknown>, level + 1)
+      } else {
+        result += String(value)
+      }
+    }
+
+    return result
+  }
+
+  /**
    * Generate request signature for authenticated endpoints
+   * Uses Crypto.com's required format: method + id + api_key + sorted_params + nonce
    */
   private generateSignature(
     method: string,
@@ -113,7 +156,12 @@ export class CryptoComClient {
       throw new Error('API secret is required for authenticated requests')
     }
 
-    const paramsString = params ? JSON.stringify(params) : ''
+    // Convert params to sorted string format (NOT JSON)
+    const paramsString = params && Object.keys(params).length > 0
+      ? this.paramsToString(params)
+      : ''
+
+    // Signature payload: method + id + api_key + params_string + nonce
     const sigPayload = `${method}${requestId}${apiKey}${paramsString}${nonce}`
 
     return crypto

@@ -92,7 +92,7 @@ async function fetchCoinGeckoData(coinId: string): Promise<MarketData | null> {
   }
 }
 
-// Order book depth analysis - using v2 API
+// Order book depth analysis - using Exchange v1 API
 async function fetchOrderBook(instrument: string): Promise<{
   bids: number
   asks: number
@@ -101,7 +101,7 @@ async function fetchOrderBook(instrument: string): Promise<{
 } | null> {
   try {
     const res = await fetch(
-      `https://api.crypto.com/v2/public/get-book?instrument_name=${instrument}&depth=50`
+      `https://api.crypto.com/exchange/v1/public/get-book?instrument_name=${instrument}&depth=50`
     )
     const data = await res.json()
 
@@ -134,7 +134,7 @@ async function fetchOrderBook(instrument: string): Promise<{
   }
 }
 
-// Large trade detection (whale activity) - using v2 API
+// Large trade detection (whale activity) - using Exchange v1 API
 async function fetchRecentTrades(instrument: string): Promise<{
   largeBuys: number
   largeSells: number
@@ -145,7 +145,7 @@ async function fetchRecentTrades(instrument: string): Promise<{
 } | null> {
   try {
     const res = await fetch(
-      `https://api.crypto.com/v2/public/get-trades?instrument_name=${instrument}`
+      `https://api.crypto.com/exchange/v1/public/get-trades?instrument_name=${instrument}`
     )
     const data = await res.json()
 

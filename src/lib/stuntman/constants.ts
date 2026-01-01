@@ -9,8 +9,8 @@ import type { FeeStructure, Timeframe, IndicatorConfig, RiskConfig } from './typ
 // =============================================================================
 
 export const CRYPTO_COM_API = {
-  // REST API
-  PUBLIC_API_URL: 'https://api.crypto.com/v2/public',
+  // REST API - Using Exchange v1 (the old /v2 was decommissioned July 2024)
+  PUBLIC_API_URL: 'https://api.crypto.com/exchange/v1/public',
   EXCHANGE_API_URL: 'https://api.crypto.com/exchange/v1',
 
   // WebSocket

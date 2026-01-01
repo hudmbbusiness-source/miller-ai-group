@@ -6,6 +6,7 @@
 class App {
     constructor() {
         this.currentScreen = 'play';
+        this.currentGame = 'runner'; // Track which game is active
         this.init();
     }
 
@@ -120,14 +121,19 @@ class App {
         // Restart button
         document.getElementById('restartBtn').addEventListener('click', () => {
             document.getElementById('gameoverScreen').classList.remove('show');
-            this.startGame();
+            this.startGame(this.currentGame);
         });
 
         // Home button
         document.getElementById('homeBtn').addEventListener('click', () => {
             document.getElementById('gameoverScreen').classList.remove('show');
             this.showScreen('play');
-            game.draw();
+            // Redraw the appropriate game in idle state
+            if (this.currentGame === 'flappy' && window.flappyGame) {
+                window.flappyGame.draw();
+            } else if (window.game) {
+                game.draw();
+            }
         });
 
         // Loadout clicks
@@ -145,13 +151,24 @@ class App {
         });
     }
 
-    startGame() {
+    startGame(gameId = 'runner') {
+        this.currentGame = gameId;
+
         document.getElementById('playScreen').classList.remove('active');
         document.getElementById('topBar').style.display = 'none';
         document.getElementById('navButtons').style.display = 'none';
         document.getElementById('hud').style.display = 'flex';
 
-        game.start();
+        if (gameId === 'flappy' && window.FlappyGame) {
+            // Start Flappy Bird
+            if (!window.flappyGame) {
+                window.flappyGame = new FlappyGame();
+            }
+            window.flappyGame.start();
+        } else {
+            // Start Runner (default)
+            game.start();
+        }
     }
 
     updateLoadout() {
@@ -260,13 +277,16 @@ class App {
                 </div>
             `;
 
-            if (isUnlocked && gameData.id === 'runner') {
+            if (isUnlocked) {
                 card.addEventListener('click', () => {
-                    this.showScreen('play');
-                });
-            } else if (isUnlocked) {
-                card.addEventListener('click', () => {
-                    store.showMessage('Coming soon!');
+                    if (gameData.id === 'runner') {
+                        this.currentGame = 'runner';
+                        this.showScreen('play');
+                    } else if (gameData.id === 'flappy') {
+                        this.startGame('flappy');
+                    } else {
+                        store.showMessage('Coming soon!');
+                    }
                 });
             }
 

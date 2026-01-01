@@ -4,23 +4,125 @@
  */
 
 // ============================================================================
-// AUDIO SYSTEM
+// AUDIO SYSTEM - Enhanced with background music
 // ============================================================================
 class AudioSystem {
     constructor() {
         this.context = null;
         this.enabled = true;
         this.initialized = false;
+        this.musicPlaying = false;
+        this.musicNodes = [];
+        this.masterGain = null;
+        this.musicGain = null;
+        this.sfxGain = null;
     }
 
     init() {
         if (this.initialized) return;
         try {
             this.context = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Master gain
+            this.masterGain = this.context.createGain();
+            this.masterGain.gain.value = 0.5;
+            this.masterGain.connect(this.context.destination);
+
+            // Separate channels for music and SFX
+            this.musicGain = this.context.createGain();
+            this.musicGain.gain.value = 0.15;
+            this.musicGain.connect(this.masterGain);
+
+            this.sfxGain = this.context.createGain();
+            this.sfxGain.gain.value = 0.4;
+            this.sfxGain.connect(this.masterGain);
+
             this.initialized = true;
         } catch (e) {
             this.enabled = false;
         }
+    }
+
+    // Background music using procedural generation
+    startMusic() {
+        if (!this.enabled || !this.context || this.musicPlaying) return;
+        this.musicPlaying = true;
+        this.playMusicLoop();
+    }
+
+    stopMusic() {
+        this.musicPlaying = false;
+        this.musicNodes.forEach(node => {
+            try { node.stop(); } catch(e) {}
+        });
+        this.musicNodes = [];
+    }
+
+    playMusicLoop() {
+        if (!this.musicPlaying || !this.context) return;
+
+        // Upbeat chord progression: C - G - Am - F (classic feel-good progression)
+        const chords = [
+            [261.63, 329.63, 392.00], // C major
+            [196.00, 246.94, 293.66], // G major (lower octave)
+            [220.00, 261.63, 329.63], // A minor
+            [174.61, 220.00, 261.63]  // F major
+        ];
+
+        const beatDuration = 0.5; // seconds per beat
+        const barsPerLoop = 4;
+        const beatsPerBar = 4;
+        const loopDuration = barsPerLoop * beatsPerBar * beatDuration;
+
+        const now = this.context.currentTime;
+
+        // Play chord progression with arpeggio pattern
+        chords.forEach((chord, chordIndex) => {
+            const chordStart = now + (chordIndex * beatsPerBar * beatDuration);
+
+            // Bass note
+            this.playMusicNote(chord[0] / 2, chordStart, beatsPerBar * beatDuration * 0.9, 'sine', 0.12);
+
+            // Arpeggiated melody pattern
+            for (let beat = 0; beat < beatsPerBar; beat++) {
+                const noteIndex = beat % chord.length;
+                const noteTime = chordStart + (beat * beatDuration);
+                const noteFreq = chord[noteIndex] * (beat === 2 ? 2 : 1); // Octave up on beat 3
+                this.playMusicNote(noteFreq, noteTime, beatDuration * 0.4, 'triangle', 0.08);
+            }
+        });
+
+        // Schedule next loop
+        setTimeout(() => this.playMusicLoop(), loopDuration * 1000 - 50);
+    }
+
+    playMusicNote(freq, startTime, duration, type, volume) {
+        if (!this.context || !this.musicGain) return;
+
+        const osc = this.context.createOscillator();
+        const gain = this.context.createGain();
+
+        osc.connect(gain);
+        gain.connect(this.musicGain);
+
+        osc.type = type;
+        osc.frequency.value = freq;
+
+        // Soft attack and release
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(volume, startTime + 0.02);
+        gain.gain.setValueAtTime(volume, startTime + duration - 0.05);
+        gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration + 0.1);
+
+        this.musicNodes.push(osc);
+
+        // Cleanup old nodes
+        setTimeout(() => {
+            this.musicNodes = this.musicNodes.filter(n => n !== osc);
+        }, (duration + 0.5) * 1000);
     }
 
     createOscillator(frequency, type, duration, volume = 0.3) {
@@ -30,7 +132,7 @@ class AudioSystem {
         const gainNode = this.context.createGain();
 
         oscillator.connect(gainNode);
-        gainNode.connect(this.context.destination);
+        gainNode.connect(this.sfxGain || this.context.destination);
 
         oscillator.frequency.value = frequency;
         oscillator.type = type;
@@ -43,30 +145,52 @@ class AudioSystem {
     }
 
     playJump() {
-        this.createOscillator(400, 'sine', 0.15, 0.2);
-        setTimeout(() => this.createOscillator(600, 'sine', 0.1, 0.15), 50);
+        // Bouncy spring sound
+        this.createOscillator(350, 'sine', 0.12, 0.25);
+        setTimeout(() => this.createOscillator(520, 'sine', 0.08, 0.2), 40);
+        setTimeout(() => this.createOscillator(700, 'triangle', 0.06, 0.12), 80);
     }
 
     playCoin() {
-        this.createOscillator(880, 'sine', 0.1, 0.2);
-        setTimeout(() => this.createOscillator(1100, 'sine', 0.15, 0.15), 80);
+        // Sparkly coin pickup
+        this.createOscillator(988, 'sine', 0.08, 0.2);
+        setTimeout(() => this.createOscillator(1319, 'sine', 0.1, 0.18), 60);
+        setTimeout(() => this.createOscillator(1568, 'triangle', 0.12, 0.1), 100);
     }
 
     playHit() {
-        this.createOscillator(150, 'sawtooth', 0.3, 0.3);
-        this.createOscillator(100, 'square', 0.2, 0.2);
+        // Impact with bass thud
+        this.createOscillator(80, 'sine', 0.25, 0.4);
+        this.createOscillator(120, 'sawtooth', 0.15, 0.25);
+        setTimeout(() => this.createOscillator(60, 'square', 0.2, 0.15), 50);
     }
 
     playCombo() {
-        [523, 659, 784, 1047].forEach((freq, i) => {
-            setTimeout(() => this.createOscillator(freq, 'sine', 0.15, 0.2), i * 60);
+        // Ascending victory fanfare
+        const notes = [523, 659, 784, 988, 1175];
+        notes.forEach((freq, i) => {
+            setTimeout(() => {
+                this.createOscillator(freq, 'sine', 0.12, 0.22);
+                this.createOscillator(freq * 1.5, 'triangle', 0.08, 0.08);
+            }, i * 50);
         });
     }
 
     playLevelUp() {
-        [523, 659, 784, 1047, 1318].forEach((freq, i) => {
-            setTimeout(() => this.createOscillator(freq, 'sine', 0.2, 0.25), i * 100);
+        // Epic level up fanfare
+        const fanfare = [523, 659, 784, 1047, 1319, 1568];
+        fanfare.forEach((freq, i) => {
+            setTimeout(() => {
+                this.createOscillator(freq, 'sine', 0.25, 0.28);
+                this.createOscillator(freq / 2, 'triangle', 0.3, 0.12);
+            }, i * 90);
         });
+    }
+
+    playNearMiss() {
+        // Whoosh sound for close calls
+        this.createOscillator(200, 'sawtooth', 0.08, 0.1);
+        setTimeout(() => this.createOscillator(400, 'sine', 0.06, 0.08), 30);
     }
 }
 
@@ -744,6 +868,8 @@ class Obstacle {
         grad.addColorStop(0, theme.obstacleGradient[0]);
         grad.addColorStop(1, theme.obstacleGradient[1]);
         ctx.fillStyle = grad;
+        ctx.strokeStyle = theme.obstacleStroke || '#000';
+        ctx.lineWidth = 3;
 
         if (theme.glow) {
             ctx.shadowColor = theme.obstacleGradient[0];
@@ -758,6 +884,7 @@ class Obstacle {
                 ctx.lineTo(this.x, this.y + this.height);
                 ctx.closePath();
                 ctx.fill();
+                ctx.stroke();
                 break;
             case 1:
                 ctx.beginPath();
@@ -768,16 +895,19 @@ class Obstacle {
                 ctx.lineTo(this.x, this.y + this.height * 0.4);
                 ctx.closePath();
                 ctx.fill();
+                ctx.stroke();
                 break;
             case 2:
                 ctx.beginPath();
                 ctx.roundRect(this.x, this.y, this.width, this.height, 8);
                 ctx.fill();
+                ctx.stroke();
                 break;
         }
 
+        // Highlight accent
         ctx.fillStyle = theme.obstacleAccent;
-        ctx.globalAlpha = 0.4;
+        ctx.globalAlpha = 0.5;
         ctx.beginPath();
         ctx.roundRect(this.x + 5, this.y + 5, this.width * 0.3, this.height * 0.3, 4);
         ctx.fill();
@@ -1003,6 +1133,7 @@ class Game {
     start() {
         this.loadEquipped();
         this.audio.init();
+        this.audio.startMusic();
 
         this.running = true;
         this.gameOver = false;
@@ -1153,6 +1284,7 @@ class Game {
         this.running = false;
         this.gameOver = true;
 
+        this.audio.stopMusic();
         this.audio.playHit();
         this.particles.emitDeath(
             this.player.x + this.player.width / 2,

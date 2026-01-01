@@ -131,7 +131,7 @@ const GAME_DATA = {
     },
 
     // ========================================================================
-    // THEMES
+    // THEMES - FIXED: High contrast obstacles that pop against backgrounds
     // ========================================================================
     themes: {
         forest: {
@@ -148,8 +148,10 @@ const GAME_DATA = {
                 groundGradient: ['#6d4c41', '#4e342e'],
                 groundLineColor: '#388E3C',
                 grassColor: '#4CAF50',
-                obstacleGradient: ['#2E7D32', '#1B5E20'],
-                obstacleAccent: '#81C784',
+                // FIXED: Red/orange obstacles pop against green
+                obstacleGradient: ['#dc2626', '#991b1b'],
+                obstacleAccent: '#fca5a5',
+                obstacleStroke: '#000000',
                 cloudColor: 'rgba(255, 255, 255, 0.9)',
                 parallaxColors: ['#a5d6a7', '#81c784', '#66bb6a'],
                 particleColor: '#8BC34A'
@@ -169,8 +171,10 @@ const GAME_DATA = {
                 groundGradient: ['#2d2d5a', '#1a1a3e'],
                 groundLineColor: '#7c4dff',
                 grassColor: '#651fff',
-                obstacleGradient: ['#aa00ff', '#7c4dff'],
-                obstacleAccent: '#ea80fc',
+                // Hot pink/magenta obstacles pop in dark space
+                obstacleGradient: ['#f472b6', '#db2777'],
+                obstacleAccent: '#fbcfe8',
+                obstacleStroke: '#ffffff',
                 cloudColor: 'rgba(255, 255, 255, 0.15)',
                 parallaxColors: ['#4a148c', '#6a1b9a', '#7b1fa2'],
                 particleColor: '#e040fb',
@@ -191,8 +195,10 @@ const GAME_DATA = {
                 groundGradient: ['#e6be8a', '#c9a66b'],
                 groundLineColor: '#8d6e63',
                 grassColor: '#a1887f',
-                obstacleGradient: ['#8d6e63', '#5d4037'],
-                obstacleAccent: '#d7ccc8',
+                // Dark purple/blue obstacles pop against warm desert
+                obstacleGradient: ['#7c3aed', '#4c1d95'],
+                obstacleAccent: '#c4b5fd',
+                obstacleStroke: '#1e1b4b',
                 cloudColor: 'rgba(255, 255, 255, 0.5)',
                 parallaxColors: ['#ffcc80', '#ffb74d', '#ffa726'],
                 particleColor: '#ffb300'
@@ -212,8 +218,10 @@ const GAME_DATA = {
                 groundGradient: ['#0077b6', '#023e8a'],
                 groundLineColor: '#00b4d8',
                 grassColor: '#48cae4',
-                obstacleGradient: ['#f72585', '#b5179e'],
-                obstacleAccent: '#ff85a1',
+                // Coral red obstacles pop against blue ocean
+                obstacleGradient: ['#f43f5e', '#be123c'],
+                obstacleAccent: '#fda4af',
+                obstacleStroke: '#881337',
                 cloudColor: 'rgba(255, 255, 255, 0.7)',
                 parallaxColors: ['#48cae4', '#00b4d8', '#0096c7'],
                 particleColor: '#00b4d8',
@@ -234,8 +242,10 @@ const GAME_DATA = {
                 groundGradient: ['#15152a', '#0a0a15'],
                 groundLineColor: '#00ffff',
                 grassColor: '#ff00ff',
-                obstacleGradient: ['#ff00ff', '#00ffff'],
-                obstacleAccent: '#ffffff',
+                // Lime green obstacles glow in neon theme
+                obstacleGradient: ['#84cc16', '#4d7c0f'],
+                obstacleAccent: '#d9f99d',
+                obstacleStroke: '#ffffff',
                 cloudColor: 'rgba(255, 0, 255, 0.2)',
                 parallaxColors: ['#7b00ff', '#00ff88', '#ff0088'],
                 particleColor: '#00ffff',
@@ -256,8 +266,10 @@ const GAME_DATA = {
                 groundGradient: ['#c44569', '#ff6b9d'],
                 groundLineColor: '#ffeaa7',
                 grassColor: '#fd79a8',
-                obstacleGradient: ['#a29bfe', '#6c5ce7'],
-                obstacleAccent: '#dfe6e9',
+                // Teal/dark cyan obstacles pop against pink candy
+                obstacleGradient: ['#14b8a6', '#0f766e'],
+                obstacleAccent: '#99f6e4',
+                obstacleStroke: '#134e4a',
                 cloudColor: 'rgba(255, 255, 255, 0.8)',
                 parallaxColors: ['#fab1a0', '#e17055', '#fdcb6e'],
                 particleColor: '#fd79a8'
@@ -277,8 +289,10 @@ const GAME_DATA = {
                 groundGradient: ['#3d2a2a', '#1a0f0f'],
                 groundLineColor: '#ff4500',
                 grassColor: '#ff6347',
-                obstacleGradient: ['#ff4500', '#cc3700'],
-                obstacleAccent: '#ffa500',
+                // Ice blue obstacles contrast hot volcano
+                obstacleGradient: ['#38bdf8', '#0284c7'],
+                obstacleAccent: '#bae6fd',
+                obstacleStroke: '#075985',
                 cloudColor: 'rgba(100, 100, 100, 0.5)',
                 parallaxColors: ['#8b0000', '#b22222', '#cd5c5c'],
                 particleColor: '#ff4500',
@@ -299,8 +313,10 @@ const GAME_DATA = {
                 groundGradient: ['#ffffff', '#cfd8dc'],
                 groundLineColor: '#4dd0e1',
                 grassColor: '#b3e5fc',
-                obstacleGradient: ['#4fc3f7', '#0288d1'],
-                obstacleAccent: '#e1f5fe',
+                // Deep orange obstacles pop against icy blue/white
+                obstacleGradient: ['#ea580c', '#9a3412'],
+                obstacleAccent: '#fed7aa',
+                obstacleStroke: '#7c2d12',
                 cloudColor: 'rgba(255, 255, 255, 0.9)',
                 parallaxColors: ['#b3e5fc', '#81d4fa', '#4fc3f7'],
                 particleColor: '#e1f5fe'
@@ -674,7 +690,6 @@ const GAME_DATA = {
         xpMultiplier: 1.5,
         maxLevel: 100,
 
-        // XP earned per action
         xpRewards: {
             perPoint: 0.1,
             perCoin: 1,
@@ -684,7 +699,6 @@ const GAME_DATA = {
             perQuest: 50
         },
 
-        // Rewards per level
         levelRewards: {
             1: { coins: 100 },
             2: { coins: 150 },
@@ -704,5 +718,4 @@ const GAME_DATA = {
     }
 };
 
-// Make globally available
 window.GAME_DATA = GAME_DATA;

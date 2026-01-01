@@ -43,14 +43,14 @@ export async function GET() {
     }
 
     // Debug: Make a raw request to see exactly what's happening
-    let rawTestResult: { success: boolean; response?: unknown; error?: string } = { success: false }
+    let rawTestResult: { success: boolean; response?: unknown; error?: string; debug?: unknown } = { success: false }
     if (hasApiKey && hasApiSecret) {
       try {
-        const apiKey = process.env.STUNTMAN_CRYPTO_API_KEY!
-        const apiSecret = process.env.STUNTMAN_CRYPTO_SECRET!
+        const apiKey = process.env.STUNTMAN_CRYPTO_API_KEY!.trim()
+        const apiSecret = process.env.STUNTMAN_CRYPTO_SECRET!.trim()
         const method = 'private/user-balance'
         const requestId = Date.now()
-        const nonce = Date.now()
+        const nonce = requestId // Same as id per docs
         const params = {}
 
         // Build signature exactly as Crypto.com expects
@@ -82,7 +82,15 @@ export async function GET() {
         const data = await response.json()
         rawTestResult = {
           success: data.code === 0,
-          response: data
+          response: data,
+          debug: {
+            sigPayload: sigPayload.substring(0, 50) + '...[truncated]',
+            sigPayloadLength: sigPayload.length,
+            apiKeyLength: apiKey.length,
+            apiSecretLength: apiSecret.length,
+            requestBody: { ...body, sig: body.sig.substring(0, 20) + '...', api_key: body.api_key.substring(0, 15) + '...' },
+            url,
+          }
         }
       } catch (error) {
         rawTestResult = {

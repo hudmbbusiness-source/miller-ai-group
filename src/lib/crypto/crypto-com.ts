@@ -9,7 +9,8 @@ import crypto from 'crypto'
 
 // API Configuration - Using Exchange v1 API (the current live API)
 // Note: The old /v2 Spot API was decommissioned in July 2024
-const CRYPTO_COM_API_URL = 'https://api.crypto.com/exchange/v1/private'
+// URL format: https://api.crypto.com/exchange/v1/{method}
+const CRYPTO_COM_API_BASE = 'https://api.crypto.com/exchange/v1'
 const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/exchange/v1/public'
 
 // Types
@@ -147,7 +148,7 @@ export class CryptoComClient {
    */
   private generateSignature(
     method: string,
-    requestId: string,
+    requestId: number,
     apiKey: string,
     params: Record<string, unknown>,
     nonce: number
@@ -171,7 +172,8 @@ export class CryptoComClient {
   }
 
   /**
-   * Make authenticated request
+   * Make authenticated request to Crypto.com Exchange API v1
+   * URL format: POST https://api.crypto.com/exchange/v1/{method}
    */
   private async authenticatedRequest<T>(
     method: string,
@@ -181,7 +183,8 @@ export class CryptoComClient {
       throw new Error('API secret is required for authenticated requests. Please configure STUNTMAN_CRYPTO_SECRET in environment.')
     }
 
-    const requestId = `stuntman_${Date.now()}`
+    // ID must be a numeric value (long integer)
+    const requestId = Date.now()
     const nonce = Date.now()
     const signature = this.generateSignature(method, requestId, this.apiKey, params, nonce)
 
@@ -194,7 +197,10 @@ export class CryptoComClient {
       nonce,
     }
 
-    const response = await fetch(CRYPTO_COM_API_URL, {
+    // URL includes the method path
+    const url = `${CRYPTO_COM_API_BASE}/${method}`
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -205,7 +211,7 @@ export class CryptoComClient {
     const data = await response.json()
 
     if (data.code !== 0) {
-      throw new Error(`Crypto.com API Error: ${data.message || 'Unknown error'}`)
+      throw new Error(`Crypto.com API Error: ${data.message || 'Unknown error'} (code: ${data.code})`)
     }
 
     return data.result as T
@@ -352,12 +358,19 @@ export class CryptoComClient {
 
   /**
    * Get account balances
+   * Uses private/user-balance endpoint (Exchange API v1)
    */
   async getAccountBalance(): Promise<AccountBalance[]> {
-    const result = await this.authenticatedRequest<{ account_list: AccountBalance[] }>(
-      'private/get-account-summary'
-    )
-    return result.account_list || []
+    const result = await this.authenticatedRequest<{
+      data: Array<{
+        currency: string
+        balance: string
+        available: string
+        order: string
+        stake: string
+      }>
+    }>('private/user-balance')
+    return result.data || []
   }
 
   /**

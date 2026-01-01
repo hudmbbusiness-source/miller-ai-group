@@ -48,12 +48,14 @@ export async function GET() {
       try {
         const apiKey = process.env.STUNTMAN_CRYPTO_API_KEY!
         const apiSecret = process.env.STUNTMAN_CRYPTO_SECRET!
-        const method = 'private/get-account-summary'
+        const method = 'private/user-balance'
         const requestId = Date.now()
         const nonce = Date.now()
         const params = {}
 
         // Build signature exactly as Crypto.com expects
+        // Format: method + id + api_key + params_string + nonce
+        // For empty params, params_string is empty
         const sigPayload = `${method}${requestId}${apiKey}${nonce}`
         const signature = crypto.createHmac('sha256', apiSecret).update(sigPayload).digest('hex')
 
@@ -66,7 +68,10 @@ export async function GET() {
           nonce,
         }
 
-        const response = await fetch('https://api.crypto.com/exchange/v1/private', {
+        // URL format: https://api.crypto.com/exchange/v1/{method}
+        const url = `https://api.crypto.com/exchange/v1/${method}`
+
+        const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -102,8 +107,8 @@ export async function GET() {
       privateApi: privateApiResult,
       rawTest: rawTestResult,
       debug: {
-        endpoint: 'https://api.crypto.com/exchange/v1/private',
-        method: 'private/get-account-summary',
+        endpoint: 'https://api.crypto.com/exchange/v1/private/user-balance',
+        method: 'private/user-balance',
       }
     })
   } catch (error) {

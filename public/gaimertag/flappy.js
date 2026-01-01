@@ -1,6 +1,6 @@
 /**
- * FLAPPY JUMP - GAME ENGINE
- * Tap to fly through the gaps and earn coins!
+ * HEADING SOUTH - GAME ENGINE
+ * Escape the snowstorm! Fly south through the gaps to safety.
  */
 
 // ============================================================================
@@ -147,28 +147,43 @@ class Pipe {
     }
 
     draw(ctx) {
-        const theme = this.game.getTheme();
         const topHeight = this.gapY;
         const bottomY = this.gapY + this.gap;
         const bottomHeight = this.game.canvas.height - this.game.groundHeight - bottomY;
 
-        // Pipe gradient
+        // Icy frozen pipe gradient
         const pipeGrad = ctx.createLinearGradient(this.x, 0, this.x + this.width, 0);
-        pipeGrad.addColorStop(0, theme.obstacleGradient[0]);
-        pipeGrad.addColorStop(0.5, theme.obstacleAccent);
-        pipeGrad.addColorStop(1, theme.obstacleGradient[1]);
+        pipeGrad.addColorStop(0, '#5dade2');
+        pipeGrad.addColorStop(0.3, '#aed6f1');
+        pipeGrad.addColorStop(0.5, '#ebf5fb');
+        pipeGrad.addColorStop(0.7, '#aed6f1');
+        pipeGrad.addColorStop(1, '#3498db');
 
         ctx.fillStyle = pipeGrad;
-        ctx.strokeStyle = theme.obstacleStroke || '#000';
+        ctx.strokeStyle = '#2980b9';
         ctx.lineWidth = 3;
 
-        // Top pipe
+        // Top pipe (icicle)
         ctx.beginPath();
         ctx.roundRect(this.x, 0, this.width, topHeight, [0, 0, 10, 10]);
         ctx.fill();
         ctx.stroke();
 
-        // Top pipe cap
+        // Icicles hanging from top pipe
+        ctx.fillStyle = '#d4e6f1';
+        for (let i = 0; i < 4; i++) {
+            const icicleX = this.x + 10 + i * 15;
+            const icicleH = 15 + Math.sin(i * 2) * 8;
+            ctx.beginPath();
+            ctx.moveTo(icicleX, topHeight);
+            ctx.lineTo(icicleX + 5, topHeight + icicleH);
+            ctx.lineTo(icicleX + 10, topHeight);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Top pipe cap with snow
+        ctx.fillStyle = pipeGrad;
         ctx.beginPath();
         ctx.roundRect(this.x - 5, topHeight - 30, this.width + 10, 30, 6);
         ctx.fill();
@@ -180,11 +195,23 @@ class Pipe {
         ctx.fill();
         ctx.stroke();
 
+        // Snow pile on bottom pipe
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width / 2, bottomY - 5, this.width / 2 + 5, 12, 0, Math.PI, 0);
+        ctx.fill();
+
         // Bottom pipe cap
+        ctx.fillStyle = pipeGrad;
         ctx.beginPath();
         ctx.roundRect(this.x - 5, bottomY, this.width + 10, 30, 6);
         ctx.fill();
         ctx.stroke();
+
+        // Frost shimmer effect
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fillRect(this.x + 5, 0, 8, topHeight);
+        ctx.fillRect(this.x + 5, bottomY, 8, bottomHeight);
 
         // Draw coin in gap
         if (this.hasCoin && !this.coinCollected) {
@@ -517,29 +544,44 @@ class FlappyParticles {
 }
 
 // ============================================================================
-// FLAPPY BACKGROUND
+// FLAPPY BACKGROUND - HEADING SOUTH (Snowstorm Theme)
 // ============================================================================
 class FlappyBackground {
     constructor(game) {
         this.game = game;
-        this.clouds = [];
-        this.buildings = [];
+        this.snowflakes = [];
+        this.stormClouds = [];
+        this.trees = [];
 
-        for (let i = 0; i < 8; i++) {
-            this.clouds.push({
-                x: Math.random() * 1500,
-                y: 30 + Math.random() * 150,
-                size: 30 + Math.random() * 50,
-                speed: 0.2 + Math.random() * 0.3
+        // Create snowflakes
+        for (let i = 0; i < 150; i++) {
+            this.snowflakes.push({
+                x: Math.random() * 2000,
+                y: Math.random() * 800,
+                size: 1 + Math.random() * 4,
+                speed: 2 + Math.random() * 4,
+                wobble: Math.random() * Math.PI * 2,
+                wobbleSpeed: 0.02 + Math.random() * 0.03
             });
         }
 
-        for (let i = 0; i < 15; i++) {
-            this.buildings.push({
-                x: i * 120,
-                width: 60 + Math.random() * 60,
-                height: 80 + Math.random() * 150,
-                color: Math.random() > 0.5 ? '#1a1a2e' : '#252542'
+        // Storm clouds
+        for (let i = 0; i < 6; i++) {
+            this.stormClouds.push({
+                x: Math.random() * 1500,
+                y: -20 + Math.random() * 100,
+                size: 80 + Math.random() * 120,
+                speed: 0.5 + Math.random() * 0.5,
+                darkness: 0.3 + Math.random() * 0.4
+            });
+        }
+
+        // Snowy trees in background
+        for (let i = 0; i < 20; i++) {
+            this.trees.push({
+                x: i * 100 + Math.random() * 50,
+                height: 40 + Math.random() * 80,
+                width: 20 + Math.random() * 30
             });
         }
     }
@@ -547,76 +589,132 @@ class FlappyBackground {
     update(dt) {
         const speed = this.game.pipeSpeed;
 
-        this.clouds.forEach(cloud => {
-            cloud.x -= speed * cloud.speed * dt * 60;
-            if (cloud.x + cloud.size * 2 < 0) {
-                cloud.x = this.game.canvas.width + cloud.size;
-                cloud.y = 30 + Math.random() * 150;
+        // Snowflakes fall and blow sideways
+        this.snowflakes.forEach(flake => {
+            flake.y += flake.speed * dt * 60;
+            flake.x -= (speed * 0.8 + Math.sin(flake.wobble) * 2) * dt * 60;
+            flake.wobble += flake.wobbleSpeed;
+
+            if (flake.y > this.game.canvas.height) {
+                flake.y = -10;
+                flake.x = Math.random() * this.game.canvas.width * 1.5;
+            }
+            if (flake.x < -20) {
+                flake.x = this.game.canvas.width + 20;
             }
         });
 
-        this.buildings.forEach(building => {
-            building.x -= speed * 0.5 * dt * 60;
-            if (building.x + building.width < 0) {
-                building.x = this.game.canvas.width + Math.random() * 100;
-                building.height = 80 + Math.random() * 150;
+        // Storm clouds move
+        this.stormClouds.forEach(cloud => {
+            cloud.x -= speed * cloud.speed * dt * 60;
+            if (cloud.x + cloud.size * 2 < 0) {
+                cloud.x = this.game.canvas.width + cloud.size;
+            }
+        });
+
+        // Trees scroll
+        this.trees.forEach(tree => {
+            tree.x -= speed * 0.3 * dt * 60;
+            if (tree.x + tree.width < 0) {
+                tree.x = this.game.canvas.width + Math.random() * 100;
+                tree.height = 40 + Math.random() * 80;
             }
         });
     }
 
     draw(ctx) {
-        const theme = this.game.getTheme();
         const canvas = this.game.canvas;
+        const groundY = canvas.height - this.game.groundHeight;
 
-        // Sky gradient
+        // Stormy winter sky gradient
         const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        theme.skyGradient.forEach((color, i) => {
-            skyGrad.addColorStop(i / (theme.skyGradient.length - 1), color);
-        });
+        skyGrad.addColorStop(0, '#2c3e50');
+        skyGrad.addColorStop(0.3, '#4a6274');
+        skyGrad.addColorStop(0.6, '#7f8c9a');
+        skyGrad.addColorStop(1, '#bdc3c7');
         ctx.fillStyle = skyGrad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Clouds
-        ctx.fillStyle = theme.cloudColor;
-        this.clouds.forEach(cloud => {
+        // Storm clouds
+        this.stormClouds.forEach(cloud => {
+            ctx.fillStyle = `rgba(40, 50, 60, ${cloud.darkness})`;
             ctx.beginPath();
-            ctx.arc(cloud.x, cloud.y, cloud.size * 0.5, 0, Math.PI * 2);
-            ctx.arc(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.2, cloud.size * 0.4, 0, Math.PI * 2);
-            ctx.arc(cloud.x + cloud.size * 0.7, cloud.y, cloud.size * 0.45, 0, Math.PI * 2);
+            ctx.arc(cloud.x, cloud.y, cloud.size * 0.6, 0, Math.PI * 2);
+            ctx.arc(cloud.x + cloud.size * 0.4, cloud.y - cloud.size * 0.2, cloud.size * 0.5, 0, Math.PI * 2);
+            ctx.arc(cloud.x + cloud.size * 0.8, cloud.y, cloud.size * 0.55, 0, Math.PI * 2);
+            ctx.arc(cloud.x + cloud.size * 0.3, cloud.y + cloud.size * 0.1, cloud.size * 0.45, 0, Math.PI * 2);
             ctx.fill();
         });
 
-        // Buildings silhouette
-        const groundY = canvas.height - this.game.groundHeight;
-        this.buildings.forEach(building => {
-            ctx.fillStyle = building.color;
-            ctx.fillRect(building.x, groundY - building.height, building.width, building.height);
+        // Snowy trees silhouettes
+        this.trees.forEach(tree => {
+            // Tree trunk
+            ctx.fillStyle = '#3d2914';
+            ctx.fillRect(tree.x + tree.width * 0.4, groundY - tree.height * 0.3, tree.width * 0.2, tree.height * 0.3);
 
-            // Windows
-            ctx.fillStyle = 'rgba(255, 200, 100, 0.4)';
-            for (let wy = groundY - building.height + 15; wy < groundY - 20; wy += 25) {
-                for (let wx = building.x + 10; wx < building.x + building.width - 15; wx += 20) {
-                    if (Math.random() > 0.3) {
-                        ctx.fillRect(wx, wy, 10, 12);
-                    }
-                }
-            }
+            // Snowy evergreen shape
+            ctx.fillStyle = '#2d4a3e';
+            ctx.beginPath();
+            ctx.moveTo(tree.x + tree.width / 2, groundY - tree.height);
+            ctx.lineTo(tree.x + tree.width, groundY - tree.height * 0.3);
+            ctx.lineTo(tree.x, groundY - tree.height * 0.3);
+            ctx.closePath();
+            ctx.fill();
+
+            // Snow on tree
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.beginPath();
+            ctx.moveTo(tree.x + tree.width / 2, groundY - tree.height);
+            ctx.lineTo(tree.x + tree.width * 0.7, groundY - tree.height * 0.6);
+            ctx.lineTo(tree.x + tree.width * 0.3, groundY - tree.height * 0.6);
+            ctx.closePath();
+            ctx.fill();
         });
 
-        // Ground
+        // Snowy ground
         const groundGrad = ctx.createLinearGradient(0, groundY, 0, canvas.height);
-        groundGrad.addColorStop(0, theme.groundGradient[0]);
-        groundGrad.addColorStop(1, theme.groundGradient[1]);
+        groundGrad.addColorStop(0, '#ecf0f1');
+        groundGrad.addColorStop(0.5, '#d5dbdb');
+        groundGrad.addColorStop(1, '#bfc9ca');
         ctx.fillStyle = groundGrad;
         ctx.fillRect(0, groundY, canvas.width, this.game.groundHeight);
 
-        // Ground line
-        ctx.strokeStyle = theme.groundLineColor;
-        ctx.lineWidth = 4;
+        // Snow drifts on ground
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        for (let x = 0; x < canvas.width; x += 60) {
+            ctx.beginPath();
+            ctx.arc(x + 30, groundY + 5, 25 + Math.sin(x * 0.1) * 10, Math.PI, 0);
+            ctx.fill();
+        }
+
+        // Ground line (icy)
+        ctx.strokeStyle = '#85c1e9';
+        ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(0, groundY);
         ctx.lineTo(canvas.width, groundY);
         ctx.stroke();
+
+        // Snowflakes
+        ctx.fillStyle = '#fff';
+        this.snowflakes.forEach(flake => {
+            ctx.globalAlpha = 0.6 + Math.sin(flake.wobble) * 0.4;
+            ctx.beginPath();
+            ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        // Wind streaks for storm effect
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 10; i++) {
+            const y = 50 + i * 50 + Math.sin(Date.now() * 0.001 + i) * 20;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y + 30);
+            ctx.stroke();
+        }
     }
 }
 
@@ -644,6 +742,7 @@ class FlappyGame {
         this.coinsCollected = 0;
         this.running = false;
         this.gameOver = false;
+        this.paused = false;
 
         this.lastTime = 0;
 
@@ -659,9 +758,64 @@ class FlappyGame {
         this.resize();
         window.addEventListener('resize', () => this.resize());
         this.setupControls();
+        this.setupPauseControls();
         this.loadEquipped();
         this.background = new FlappyBackground(this);
         this.bird.reset();
+        this.draw();
+    }
+
+    setupPauseControls() {
+        // Pause button
+        document.getElementById('pauseBtn')?.addEventListener('click', () => this.pause());
+
+        // Resume button
+        document.getElementById('resumeBtn')?.addEventListener('click', () => this.resume());
+
+        // Quit button
+        document.getElementById('quitBtn')?.addEventListener('click', () => this.quit());
+
+        // Auto-pause on visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.running && !this.paused && !this.gameOver) {
+                this.pause();
+            }
+        });
+
+        // Auto-pause on window blur
+        window.addEventListener('blur', () => {
+            if (this.running && !this.paused && !this.gameOver) {
+                this.pause();
+            }
+        });
+    }
+
+    pause() {
+        if (!this.running || this.gameOver || this.paused) return;
+        this.paused = true;
+        this.audio.stopMusic();
+        document.getElementById('pauseOverlay')?.classList.add('show');
+    }
+
+    resume() {
+        if (!this.paused) return;
+        this.paused = false;
+        this.lastTime = performance.now();
+        this.audio.startMusic();
+        document.getElementById('pauseOverlay')?.classList.remove('show');
+        requestAnimationFrame((t) => this.gameLoop(t));
+    }
+
+    quit() {
+        this.paused = false;
+        this.running = false;
+        this.audio.stopMusic();
+        document.getElementById('pauseOverlay')?.classList.remove('show');
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('topBar').style.display = 'flex';
+        document.getElementById('navButtons').style.display = 'flex';
+        document.getElementById('playScreen').classList.add('active');
+        this.reset();
         this.draw();
     }
 
@@ -740,7 +894,7 @@ class FlappyGame {
     }
 
     gameLoop(currentTime) {
-        if (!this.running) return;
+        if (!this.running || this.paused) return;
 
         const dt = Math.min((currentTime - this.lastTime) / 1000, 0.1);
         this.lastTime = currentTime;

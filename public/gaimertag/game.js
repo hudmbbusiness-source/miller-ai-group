@@ -549,10 +549,13 @@ class Player {
         this.game = game;
         this.width = 60;
         this.height = 60;
+        this.normalHeight = 60;
+        this.duckHeight = 30;
         this.x = 100;
         this.y = 0;
         this.vy = 0;
         this.isJumping = false;
+        this.isDucking = false;
         this.wasInAir = false;
         this.groundY = 0;
         this.frame = 0;
@@ -567,14 +570,16 @@ class Player {
         this.y = this.groundY;
         this.vy = 0;
         this.isJumping = false;
+        this.isDucking = false;
         this.wasInAir = false;
+        this.height = this.normalHeight;
         this.squash = { x: 1, y: 1 };
         this.rotation = 0;
         this.hasShield = false;
     }
 
     jump() {
-        if (!this.isJumping) {
+        if (!this.isJumping && !this.isDucking) {
             const jumpMultiplier = this.game.activePowerups.jumpBoost || 1;
             this.vy = -this.game.config.jumpPower * jumpMultiplier;
             this.isJumping = true;
@@ -585,6 +590,24 @@ class Player {
                 this.y + this.height,
                 this.game.getTheme().particleColor
             );
+        }
+    }
+
+    duck() {
+        if (!this.isJumping && !this.isDucking) {
+            this.isDucking = true;
+            this.height = this.duckHeight;
+            this.y = this.groundY + (this.normalHeight - this.duckHeight);
+            this.squash = { x: 1.4, y: 0.5 };
+        }
+    }
+
+    standUp() {
+        if (this.isDucking) {
+            this.isDucking = false;
+            this.height = this.normalHeight;
+            this.y = this.groundY;
+            this.squash = { x: 0.8, y: 1.2 };
         }
     }
 
@@ -1017,6 +1040,174 @@ class Coin {
 }
 
 // ============================================================================
+// MONSTER - Chases the player, gets faster with levels
+// ============================================================================
+class Monster {
+    constructor(game) {
+        this.game = game;
+        this.width = 80;
+        this.height = 80;
+        this.x = -150;
+        this.baseX = -150;
+        this.y = 0;
+        this.speed = 2;
+        this.frame = 0;
+        this.frameTimer = 0;
+        this.eyeGlow = 0;
+        this.roarTimer = 0;
+        this.isRoaring = false;
+    }
+
+    reset() {
+        this.x = -150;
+        this.baseX = -150;
+        this.speed = 2;
+    }
+
+    update(dt, level) {
+        const groundY = this.game.canvas.height - this.game.config.groundHeight - this.height;
+        this.y = groundY;
+
+        // Monster speed increases with level
+        this.speed = 2 + (level - 1) * 0.3;
+
+        // Monster creeps closer over time, but stays behind player
+        const targetX = this.game.player.x - 120 - (30 / level);
+        const catchUpSpeed = this.speed * 0.5;
+
+        if (this.x < targetX) {
+            this.x += catchUpSpeed * dt * 60;
+        }
+
+        // Monster lunges when player is slow/ducking
+        if (this.game.player.isDucking) {
+            this.x += this.speed * 0.3 * dt * 60;
+        }
+
+        // Roar animation
+        this.roarTimer += dt * 1000;
+        if (this.roarTimer > 5000) {
+            this.isRoaring = true;
+            this.roarTimer = 0;
+            setTimeout(() => this.isRoaring = false, 500);
+        }
+
+        // Animation
+        this.frameTimer += dt * 1000;
+        if (this.frameTimer > 150) {
+            this.frame = (this.frame + 1) % 4;
+            this.frameTimer = 0;
+        }
+
+        // Eye glow effect
+        this.eyeGlow = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
+    }
+
+    draw(ctx) {
+        const theme = this.game.getTheme();
+
+        ctx.save();
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+
+        // Roar shake
+        if (this.isRoaring) {
+            ctx.translate(Math.random() * 4 - 2, Math.random() * 4 - 2);
+        }
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, this.height / 2 - 5, this.width / 2, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Monster body - dark menacing shape
+        const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.width / 2);
+        bodyGrad.addColorStop(0, '#4a0080');
+        bodyGrad.addColorStop(0.6, '#2d004d');
+        bodyGrad.addColorStop(1, '#1a0033');
+
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.moveTo(-this.width / 2, this.height / 2);
+        ctx.lineTo(-this.width / 2 + 10, -this.height / 3);
+        ctx.quadraticCurveTo(0, -this.height / 2 - 10, this.width / 2 - 10, -this.height / 3);
+        ctx.lineTo(this.width / 2, this.height / 2);
+        ctx.closePath();
+        ctx.fill();
+
+        // Spikes on top
+        ctx.fillStyle = '#6b00a8';
+        for (let i = -2; i <= 2; i++) {
+            const spikeX = i * 12;
+            const spikeH = 15 + Math.abs(i) * 3;
+            ctx.beginPath();
+            ctx.moveTo(spikeX - 6, -this.height / 3);
+            ctx.lineTo(spikeX, -this.height / 3 - spikeH);
+            ctx.lineTo(spikeX + 6, -this.height / 3);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Glowing eyes
+        ctx.shadowColor = '#ff0040';
+        ctx.shadowBlur = 20 * this.eyeGlow;
+
+        ctx.fillStyle = `rgba(255, 0, 64, ${this.eyeGlow})`;
+        ctx.beginPath();
+        ctx.ellipse(-15, -5, 8, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(15, -5, 8, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye pupils
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-12, -5, 3, 0, Math.PI * 2);
+        ctx.arc(18, -5, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Mouth
+        if (this.isRoaring) {
+            ctx.fillStyle = '#ff0040';
+            ctx.beginPath();
+            ctx.ellipse(0, 15, 20, 15, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Teeth
+            ctx.fillStyle = '#fff';
+            for (let i = -3; i <= 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * 5 - 2, 8);
+                ctx.lineTo(i * 5, 18);
+                ctx.lineTo(i * 5 + 2, 8);
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else {
+            // Closed mouth grin
+            ctx.strokeStyle = '#ff0040';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 10, 15, 0.2, Math.PI - 0.2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    getBounds() {
+        return {
+            x: this.x + 10,
+            y: this.y + 10,
+            width: this.width - 20,
+            height: this.height - 20
+        };
+    }
+}
+
+// ============================================================================
 // MAIN GAME
 // ============================================================================
 class Game {
@@ -1036,6 +1227,7 @@ class Game {
         this.particles = new ParticleSystem();
         this.background = null;
         this.player = new Player(this);
+        this.monster = new Monster(this);
 
         this.obstacles = [];
         this.coins = [];
@@ -1046,9 +1238,12 @@ class Game {
         this.combo = 0;
         this.maxCombo = 0;
         this.obstaclesDodged = 0;
+        this.level = 1;
+        this.levelDistance = 0;
 
         this.running = false;
         this.gameOver = false;
+        this.paused = false;
 
         this.lastTime = 0;
         this.obstacleTimer = 0;
@@ -1069,10 +1264,65 @@ class Game {
         this.resize();
         window.addEventListener('resize', () => this.resize());
         this.setupControls();
+        this.setupPauseControls();
         this.loadEquipped();
         this.background = new Background(this);
         this.player.groundY = this.canvas.height - this.config.groundHeight - this.player.height;
         this.player.y = this.player.groundY;
+        this.draw();
+    }
+
+    setupPauseControls() {
+        // Pause button
+        document.getElementById('pauseBtn')?.addEventListener('click', () => this.pause());
+
+        // Resume button
+        document.getElementById('resumeBtn')?.addEventListener('click', () => this.resume());
+
+        // Quit button
+        document.getElementById('quitBtn')?.addEventListener('click', () => this.quit());
+
+        // Auto-pause on visibility change (notifications, switching apps)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.running && !this.paused && !this.gameOver) {
+                this.pause();
+            }
+        });
+
+        // Auto-pause on window blur
+        window.addEventListener('blur', () => {
+            if (this.running && !this.paused && !this.gameOver) {
+                this.pause();
+            }
+        });
+    }
+
+    pause() {
+        if (!this.running || this.gameOver || this.paused) return;
+        this.paused = true;
+        this.audio.stopMusic();
+        document.getElementById('pauseOverlay')?.classList.add('show');
+    }
+
+    resume() {
+        if (!this.paused) return;
+        this.paused = false;
+        this.lastTime = performance.now();
+        this.audio.startMusic();
+        document.getElementById('pauseOverlay')?.classList.remove('show');
+        requestAnimationFrame((t) => this.gameLoop(t));
+    }
+
+    quit() {
+        this.paused = false;
+        this.running = false;
+        this.audio.stopMusic();
+        document.getElementById('pauseOverlay')?.classList.remove('show');
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('topBar').style.display = 'flex';
+        document.getElementById('navButtons').style.display = 'flex';
+        document.getElementById('playScreen').classList.add('active');
+        this.reset();
         this.draw();
     }
 
@@ -1090,19 +1340,61 @@ class Game {
     }
 
     setupControls() {
+        // Keyboard controls
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && this.running) {
+            if (!this.running) return;
+
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
                 e.preventDefault();
                 this.player.jump();
             }
+            if (e.code === 'ArrowDown') {
+                e.preventDefault();
+                this.player.duck();
+            }
         });
 
-        this.canvas.addEventListener('click', () => {
-            if (this.running) this.player.jump();
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowDown' && this.running) {
+                this.player.standUp();
+            }
         });
+
+        // Touch controls - swipe up to jump, swipe down to duck, tap to jump
+        let touchStartY = 0;
+        let touchStartTime = 0;
 
         this.canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+        });
+
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (!this.running) return;
+
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaY = touchStartY - touchEndY;
+            const deltaTime = Date.now() - touchStartTime;
+
+            // Quick tap = jump
+            if (deltaTime < 200 && Math.abs(deltaY) < 30) {
+                this.player.jump();
+            }
+            // Swipe up = jump
+            else if (deltaY > 50) {
+                this.player.jump();
+            }
+            // Swipe down = duck (release to stand up)
+            else if (deltaY < -50) {
+                this.player.duck();
+                setTimeout(() => this.player.standUp(), 500);
+            }
+        });
+
+        // Mouse click to jump
+        this.canvas.addEventListener('click', () => {
             if (this.running) this.player.jump();
         });
     }
@@ -1154,6 +1446,9 @@ class Game {
         this.combo = 0;
         this.maxCombo = 0;
         this.obstaclesDodged = 0;
+        this.level = 1;
+        this.levelDistance = 0;
+        this.config.speedMultiplier = 1;
         this.obstacles = [];
         this.coins = [];
         this.obstacleTimer = 0;
@@ -1162,11 +1457,12 @@ class Game {
         this.activePowerups = {};
 
         this.player.reset();
+        this.monster.reset();
         this.updateHUD();
     }
 
     gameLoop(currentTime) {
-        if (!this.running) return;
+        if (!this.running || this.paused) return;
 
         const dt = Math.min((currentTime - this.lastTime) / 1000, 0.1);
         this.lastTime = currentTime;
@@ -1185,10 +1481,21 @@ class Game {
     update(dt) {
         this.background.update(dt);
         this.player.update(dt);
+        this.monster.update(dt, this.level);
 
-        // Spawn obstacles
+        // Level progression - every 500 distance, level up
+        this.levelDistance += dt * this.config.baseSpeed * this.config.speedMultiplier;
+        if (this.levelDistance > 500) {
+            this.level++;
+            this.levelDistance = 0;
+            this.config.speedMultiplier = 1 + (this.level - 1) * 0.1;
+            this.showLevelUp();
+        }
+
+        // Spawn obstacles - faster at higher levels
         this.obstacleTimer += dt * 1000;
-        const spawnInterval = Math.max(800, 1500 - this.distance * 0.5);
+        const baseInterval = Math.max(600, 1400 - this.level * 50);
+        const spawnInterval = Math.max(500, baseInterval - this.distance * 0.3);
         if (this.obstacleTimer > spawnInterval) {
             this.obstacles.push(new Obstacle(this, this.canvas.width + 50));
             this.obstacleTimer = 0;
@@ -1230,8 +1537,25 @@ class Game {
         this.updateHUD();
     }
 
+    showLevelUp() {
+        const comboDisplay = document.getElementById('comboDisplay');
+        comboDisplay.textContent = `LEVEL ${this.level}!`;
+        comboDisplay.classList.remove('show');
+        void comboDisplay.offsetWidth;
+        comboDisplay.classList.add('show');
+        this.audio.playCombo();
+        this.screenShake(5, 200);
+    }
+
     checkCollisions() {
         const playerBounds = this.player.getBounds();
+
+        // Monster catches player
+        const monsterBounds = this.monster.getBounds();
+        if (this.intersects(playerBounds, monsterBounds)) {
+            this.die('monster');
+            return;
+        }
 
         // Obstacles
         for (const obstacle of this.obstacles) {
@@ -1352,10 +1676,19 @@ class Game {
         ctx.translate(this.shake.x, this.shake.y);
 
         this.background.draw(ctx);
+        this.monster.draw(ctx);
         this.coins.forEach(coin => coin.draw(ctx));
         this.obstacles.forEach(obstacle => obstacle.draw(ctx));
         this.player.draw(ctx);
         this.particles.draw(ctx);
+
+        // Level indicator
+        if (this.running) {
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.font = 'bold 16px Quicksand';
+            ctx.textAlign = 'right';
+            ctx.fillText(`LVL ${this.level}`, this.canvas.width - 20, 30);
+        }
 
         ctx.restore();
     }

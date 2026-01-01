@@ -86,6 +86,16 @@ export default function GaimertagPage() {
               </div>
             </div>
             <div className="power-ups-active" id="powerUpsActive"></div>
+            <button className="pause-btn" id="pauseBtn">⏸️</button>
+          </div>
+
+          {/* Pause Overlay */}
+          <div className="pause-overlay" id="pauseOverlay">
+            <div className="pause-content">
+              <div className="pause-title">PAUSED</div>
+              <button className="pause-resume-btn" id="resumeBtn">▶️ Resume</button>
+              <button className="pause-quit-btn" id="quitBtn">🏠 Quit</button>
+            </div>
           </div>
 
           {/* Combo Display */}

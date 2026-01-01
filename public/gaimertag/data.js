@@ -646,12 +646,12 @@ const GAME_DATA = {
         },
         flappy: {
             id: 'flappy',
-            name: 'Flappy Jump',
-            icon: '🐦',
-            description: 'Tap to fly through the gaps! How far can you go?',
+            name: 'Heading South',
+            icon: '🦅',
+            description: 'Escape the snowstorm! Fly south through the gaps to safety.',
             unlocked: true,
             unlockRequirement: null,
-            gradient: ['#2196F3', '#1565C0']
+            gradient: ['#64B5F6', '#1976D2']
         },
         tower: {
             id: 'tower',

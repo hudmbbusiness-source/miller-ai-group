@@ -314,6 +314,103 @@ body {
     gap: var(--gap-small);
 }
 
+/* Pause Button */
+.pause-btn {
+    position: absolute;
+    top: 82px;
+    right: var(--gap-big);
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 3px solid var(--neon-pink);
+    background: rgba(26, 0, 51, 0.8);
+    font-size: 24px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 0 15px rgba(255, 45, 149, 0.4);
+}
+
+.pause-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 25px rgba(255, 45, 149, 0.6);
+}
+
+.pause-btn:active {
+    transform: scale(0.95);
+}
+
+/* Pause Overlay */
+.pause-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 0, 20, 0.95);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+}
+
+.pause-overlay.show {
+    display: flex;
+}
+
+.pause-content {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-big);
+}
+
+.pause-title {
+    font-family: var(--font-title);
+    font-size: clamp(48px, 12vw, 80px);
+    color: var(--neon-pink);
+    text-shadow:
+        0 0 20px var(--neon-pink),
+        0 0 40px var(--neon-pink),
+        0 0 60px var(--neon-pink);
+    animation: pausePulse 2s ease-in-out infinite;
+}
+
+@keyframes pausePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.02); }
+}
+
+.pause-resume-btn,
+.pause-quit-btn {
+    padding: var(--gap-med) var(--gap-huge);
+    font-family: var(--font-accent);
+    font-size: 24px;
+    border-radius: var(--round-big);
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pause-resume-btn {
+    background: linear-gradient(135deg, var(--neon-green) 0%, #2d8f2d 100%);
+    color: white;
+    box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
+}
+
+.pause-resume-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(57, 255, 20, 0.6);
+}
+
+.pause-quit-btn {
+    background: linear-gradient(135deg, #666 0%, #444 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.pause-quit-btn:hover {
+    transform: scale(1.05);
+    background: linear-gradient(135deg, #777 0%, #555 100%);
+}
+
 /* ============================================================================
    COMBO DISPLAY - Electric Style
    ============================================================================ */

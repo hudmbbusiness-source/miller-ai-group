@@ -7,9 +7,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getSignalGenerator } from '@/lib/stuntman/signal-generator'
-import { CRYPTO_COM_API, SIGNAL_THRESHOLDS } from '@/lib/stuntman/constants'
-import type { OHLCV, Signal, Timeframe } from '@/lib/stuntman/types'
+import {
+  generateAdvancedSignal,
+  generateAllSignals,
+  getBestOpportunities,
+} from '@/lib/stuntman/signal-generator'
 
 // Type alias for Supabase client
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,58 +21,7 @@ type SupabaseAny = any
 // HELPERS
 // =============================================================================
 
-interface RawCandlestick {
-  o: string
-  h: string
-  l: string
-  c: string
-  v: string
-  t: number
-}
-
-async function fetchCandles(instrument: string, timeframe: Timeframe, limit: number = 100): Promise<OHLCV[]> {
-  try {
-    const timeframeMap: Record<Timeframe, string> = {
-      '1m': '1m',
-      '5m': '5m',
-      '15m': '15m',
-      '30m': '30m',
-      '1h': '1h',
-      '4h': '4h',
-      '1d': '1D',
-      '1w': '1W',
-    }
-
-    const response = await fetch(
-      `${CRYPTO_COM_API.PUBLIC_API_URL}/get-candlestick?instrument_name=${instrument}&timeframe=${timeframeMap[timeframe]}&count=${limit}`,
-      {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      }
-    )
-
-    if (!response.ok) return []
-
-    const data = await response.json()
-    if (data.code !== 0 || !data.result?.data) return []
-
-    return (data.result.data as RawCandlestick[]).map((c) => ({
-      openTime: c.t,
-      closeTime: c.t + 60000,
-      open: parseFloat(c.o),
-      high: parseFloat(c.h),
-      low: parseFloat(c.l),
-      close: parseFloat(c.c),
-      volume: parseFloat(c.v),
-      quoteVolume: 0,
-      tradeCount: 0,
-    }))
-  } catch (error) {
-    console.error('Failed to fetch candles:', error)
-    return []
-  }
-}
+// (Advanced signal generator handles all data fetching internally)
 
 // =============================================================================
 // GET - Fetch signals
@@ -232,21 +183,10 @@ export async function POST(request: NextRequest) {
           strategyConfig = strategy
         }
 
-        // Fetch market data
-        const candles = await fetchCandles(instrument, timeframe as Timeframe, 200)
+        // Generate advanced signal using new system
+        const advancedSignal = await generateAdvancedSignal(instrument)
 
-        if (candles.length < 50) {
-          return NextResponse.json({
-            success: false,
-            error: 'Insufficient market data',
-          }, { status: 400 })
-        }
-
-        // Generate signal
-        const generator = getSignalGenerator()
-        const signal = generator.generateSignal(instrument, candles, strategyConfig)
-
-        if (!signal) {
+        if (!advancedSignal || advancedSignal.action === 'HOLD') {
           return NextResponse.json({
             success: true,
             signal: null,
@@ -254,22 +194,25 @@ export async function POST(request: NextRequest) {
           })
         }
 
+        // Map advanced signal to database format
+        const side = advancedSignal.action.includes('BUY') ? 'buy' : 'sell'
+        const signalId = `sig_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+
         // Save signal to database
         const signalData = {
-          id: signal.id,
+          id: signalId,
           account_id,
           strategy_id: strategy_id || null,
           instrument_name: instrument,
           timeframe,
-          side: signal.side,
-          strength: signal.strength,
-          confidence: signal.confidence,
-          source: signal.source,
-          indicators: signal.indicators,
-          patterns: signal.patterns,
-          valid_until: new Date(signal.validUntil).toISOString(),
+          side,
+          strength: advancedSignal.confidence / 100,
+          confidence: advancedSignal.confidence / 100,
+          source: advancedSignal.sources.map(s => s.name).join(', '),
+          indicators: advancedSignal.sources,
+          valid_until: new Date(Date.now() + 3600000).toISOString(), // 1 hour validity
           acted_on: false,
-          created_at: new Date(signal.timestamp).toISOString(),
+          created_at: new Date().toISOString(),
         }
 
         const { error: insertError } = await (supabase
@@ -278,30 +221,33 @@ export async function POST(request: NextRequest) {
 
         if (insertError) {
           console.error('Signal save error:', insertError)
-          // Return signal anyway, just don't persist
         }
 
         return NextResponse.json({
           success: true,
           signal: {
             ...signalData,
-            indicators: signal.indicators,
-            patterns: signal.patterns,
+            action: advancedSignal.action,
+            risk_score: advancedSignal.risk_score,
+            stop_loss: advancedSignal.stop_loss,
+            take_profit: advancedSignal.take_profit,
+            position_size: advancedSignal.position_size,
+            sources: advancedSignal.sources,
           },
-          message: `${signal.side.toUpperCase()} signal generated with ${(signal.confidence * 100).toFixed(0)}% confidence`,
+          message: `${advancedSignal.action} signal generated with ${advancedSignal.confidence}% confidence`,
         })
       }
 
       // ==========================================================================
-      // SCAN - Scan multiple instruments for signals
+      // SCAN - Scan multiple instruments for signals (uses advanced system)
       // ==========================================================================
       case 'scan': {
-        const { account_id, instruments, timeframe = '15m', strategy_id } = body
+        const { account_id, minConfidence = 50 } = body
 
-        if (!account_id || !instruments || !Array.isArray(instruments)) {
+        if (!account_id) {
           return NextResponse.json({
             success: false,
-            error: 'account_id and instruments array required',
+            error: 'account_id required',
           }, { status: 400 })
         }
 
@@ -320,66 +266,44 @@ export async function POST(request: NextRequest) {
           }, { status: 404 })
         }
 
-        // Get strategy config if provided
-        let strategyConfig = null
-        if (strategy_id) {
-          const { data: strategy } = await (supabase
-            .from('stuntman_strategies') as SupabaseAny)
-            .select('*')
-            .eq('id', strategy_id)
-            .eq('account_id', account_id)
-            .single()
-          strategyConfig = strategy
-        }
+        // Use advanced signal generator to scan all instruments
+        const allSignals = await generateAllSignals()
+        const opportunities = await getBestOpportunities(minConfidence)
 
-        const generator = getSignalGenerator()
-        const signals: Signal[] = []
-        const errors: string[] = []
+        // Save opportunities to database
+        for (const signal of opportunities) {
+          const side = signal.action.includes('BUY') ? 'buy' : 'sell'
+          const signalId = `sig_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
-        // Scan each instrument (limited to 10)
-        const instrumentsToScan = instruments.slice(0, 10)
-
-        for (const instrument of instrumentsToScan) {
-          try {
-            const candles = await fetchCandles(instrument, timeframe as Timeframe, 200)
-
-            if (candles.length >= 50) {
-              const signal = generator.generateSignal(instrument, candles, strategyConfig)
-              if (signal) {
-                signals.push(signal)
-
-                // Save to database
-                await (supabase
-                  .from('stuntman_signals') as SupabaseAny)
-                  .insert({
-                    id: signal.id,
-                    account_id,
-                    strategy_id: strategy_id || null,
-                    instrument_name: instrument,
-                    timeframe,
-                    side: signal.side,
-                    strength: signal.strength,
-                    confidence: signal.confidence,
-                    source: signal.source,
-                    indicators: signal.indicators,
-                    patterns: signal.patterns,
-                    valid_until: new Date(signal.validUntil).toISOString(),
-                    acted_on: false,
-                    created_at: new Date(signal.timestamp).toISOString(),
-                  })
-              }
-            }
-          } catch (err) {
-            errors.push(`${instrument}: ${err instanceof Error ? err.message : 'Failed'}`)
-          }
+          await (supabase
+            .from('stuntman_signals') as SupabaseAny)
+            .insert({
+              id: signalId,
+              account_id,
+              instrument_name: signal.instrument,
+              timeframe: signal.timeframe,
+              side,
+              strength: signal.confidence / 100,
+              confidence: signal.confidence / 100,
+              source: signal.sources.map(s => s.name).join(', '),
+              indicators: signal.sources,
+              valid_until: new Date(Date.now() + 3600000).toISOString(),
+              acted_on: false,
+              created_at: new Date().toISOString(),
+            })
         }
 
         return NextResponse.json({
           success: true,
-          signals,
-          scanned: instrumentsToScan.length,
-          generated: signals.length,
-          errors: errors.length > 0 ? errors : undefined,
+          allSignals,
+          opportunities,
+          strongBuy: allSignals.filter(s => s.action === 'STRONG_BUY'),
+          buy: allSignals.filter(s => s.action === 'BUY'),
+          sell: allSignals.filter(s => s.action === 'SELL'),
+          strongSell: allSignals.filter(s => s.action === 'STRONG_SELL'),
+          hold: allSignals.filter(s => s.action === 'HOLD'),
+          scanned: allSignals.length,
+          generated: opportunities.length,
         })
       }
 

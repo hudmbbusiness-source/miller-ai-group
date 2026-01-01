@@ -1,15 +1,9 @@
 // @ts-nocheck
-// =============================================================================
-// STUNTMAN AI - AUTOMATED TRADING DASHBOARD
-// =============================================================================
-// Professional automated trading with proven strategies
-// =============================================================================
-
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { createChart, ColorType } from 'lightweight-charts'
+import { createChart, ColorType, LineSeries } from 'lightweight-charts'
 
 // =============================================================================
 // TYPES
@@ -43,42 +37,36 @@ interface Position {
   entry_price: number
   current_price: number
   unrealized_pnl: number
+  stop_loss?: number
+  take_profit?: number
 }
 
-interface Signal {
-  id: string
-  instrument_name: string
-  side: string
-  strength: number
-  confidence: number
-  source: string
-  created_at: string
-}
-
-interface BotResult {
+interface AdvancedSignal {
   instrument: string
-  decision: string
+  action: string
   confidence: number
-  reason: string
+  risk_score: number
+  stop_loss: number
+  take_profit: number
+  position_size: number
+  sources: Array<{ name: string; signal: string; strength: number }>
   currentPrice: number
   trade?: { success: boolean; message: string }
 }
 
 // =============================================================================
-// REAL PRICE CHART - Uses actual Crypto.com data
+// PRICE CHART - Using Line Series (v5 compatible)
 // =============================================================================
 
-function RealPriceChart({ instrument }: { instrument: string }) {
-  const chartContainerRef = useRef<HTMLDivElement>(null)
-  const chartRef = useRef<any>(null)
+function PriceChart({ instrument, isPositive }: { instrument: string; isPositive: boolean }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
   const seriesRef = useRef<any>(null)
-  const [timeRange, setTimeRange] = useState<'1D' | '1W' | '1M'>('1D')
-  const [loading, setLoading] = useState(true)
+  const [timeframe, setTimeframe] = useState<'1D' | '1W' | '1M'>('1D')
 
-  // Fetch REAL data from Crypto.com
-  const fetchRealData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/stuntman/market?action=history&instrument=${instrument}&timeframe=${timeRange}`)
+      const res = await fetch(`/api/stuntman/market?action=history&instrument=${instrument}&timeframe=${timeframe}`)
       const data = await res.json()
 
       if (data.success && data.history && seriesRef.current) {
@@ -86,64 +74,53 @@ function RealPriceChart({ instrument }: { instrument: string }) {
           time: h.time,
           value: h.close,
         }))
-
         seriesRef.current.setData(chartData)
-
-        // Color based on performance
-        if (chartData.length >= 2) {
-          const first = chartData[0].value
-          const last = chartData[chartData.length - 1].value
-          const isPositive = last >= first
-
-          seriesRef.current.applyOptions({
-            lineColor: isPositive ? '#22c55e' : '#ef4444',
-            topColor: isPositive ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-            bottomColor: 'transparent',
-          })
-        }
-
         chartRef.current?.timeScale().fitContent()
       }
-    } catch (err) {
-      console.error('Chart fetch error:', err)
-    } finally {
-      setLoading(false)
+    } catch (e) {
+      console.error('Chart error:', e)
     }
-  }, [instrument, timeRange])
+  }, [instrument, timeframe])
 
   useEffect(() => {
-    if (!chartContainerRef.current) return
+    if (!containerRef.current) return
 
-    const chart = createChart(chartContainerRef.current, {
+    const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#6b7280',
+        textColor: '#71717a',
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { color: 'rgba(255,255,255,0.03)' },
+        horzLines: { visible: false },
       },
-      width: chartContainerRef.current.clientWidth,
-      height: 280,
-      rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false, visible: false },
-      crosshair: { horzLine: { visible: false }, vertLine: { visible: false } },
+      width: containerRef.current.clientWidth,
+      height: 200,
+      rightPriceScale: { visible: false },
+      leftPriceScale: { visible: false },
+      timeScale: { visible: false },
+      crosshair: {
+        horzLine: { visible: false },
+        vertLine: { visible: false },
+      },
+      handleScale: false,
+      handleScroll: false,
     })
 
-    const series = chart.addAreaSeries({
-      lineColor: '#22c55e',
-      topColor: 'rgba(34, 197, 94, 0.15)',
-      bottomColor: 'transparent',
+    // Use LineSeries for v5 compatibility
+    const series = chart.addSeries(LineSeries, {
+      color: isPositive ? '#10b981' : '#ef4444',
       lineWidth: 2,
       priceLineVisible: false,
+      lastValueVisible: false,
     })
 
     chartRef.current = chart
     seriesRef.current = series
 
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth })
+      if (containerRef.current) {
+        chart.applyOptions({ width: containerRef.current.clientWidth })
       }
     }
     window.addEventListener('resize', handleResize)
@@ -152,35 +129,29 @@ function RealPriceChart({ instrument }: { instrument: string }) {
       window.removeEventListener('resize', handleResize)
       chart.remove()
     }
-  }, [])
+  }, [isPositive])
 
   useEffect(() => {
-    setLoading(true)
-    fetchRealData()
-    const interval = setInterval(fetchRealData, 30000)
+    fetchData()
+    const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
-  }, [fetchRealData])
+  }, [fetchData])
 
   return (
     <div>
-      <div className="relative">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">
-            <div className="w-5 h-5 border-2 border-zinc-600 border-t-white rounded-full animate-spin" />
-          </div>
-        )}
-        <div ref={chartContainerRef} />
-      </div>
-      <div className="flex gap-2 mt-3">
-        {(['1D', '1W', '1M'] as const).map((range) => (
+      <div ref={containerRef} className="w-full" />
+      <div className="flex gap-1 mt-4">
+        {(['1D', '1W', '1M'] as const).map((tf) => (
           <button
-            key={range}
-            onClick={() => setTimeRange(range)}
-            className={`px-4 py-1.5 text-sm rounded transition-colors ${
-              timeRange === range ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'
+            key={tf}
+            onClick={() => setTimeframe(tf)}
+            className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+              timeframe === tf
+                ? 'bg-white text-black'
+                : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
             }`}
           >
-            {range}
+            {tf}
           </button>
         ))}
       </div>
@@ -196,22 +167,21 @@ export default function StuntManDashboard() {
   const [tickers, setTickers] = useState<Ticker[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [positions, setPositions] = useState<Position[]>([])
-  const [signals, setSignals] = useState<Signal[]>([])
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
   const [selectedInstrument, setSelectedInstrument] = useState('BTC_USDT')
   const [loading, setLoading] = useState(true)
   const [botRunning, setBotRunning] = useState(false)
-  const [botResults, setBotResults] = useState<BotResult[]>([])
+  const [opportunities, setOpportunities] = useState<AdvancedSignal[]>([])
+  const [lastScan, setLastScan] = useState<string | null>(null)
 
-  // Fetch all data
+  // Fetch market data
   useEffect(() => {
-    const fetchAll = async () => {
+    const fetchData = async () => {
       try {
         const [tickersRes, accountsRes] = await Promise.all([
           fetch('/api/stuntman/market?action=tickers'),
           fetch('/api/stuntman/accounts'),
         ])
-
         const [tickersData, accountsData] = await Promise.all([
           tickersRes.json(),
           accountsRes.json(),
@@ -220,79 +190,76 @@ export default function StuntManDashboard() {
         if (tickersData.success) setTickers(tickersData.tickers || [])
         if (accountsData.success) {
           setAccounts(accountsData.accounts || [])
-          if (accountsData.accounts?.length > 0 && !selectedAccount) {
+          if (accountsData.accounts?.length && !selectedAccount) {
             setSelectedAccount(accountsData.accounts[0].id)
           }
         }
-      } catch (err) {
-        console.error('Fetch error:', err)
+      } catch (e) {
+        console.error('Fetch error:', e)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchAll()
-    const interval = setInterval(fetchAll, 5000)
+    fetchData()
+    const interval = setInterval(fetchData, 10000)
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch positions and signals
+  // Fetch positions
   useEffect(() => {
     if (!selectedAccount) return
 
-    const fetchAccountData = async () => {
+    const fetchPositions = async () => {
       try {
-        const [posRes, sigRes] = await Promise.all([
-          fetch(`/api/stuntman/positions?accountId=${selectedAccount}&status=open`),
-          fetch(`/api/stuntman/signals?accountId=${selectedAccount}&limit=10`),
-        ])
-
-        const [posData, sigData] = await Promise.all([posRes.json(), sigRes.json()])
-
-        if (posData.success) setPositions(posData.positions || [])
-        if (sigData.success) setSignals(sigData.signals || [])
-      } catch (err) {
-        console.error('Account data error:', err)
+        const res = await fetch(`/api/stuntman/positions?accountId=${selectedAccount}&status=open`)
+        const data = await res.json()
+        if (data.success) setPositions(data.positions || [])
+      } catch (e) {
+        console.error('Position error:', e)
       }
     }
 
-    fetchAccountData()
-    const interval = setInterval(fetchAccountData, 5000)
+    fetchPositions()
+    const interval = setInterval(fetchPositions, 5000)
     return () => clearInterval(interval)
   }, [selectedAccount])
 
-  // Run automated bot
-  const runBot = async () => {
+  // Run advanced bot
+  const runBot = async (mode: 'analyze' | 'run') => {
     if (!selectedAccount || botRunning) return
-
     setBotRunning(true)
+
     try {
       const res = await fetch('/api/stuntman/bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'run', accountId: selectedAccount }),
+        body: JSON.stringify({ action: mode, accountId: selectedAccount }),
       })
-
       const data = await res.json()
+
       if (data.success && data.results) {
-        setBotResults(data.results)
+        setOpportunities(data.results)
+        setLastScan(new Date().toLocaleTimeString())
       }
-    } catch (err) {
-      console.error('Bot error:', err)
+    } catch (e) {
+      console.error('Bot error:', e)
     } finally {
       setBotRunning(false)
     }
   }
 
-  const currentAccount = accounts.find((a) => a.id === selectedAccount)
-  const totalValue = (currentAccount?.balance ?? 0) + (currentAccount?.unrealized_pnl ?? 0)
-  const totalPnL = (currentAccount?.realized_pnl ?? 0) + (currentAccount?.unrealized_pnl ?? 0)
-  const selectedTicker = tickers.find((t) => t.instrumentName === selectedInstrument)
+  const currentAccount = accounts.find(a => a.id === selectedAccount)
+  const totalValue = (currentAccount?.balance ?? 0) + positions.reduce((sum, p) => sum + (p.unrealized_pnl || 0), 0)
+  const totalPnL = totalValue - (currentAccount?.initial_balance ?? 1000)
+  const pnlPercent = ((totalPnL / (currentAccount?.initial_balance ?? 1000)) * 100)
+  const selectedTicker = tickers.find(t => t.instrumentName === selectedInstrument)
+  const isPositive = (selectedTicker?.priceChangePercent24h ?? 0) >= 0
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
       </div>
     )
   }
@@ -300,20 +267,18 @@ export default function StuntManDashboard() {
   // Onboarding
   if (accounts.length === 0) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center p-6">
-        <div className="max-w-md text-center">
-          <h1 className="text-3xl font-bold mb-2">StuntMan</h1>
-          <p className="text-zinc-500 mb-6">Automated crypto trading with proven strategies</p>
-          <p className="text-zinc-400 mb-8 text-sm">
-            Start with $1,000 in paper funds. The bot uses RSI, MACD, Bollinger Bands, and
-            Moving Averages to trade automatically.
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center">
+          <div className="text-4xl font-bold tracking-tight mb-2">StuntMan</div>
+          <p className="text-zinc-500 text-sm mb-8">
+            AI-powered crypto trading with smart money detection, whale tracking, and advanced market analysis.
           </p>
           <button
             onClick={async () => {
               const res = await fetch('/api/stuntman/accounts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: 'Paper Account', is_paper: true, initial_balance: 1000 }),
+                body: JSON.stringify({ name: 'Paper Trading', is_paper: true, initial_balance: 1000 }),
               })
               const data = await res.json()
               if (data.success) {
@@ -321,217 +286,230 @@ export default function StuntManDashboard() {
                 setSelectedAccount(data.account.id)
               }
             }}
-            className="px-8 py-3 bg-white text-black font-medium rounded hover:bg-zinc-200 transition-colors"
+            className="w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-zinc-200 transition-colors"
           >
-            Start Automated Trading
+            Start with $1,000
           </button>
+          <p className="text-zinc-600 text-xs mt-4">Paper trading only. No real funds.</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen pb-8">
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Section */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Portfolio */}
-            <div className="bg-zinc-900/50 rounded-xl p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">Portfolio Value</div>
-                  <div className="text-4xl font-bold">
-                    ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                  <div className={`text-sm mt-1 ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)} all time
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {currentAccount?.is_paper && (
-                    <span className="px-2 py-1 text-xs bg-amber-500/10 text-amber-500 rounded">PAPER</span>
-                  )}
-                  <button
-                    onClick={runBot}
-                    disabled={botRunning}
-                    className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-                      botRunning
-                        ? 'bg-zinc-700 text-zinc-400 cursor-wait'
-                        : 'bg-green-600 hover:bg-green-500 text-white'
-                    }`}
-                  >
-                    {botRunning ? 'Analyzing...' : 'Run Bot'}
-                  </button>
-                </div>
+    <div className="min-h-screen">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+
+        {/* Portfolio Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-zinc-500 text-sm">Portfolio Value</div>
+            {currentAccount?.is_paper && (
+              <span className="text-xs text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">PAPER</span>
+            )}
+          </div>
+          <div className="text-4xl font-bold tracking-tight">
+            ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className={`text-sm font-medium ${totalPnL >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+            {totalPnL >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}% ({totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)})
+          </div>
+        </div>
+
+        {/* Chart + Asset Info */}
+        <div className="bg-zinc-900/40 rounded-2xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-sm">
+                {selectedInstrument.split('_')[0].slice(0, 3)}
               </div>
-
-              {/* Real Chart */}
-              <RealPriceChart instrument={selectedInstrument} />
+              <div>
+                <div className="font-semibold">{selectedInstrument.replace('_', '/')}</div>
+                <div className="text-xs text-zinc-500">{selectedInstrument.split('_')[0]}</div>
+              </div>
             </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold font-mono">
+                ${(selectedTicker?.lastPrice ?? 0).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: (selectedTicker?.lastPrice ?? 0) < 1 ? 6 : 2,
+                })}
+              </div>
+              <div className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
+                {isPositive ? '+' : ''}{(selectedTicker?.priceChangePercent24h ?? 0).toFixed(2)}%
+              </div>
+            </div>
+          </div>
 
-            {/* Selected Asset */}
-            <div className="bg-zinc-900/50 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-sm font-bold">
-                    {selectedInstrument.split('_')[0].slice(0, 2)}
+          <PriceChart instrument={selectedInstrument} isPositive={isPositive} />
+
+          <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-zinc-800/50">
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">24h High</div>
+              <div className="font-mono text-sm">${(selectedTicker?.highPrice ?? 0).toLocaleString()}</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">24h Low</div>
+              <div className="font-mono text-sm">${(selectedTicker?.lowPrice ?? 0).toLocaleString()}</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500 mb-1">Volume</div>
+              <div className="font-mono text-sm">${((selectedTicker?.volume ?? 0) / 1e6).toFixed(1)}M</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3 mb-6">
+          <button
+            onClick={() => runBot('analyze')}
+            disabled={botRunning}
+            className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
+          >
+            {botRunning ? 'Scanning...' : 'Scan Markets'}
+          </button>
+          <button
+            onClick={() => runBot('run')}
+            disabled={botRunning}
+            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
+          >
+            {botRunning ? 'Running...' : 'Auto Trade'}
+          </button>
+        </div>
+
+        {/* Opportunities */}
+        {opportunities.length > 0 && (
+          <div className="bg-zinc-900/40 rounded-2xl p-4 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm font-semibold">Trading Opportunities</div>
+              {lastScan && <div className="text-xs text-zinc-500">Last scan: {lastScan}</div>}
+            </div>
+            <div className="space-y-2">
+              {opportunities.filter(o => o.action !== 'HOLD').slice(0, 5).map((opp, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${
+                      opp.action.includes('BUY') ? 'bg-emerald-500' : 'bg-red-500'
+                    }`} />
+                    <div>
+                      <div className="font-medium text-sm">{opp.instrument.replace('_', '/')}</div>
+                      <div className="text-xs text-zinc-500">
+                        {opp.sources.slice(0, 2).map(s => s.name).join(', ')}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-bold">{selectedInstrument.replace('_', '/')}</div>
-                    <div className="text-xs text-zinc-500">{selectedInstrument.split('_')[0]}</div>
+                  <div className="text-right">
+                    <div className={`text-sm font-semibold ${
+                      opp.action.includes('BUY') ? 'text-emerald-500' : 'text-red-500'
+                    }`}>
+                      {opp.action.replace('_', ' ')}
+                    </div>
+                    <div className="text-xs text-zinc-500">{opp.confidence}% conf</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Markets */}
+        <div className="bg-zinc-900/40 rounded-2xl p-4 mb-6">
+          <div className="text-sm font-semibold mb-4">Markets</div>
+          <div className="space-y-1">
+            {tickers.filter(t => t?.instrumentName).slice(0, 10).map(ticker => (
+              <button
+                key={ticker.instrumentName}
+                onClick={() => setSelectedInstrument(ticker.instrumentName)}
+                className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors ${
+                  selectedInstrument === ticker.instrumentName
+                    ? 'bg-zinc-800'
+                    : 'hover:bg-zinc-800/50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
+                    {ticker.instrumentName.split('_')[0].slice(0, 2)}
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-sm">{ticker.instrumentName.split('_')[0]}</div>
+                    <div className="text-xs text-zinc-500">{ticker.instrumentName.replace('_', '/')}</div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xl font-bold font-mono">
-                    ${(selectedTicker?.lastPrice ?? 0).toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: (selectedTicker?.lastPrice ?? 0) < 1 ? 6 : 2,
-                    })}
+                  <div className="font-mono text-sm">
+                    ${ticker.lastPrice >= 1000
+                      ? Math.round(ticker.lastPrice).toLocaleString()
+                      : ticker.lastPrice.toFixed(2)}
                   </div>
-                  <div className={`text-sm ${(selectedTicker?.priceChangePercent24h ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {(selectedTicker?.priceChangePercent24h ?? 0) >= 0 ? '+' : ''}
-                    {(selectedTicker?.priceChangePercent24h ?? 0).toFixed(2)}%
+                  <div className={`text-xs font-medium ${
+                    (ticker.priceChangePercent24h ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                  }`}>
+                    {(ticker.priceChangePercent24h ?? 0) >= 0 ? '+' : ''}
+                    {(ticker.priceChangePercent24h ?? 0).toFixed(2)}%
                   </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-zinc-800 text-sm">
-                <div>
-                  <div className="text-xs text-zinc-500 mb-1">24h High</div>
-                  <div className="font-mono">${(selectedTicker?.highPrice ?? 0).toLocaleString()}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-zinc-500 mb-1">24h Low</div>
-                  <div className="font-mono">${(selectedTicker?.lowPrice ?? 0).toLocaleString()}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-zinc-500 mb-1">Volume</div>
-                  <div className="font-mono">${((selectedTicker?.volume ?? 0) / 1e6).toFixed(1)}M</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Bot Results */}
-            {botResults.length > 0 && (
-              <div className="bg-zinc-900/50 rounded-xl p-6">
-                <div className="text-xs text-zinc-500 uppercase tracking-wide mb-4">Bot Analysis</div>
-                <div className="space-y-3">
-                  {botResults.map((r, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-                      <div>
-                        <div className="font-medium">{r.instrument.replace('_', '/')}</div>
-                        <div className="text-xs text-zinc-500">{r.reason}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`font-medium ${
-                          r.decision === 'BUY' ? 'text-green-500' : r.decision === 'SELL' ? 'text-red-500' : 'text-zinc-500'
-                        }`}>
-                          {r.decision}
-                        </div>
-                        <div className="text-xs text-zinc-500">{(r.confidence * 100).toFixed(0)}% confidence</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              </button>
+            ))}
           </div>
+        </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Watchlist */}
-            <div className="bg-zinc-900/50 rounded-xl p-4">
-              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Markets</div>
-              <div className="space-y-1">
-                {tickers.filter((t) => t?.instrumentName).slice(0, 8).map((ticker) => (
-                  <button
-                    key={ticker.instrumentName}
-                    onClick={() => setSelectedInstrument(ticker.instrumentName)}
-                    className={`w-full flex items-center justify-between p-2 rounded transition-colors ${
-                      selectedInstrument === ticker.instrumentName ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
-                    }`}
-                  >
+        {/* Positions */}
+        {positions.length > 0 && (
+          <div className="bg-zinc-900/40 rounded-2xl p-4 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm font-semibold">Open Positions</div>
+              <Link href="/stuntman/history" className="text-xs text-zinc-500 hover:text-white">
+                View all
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {positions.map(pos => (
+                <div key={pos.id} className="p-3 bg-zinc-800/50 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
-                        {ticker.instrumentName.split('_')[0].slice(0, 2)}
-                      </div>
-                      <span className="text-sm font-medium">{ticker.instrumentName.split('_')[0]}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-mono">
-                        ${(ticker.lastPrice ?? 0) >= 1000
-                          ? Math.round(ticker.lastPrice ?? 0).toLocaleString()
-                          : (ticker.lastPrice ?? 0).toFixed(2)}
-                      </div>
-                      <div className={`text-xs ${(ticker.priceChangePercent24h ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {(ticker.priceChangePercent24h ?? 0) >= 0 ? '+' : ''}
-                        {(ticker.priceChangePercent24h ?? 0).toFixed(2)}%
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Positions */}
-            {positions.length > 0 && (
-              <div className="bg-zinc-900/50 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide">Open Positions</div>
-                  <Link href="/stuntman/history" className="text-xs text-zinc-500 hover:text-white">All</Link>
-                </div>
-                <div className="space-y-2">
-                  {positions.slice(0, 4).map((pos) => (
-                    <div key={pos.id} className="p-3 bg-zinc-800/50 rounded">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">{pos.instrument_name.replace('_', '/')}</span>
-                        <span className={`text-sm font-mono ${(pos.unrealized_pnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-zinc-500 mt-1">
-                        <span className={pos.side === 'long' ? 'text-green-500' : 'text-red-500'}>{pos.side.toUpperCase()}</span>
-                        <span>{pos.quantity.toFixed(4)} @ ${pos.entry_price.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Signals */}
-            {signals.length > 0 && (
-              <div className="bg-zinc-900/50 rounded-xl p-4">
-                <div className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Recent Signals</div>
-                <div className="space-y-2">
-                  {signals.slice(0, 5).map((sig) => (
-                    <div key={sig.id} className="flex items-center justify-between p-2 bg-zinc-800/30 rounded">
-                      <div>
-                        <div className="text-sm font-medium">{sig.instrument_name?.replace('_', '/')}</div>
-                        <div className="text-xs text-zinc-500">{sig.source}</div>
-                      </div>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                        sig.side === 'buy' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                        pos.side === 'long' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'
                       }`}>
-                        {sig.side?.toUpperCase()}
+                        {pos.side.toUpperCase()}
                       </span>
+                      <span className="font-medium text-sm">{pos.instrument_name.replace('_', '/')}</span>
                     </div>
-                  ))}
+                    <span className={`font-mono font-semibold ${
+                      (pos.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                    }`}>
+                      {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-zinc-500">
+                    <span>{pos.quantity.toFixed(6)} @ ${pos.entry_price.toFixed(2)}</span>
+                    <span>Now: ${pos.current_price.toFixed(2)}</span>
+                  </div>
+                  {(pos.stop_loss || pos.take_profit) && (
+                    <div className="flex gap-4 mt-2 text-xs">
+                      {pos.stop_loss && <span className="text-red-400">SL: ${pos.stop_loss.toFixed(2)}</span>}
+                      {pos.take_profit && <span className="text-emerald-400">TP: ${pos.take_profit.toFixed(2)}</span>}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Quick Links */}
-            <div className="grid grid-cols-2 gap-2">
-              <Link href="/stuntman/strategies" className="p-3 bg-zinc-900/50 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
-                <div className="font-medium text-sm">Strategies</div>
-              </Link>
-              <Link href="/stuntman/history" className="p-3 bg-zinc-900/50 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
-                <div className="font-medium text-sm">History</div>
-              </Link>
+              ))}
             </div>
           </div>
+        )}
+
+        {/* Navigation */}
+        <div className="grid grid-cols-3 gap-3">
+          <Link href="/stuntman/trade" className="p-4 bg-zinc-900/40 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
+            <div className="text-lg mb-1">📊</div>
+            <div className="text-sm font-medium">Trade</div>
+          </Link>
+          <Link href="/stuntman/strategies" className="p-4 bg-zinc-900/40 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
+            <div className="text-lg mb-1">⚡</div>
+            <div className="text-sm font-medium">Strategies</div>
+          </Link>
+          <Link href="/stuntman/history" className="p-4 bg-zinc-900/40 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
+            <div className="text-lg mb-1">📈</div>
+            <div className="text-sm font-medium">History</div>
+          </Link>
         </div>
       </div>
     </div>

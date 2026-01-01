@@ -496,21 +496,6 @@ export default function StuntManDashboard() {
           </div>
         )}
 
-        {/* Navigation */}
-        <div className="grid grid-cols-3 gap-3">
-          <Link href="/stuntman/trade" className="p-4 bg-zinc-900/40 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
-            <div className="text-lg mb-1">📊</div>
-            <div className="text-sm font-medium">Trade</div>
-          </Link>
-          <Link href="/stuntman/strategies" className="p-4 bg-zinc-900/40 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
-            <div className="text-lg mb-1">⚡</div>
-            <div className="text-sm font-medium">Strategies</div>
-          </Link>
-          <Link href="/stuntman/history" className="p-4 bg-zinc-900/40 rounded-xl text-center hover:bg-zinc-800/50 transition-colors">
-            <div className="text-lg mb-1">📈</div>
-            <div className="text-sm font-medium">History</div>
-          </Link>
-        </div>
       </div>
     </div>
   )

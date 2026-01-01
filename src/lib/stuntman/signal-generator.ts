@@ -92,7 +92,7 @@ async function fetchCoinGeckoData(coinId: string): Promise<MarketData | null> {
   }
 }
 
-// Order book depth analysis
+// Order book depth analysis - using v2 API
 async function fetchOrderBook(instrument: string): Promise<{
   bids: number
   asks: number
@@ -101,32 +101,40 @@ async function fetchOrderBook(instrument: string): Promise<{
 } | null> {
   try {
     const res = await fetch(
-      `https://api.crypto.com/exchange/v1/public/get-book?instrument_name=${instrument}&depth=50`
+      `https://api.crypto.com/v2/public/get-book?instrument_name=${instrument}&depth=50`
     )
     const data = await res.json()
 
     if (data.code !== 0 || !data.result?.data) return null
 
+    const bookData = Array.isArray(data.result.data) ? data.result.data[0] : data.result.data
+    if (!bookData) return null
+
     let bids = 0
     let asks = 0
 
-    for (const [price, qty] of data.result.data.bids || []) {
-      bids += parseFloat(price) * parseFloat(qty)
+    for (const item of bookData.bids || []) {
+      const price = parseFloat(item[0])
+      const qty = parseFloat(item[1])
+      bids += price * qty
     }
-    for (const [price, qty] of data.result.data.asks || []) {
-      asks += parseFloat(price) * parseFloat(qty)
+    for (const item of bookData.asks || []) {
+      const price = parseFloat(item[0])
+      const qty = parseFloat(item[1])
+      asks += price * qty
     }
 
-    const imbalance = (bids - asks) / (bids + asks) * 100
+    const imbalance = bids + asks > 0 ? (bids - asks) / (bids + asks) * 100 : 0
     const depth = bids + asks
 
     return { bids, asks, imbalance, depth }
-  } catch {
+  } catch (e) {
+    console.error('Order book fetch error:', e)
     return null
   }
 }
 
-// Large trade detection (whale activity)
+// Large trade detection (whale activity) - using v2 API
 async function fetchRecentTrades(instrument: string): Promise<{
   largeBuys: number
   largeSells: number
@@ -137,7 +145,7 @@ async function fetchRecentTrades(instrument: string): Promise<{
 } | null> {
   try {
     const res = await fetch(
-      `https://api.crypto.com/exchange/v1/public/get-trades?instrument_name=${instrument}&count=500`
+      `https://api.crypto.com/v2/public/get-trades?instrument_name=${instrument}`
     )
     const data = await res.json()
 

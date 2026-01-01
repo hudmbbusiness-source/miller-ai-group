@@ -7,9 +7,9 @@
 
 import crypto from 'crypto'
 
-// API Configuration
-const CRYPTO_COM_API_URL = 'https://api.crypto.com/exchange/v1'
-const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/exchange/v1/public'
+// API Configuration - Using v2 API (v1 is deprecated)
+const CRYPTO_COM_API_URL = 'https://api.crypto.com/v2/private'
+const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/v2/public'
 
 // Types
 export interface CryptoComCredentials {

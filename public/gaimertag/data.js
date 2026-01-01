@@ -649,8 +649,8 @@ const GAME_DATA = {
             name: 'Flappy Jump',
             icon: '🐦',
             description: 'Tap to fly through the gaps! How far can you go?',
-            unlocked: false,
-            unlockRequirement: { type: 'level', value: 5 },
+            unlocked: true,
+            unlockRequirement: null,
             gradient: ['#2196F3', '#1565C0']
         },
         tower: {

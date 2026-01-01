@@ -87,9 +87,16 @@ export async function GET() {
             sigPayload: sigPayload.substring(0, 50) + '...[truncated]',
             sigPayloadLength: sigPayload.length,
             apiKeyLength: apiKey.length,
+            apiKeyFirst10: apiKey.substring(0, 10),
+            apiKeyLast5: apiKey.substring(apiKey.length - 5),
             apiSecretLength: apiSecret.length,
+            apiSecretFirst5: apiSecret.substring(0, 5),
+            apiSecretLast3: apiSecret.substring(apiSecret.length - 3),
             requestBody: { ...body, sig: body.sig.substring(0, 20) + '...', api_key: body.api_key.substring(0, 15) + '...' },
             url,
+            // Check for any hidden characters
+            apiKeyCharCodes: apiKey.split('').slice(0, 5).map(c => c.charCodeAt(0)),
+            apiSecretCharCodes: apiSecret.split('').slice(0, 5).map(c => c.charCodeAt(0)),
           }
         }
       } catch (error) {

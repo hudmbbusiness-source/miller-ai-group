@@ -1,0 +1,39 @@
+{
+  "name": "gAImertag - Kids Game Platform",
+  "short_name": "gAImertag",
+  "description": "Play awesome games, unlock characters, complete quests, and level up!",
+  "start_url": "/gaimertag",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "categories": ["games", "entertainment", "kids"],
+  "icons": [
+    {
+      "src": "/gaimertag/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/gaimertag/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/gaimertag/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/gaimertag/screenshot-narrow.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
+}

@@ -4,9 +4,11 @@
 // =============================================================================
 // Real automated trading on Crypto.com Exchange
 // Uses advanced signal generator for trade decisions
+// REQUIRES AUTHENTICATION - Protected endpoint
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createCryptoComClient } from '@/lib/crypto/crypto-com'
 import {
   generateAdvancedSignal,
@@ -279,6 +281,14 @@ async function runTradingBot(mode: 'analyze' | 'trade' = 'analyze'): Promise<{
 
 export async function GET(request: NextRequest) {
   try {
+    // Require authentication
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - Login required' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action') || 'status'
 
@@ -332,6 +342,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Require authentication
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - Login required' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { action = 'analyze' } = body
 

@@ -1,12 +1,27 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createCryptoComClient } from '@/lib/crypto/crypto-com'
 
 /**
  * Get real Crypto.com Exchange balance
  * GET /api/stuntman/balance
+ * REQUIRES AUTHENTICATION
  */
 export async function GET() {
   try {
+    // Require authentication
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'Unauthorized - Login required',
+        balances: [],
+        totalUSD: 0,
+      }, { status: 401 })
+    }
+
     const client = createCryptoComClient()
 
     if (!client.canAuthenticate()) {

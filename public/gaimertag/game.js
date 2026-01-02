@@ -209,6 +209,10 @@ class Particle {
         this.color = config.color || '#fff';
         this.gravity = config.gravity || 0;
         this.friction = config.friction || 0.98;
+        this.glow = config.glow !== false;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.3;
+        this.shape = config.shape || 'circle';
     }
 
     update(dt) {
@@ -217,20 +221,54 @@ class Particle {
         this.vy += this.gravity * dt * 60;
         this.vx *= this.friction;
         this.vy *= this.friction;
+        this.rotation += this.rotationSpeed;
         this.life -= dt;
     }
 
     draw(ctx) {
         const alpha = Math.max(0, this.life / this.maxLife);
-        const size = this.size * alpha;
+        const size = this.size * (0.3 + alpha * 0.7);
 
         ctx.save();
         ctx.globalAlpha = alpha;
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+
+        // Glow effect
+        if (this.glow) {
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = size * 2;
+        }
+
         ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
-        ctx.fill();
+
+        if (this.shape === 'star') {
+            this.drawStar(ctx, 0, 0, 5, size, size * 0.5);
+        } else if (this.shape === 'square') {
+            ctx.fillRect(-size/2, -size/2, size, size);
+        } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         ctx.restore();
+    }
+
+    drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+        let rot = Math.PI / 2 * 3;
+        let step = Math.PI / spikes;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - outerRadius);
+        for (let i = 0; i < spikes; i++) {
+            ctx.lineTo(cx + Math.cos(rot) * outerRadius, cy + Math.sin(rot) * outerRadius);
+            rot += step;
+            ctx.lineTo(cx + Math.cos(rot) * innerRadius, cy + Math.sin(rot) * innerRadius);
+            rot += step;
+        }
+        ctx.lineTo(cx, cy - outerRadius);
+        ctx.closePath();
+        ctx.fill();
     }
 
     isDead() {
@@ -286,47 +324,94 @@ class ParticleSystem {
     }
 
     emitCoin(x, y) {
-        const colors = ['#FFD700', '#FFA500', '#FFEB3B', '#fff'];
-        for (let i = 0; i < 20; i++) {
+        const colors = ['#FFD700', '#FFA500', '#FFEB3B', '#fff', '#ffe066'];
+        // Burst of stars and sparkles
+        for (let i = 0; i < 25; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = 3 + Math.random() * 6;
+            const speed = 4 + Math.random() * 8;
             this.particles.push(new Particle(x, y, {
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                life: 0.5 + Math.random() * 0.4,
-                size: 3 + Math.random() * 5,
+                life: 0.6 + Math.random() * 0.5,
+                size: 4 + Math.random() * 6,
                 color: colors[Math.floor(Math.random() * colors.length)],
-                gravity: 0.1,
-                friction: 0.96
+                gravity: 0.08,
+                friction: 0.96,
+                shape: i % 3 === 0 ? 'star' : 'circle'
+            }));
+        }
+        // Add sparkle ring
+        for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            this.particles.push(new Particle(x, y, {
+                vx: Math.cos(angle) * 10,
+                vy: Math.sin(angle) * 10,
+                life: 0.3,
+                size: 3,
+                color: '#fff',
+                gravity: 0,
+                friction: 0.85
             }));
         }
     }
 
     emitDeath(x, y, color) {
-        for (let i = 0; i < 40; i++) {
+        // Massive explosion
+        for (let i = 0; i < 60; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = 5 + Math.random() * 10;
+            const speed = 6 + Math.random() * 14;
             this.particles.push(new Particle(x, y, {
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                life: 0.6 + Math.random() * 0.5,
-                size: 5 + Math.random() * 8,
-                color: i % 3 === 0 ? '#fff' : color,
-                gravity: 0.15,
-                friction: 0.97
+                life: 0.8 + Math.random() * 0.6,
+                size: 6 + Math.random() * 10,
+                color: i % 4 === 0 ? '#fff' : (i % 2 === 0 ? color : '#ff6b6b'),
+                gravity: 0.12,
+                friction: 0.97,
+                shape: i % 5 === 0 ? 'star' : (i % 3 === 0 ? 'square' : 'circle')
+            }));
+        }
+        // Shockwave ring
+        for (let i = 0; i < 24; i++) {
+            const angle = (i / 24) * Math.PI * 2;
+            this.particles.push(new Particle(x, y, {
+                vx: Math.cos(angle) * 18,
+                vy: Math.sin(angle) * 18,
+                life: 0.4,
+                size: 4,
+                color: '#fff',
+                gravity: 0,
+                friction: 0.92
             }));
         }
     }
 
     emitTrail(x, y, color) {
-        this.particles.push(new Particle(x, y, {
-            vx: -2 + Math.random() * -3,
-            vy: (Math.random() - 0.5) * 2,
-            life: 0.2 + Math.random() * 0.15,
-            size: 3 + Math.random() * 3,
-            color: color,
+        // Multiple trail particles for richer effect
+        for (let i = 0; i < 2; i++) {
+            this.particles.push(new Particle(x + Math.random() * 10, y + Math.random() * 20 - 10, {
+                vx: -3 + Math.random() * -4,
+                vy: (Math.random() - 0.5) * 3,
+                life: 0.25 + Math.random() * 0.2,
+                size: 4 + Math.random() * 4,
+                color: color,
+                gravity: 0,
+                friction: 0.88
+            }));
+        }
+    }
+
+    emitSpeedLines(canvasWidth, canvasHeight) {
+        // Add speed lines for motion effect
+        this.particles.push(new Particle(canvasWidth + 10, Math.random() * canvasHeight * 0.7, {
+            vx: -30 - Math.random() * 20,
+            vy: 0,
+            life: 0.3,
+            size: 2,
+            color: 'rgba(255,255,255,0.3)',
             gravity: 0,
-            friction: 0.9
+            friction: 1,
+            glow: false
         }));
     }
 
@@ -887,55 +972,179 @@ class Obstacle {
 
     draw(ctx) {
         const theme = this.game.getTheme();
+
+        ctx.save();
+
+        // Outer glow
+        ctx.shadowColor = theme.obstacleGradient[0];
+        ctx.shadowBlur = theme.glow ? 25 : 15;
+
+        // Main gradient
         const grad = ctx.createLinearGradient(this.x, this.y, this.x + this.width, this.y + this.height);
         grad.addColorStop(0, theme.obstacleGradient[0]);
-        grad.addColorStop(1, theme.obstacleGradient[1]);
+        grad.addColorStop(0.5, theme.obstacleGradient[1]);
+        grad.addColorStop(1, theme.obstacleGradient[0]);
+
+        // Draw obstacle based on type with 3D effect
+        switch (this.type) {
+            case 0: // Spike
+                this.drawSpike(ctx, grad, theme);
+                break;
+            case 1: // Crystal
+                this.drawCrystal(ctx, grad, theme);
+                break;
+            case 2: // Box
+                this.drawBox(ctx, grad, theme);
+                break;
+        }
+
+        ctx.restore();
+    }
+
+    drawSpike(ctx, grad, theme) {
+        // Shadow/base
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2 + 5, this.y + 10);
+        ctx.lineTo(this.x + this.width + 5, this.y + this.height + 5);
+        ctx.lineTo(this.x + 5, this.y + this.height + 5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Main spike
         ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.lineTo(this.x, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Stroke
         ctx.strokeStyle = theme.obstacleStroke || '#000';
         ctx.lineWidth = 3;
+        ctx.stroke();
 
-        if (theme.glow) {
-            ctx.shadowColor = theme.obstacleGradient[0];
-            ctx.shadowBlur = 20;
-        }
-
-        switch (this.type) {
-            case 0:
-                ctx.beginPath();
-                ctx.moveTo(this.x + this.width / 2, this.y);
-                ctx.lineTo(this.x + this.width, this.y + this.height);
-                ctx.lineTo(this.x, this.y + this.height);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-                break;
-            case 1:
-                ctx.beginPath();
-                ctx.moveTo(this.x + this.width / 2, this.y);
-                ctx.lineTo(this.x + this.width, this.y + this.height * 0.4);
-                ctx.lineTo(this.x + this.width * 0.8, this.y + this.height);
-                ctx.lineTo(this.x + this.width * 0.2, this.y + this.height);
-                ctx.lineTo(this.x, this.y + this.height * 0.4);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-                break;
-            case 2:
-                ctx.beginPath();
-                ctx.roundRect(this.x, this.y, this.width, this.height, 8);
-                ctx.fill();
-                ctx.stroke();
-                break;
-        }
-
-        // Highlight accent
-        ctx.fillStyle = theme.obstacleAccent;
-        ctx.globalAlpha = 0.5;
+        // Highlight edge
+        ctx.strokeStyle = theme.obstacleAccent;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(this.x + 5, this.y + 5, this.width * 0.3, this.height * 0.3, 4);
+        ctx.moveTo(this.x + this.width / 2, this.y + 5);
+        ctx.lineTo(this.x + 8, this.y + this.height - 5);
+        ctx.stroke();
+
+        // Shine
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2 - 3, this.y + 15);
+        ctx.lineTo(this.x + this.width / 2 + 5, this.y + 15);
+        ctx.lineTo(this.x + 12, this.y + this.height * 0.6);
+        ctx.lineTo(this.x + 8, this.y + this.height * 0.6);
+        ctx.closePath();
         ctx.fill();
+    }
+
+    drawCrystal(ctx, grad, theme) {
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2 + 5, this.y + 10);
+        ctx.lineTo(this.x + this.width + 5, this.y + this.height * 0.4 + 5);
+        ctx.lineTo(this.x + this.width * 0.8 + 5, this.y + this.height + 5);
+        ctx.lineTo(this.x + this.width * 0.2 + 5, this.y + this.height + 5);
+        ctx.lineTo(this.x + 5, this.y + this.height * 0.4 + 5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Main crystal
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y);
+        ctx.lineTo(this.x + this.width, this.y + this.height * 0.4);
+        ctx.lineTo(this.x + this.width * 0.8, this.y + this.height);
+        ctx.lineTo(this.x + this.width * 0.2, this.y + this.height);
+        ctx.lineTo(this.x, this.y + this.height * 0.4);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = theme.obstacleStroke || '#000';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Inner facets
+        ctx.strokeStyle = theme.obstacleAccent;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y + 5);
+        ctx.lineTo(this.x + this.width / 2, this.y + this.height - 10);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y + 5);
+        ctx.lineTo(this.x + 10, this.y + this.height * 0.5);
+        ctx.stroke();
         ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
+
+        // Shine
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width * 0.3, this.y + this.height * 0.2);
+        ctx.lineTo(this.x + this.width * 0.45, this.y + this.height * 0.15);
+        ctx.lineTo(this.x + this.width * 0.25, this.y + this.height * 0.5);
+        ctx.lineTo(this.x + this.width * 0.15, this.y + this.height * 0.45);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    drawBox(ctx, grad, theme) {
+        // 3D shadow sides
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width, this.y);
+        ctx.lineTo(this.x + this.width + 8, this.y + 8);
+        ctx.lineTo(this.x + this.width + 8, this.y + this.height + 8);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y + this.height);
+        ctx.lineTo(this.x + 8, this.y + this.height + 8);
+        ctx.lineTo(this.x + this.width + 8, this.y + this.height + 8);
+        ctx.lineTo(this.x + this.width, this.y + this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Main box
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect(this.x, this.y, this.width, this.height, 6);
+        ctx.fill();
+
+        ctx.strokeStyle = theme.obstacleStroke || '#000';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Danger stripes
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        for (let i = -this.height; i < this.width + this.height; i += 20) {
+            ctx.beginPath();
+            ctx.moveTo(this.x + i, this.y);
+            ctx.lineTo(this.x + i + 10, this.y);
+            ctx.lineTo(this.x + i + 10 + this.height, this.y + this.height);
+            ctx.lineTo(this.x + i + this.height, this.y + this.height);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+
+        // Highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.beginPath();
+        ctx.roundRect(this.x + 4, this.y + 4, this.width * 0.4, 8, 3);
+        ctx.fill();
     }
 
     getBounds() {
@@ -991,36 +1200,78 @@ class Coin {
     draw(ctx) {
         if (this.collected) return;
 
-        const bob = Math.sin(this.bobOffset) * 5;
+        const bob = Math.sin(this.bobOffset) * 6;
         const stretch = Math.abs(Math.cos(this.rotation));
+        const shine = (Math.sin(this.rotation * 2) + 1) / 2;
 
         ctx.save();
         ctx.translate(this.x, this.y + bob);
+
+        // Outer glow ring
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur = 25 + shine * 10;
+
+        // Glow aura
+        const auraGrad = ctx.createRadialGradient(0, 0, this.radius, 0, 0, this.radius * 2);
+        auraGrad.addColorStop(0, 'rgba(255, 215, 0, 0.4)');
+        auraGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+        ctx.fillStyle = auraGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius * 2, 0, Math.PI * 2);
+        ctx.fill();
+
         ctx.scale(stretch, 1);
 
-        ctx.shadowColor = '#FFD700';
-        ctx.shadowBlur = 15;
+        // Coin shadow
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath();
+        ctx.ellipse(2, 2, this.radius, this.radius * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
-        grad.addColorStop(0, '#FFEB3B');
-        grad.addColorStop(0.6, '#FFC107');
-        grad.addColorStop(1, '#FF9800');
+        // Main coin with metallic gradient
+        const grad = ctx.createLinearGradient(-this.radius, -this.radius, this.radius, this.radius);
+        grad.addColorStop(0, '#ffe066');
+        grad.addColorStop(0.3, '#FFD700');
+        grad.addColorStop(0.5, '#ffec80');
+        grad.addColorStop(0.7, '#FFC107');
+        grad.addColorStop(1, '#cc9900');
 
         ctx.fillStyle = grad;
+        ctx.strokeStyle = '#cc8800';
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
 
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        // Inner ring
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(-3, -3, this.radius * 0.5, 0, Math.PI * 2);
+        ctx.arc(0, 0, this.radius - 3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Shine highlight
+        ctx.fillStyle = `rgba(255,255,255,${0.3 + shine * 0.4})`;
+        ctx.beginPath();
+        ctx.ellipse(-4, -4, this.radius * 0.5, this.radius * 0.35, -0.5, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 14px Arial';
+        // Star symbol
+        ctx.fillStyle = '#cc8800';
+        ctx.font = 'bold 16px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('★', 0, 1);
+
+        // Sparkle
+        if (shine > 0.8) {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(this.radius * 0.5, -this.radius * 0.3, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         ctx.restore();
     }
@@ -1483,13 +1734,27 @@ class Game {
         this.player.update(dt);
         this.monster.update(dt, this.level);
 
-        // Level progression - every 500 distance, level up
+        // Continuous speed increase (gets 50% faster over first 2 minutes)
+        const timeSpeedBonus = Math.min(0.5, this.distance / 5000);
+
+        // Level progression - every 400 distance, level up (faster progression)
         this.levelDistance += dt * this.config.baseSpeed * this.config.speedMultiplier;
-        if (this.levelDistance > 500) {
+        if (this.levelDistance > 400) {
             this.level++;
             this.levelDistance = 0;
-            this.config.speedMultiplier = 1 + (this.level - 1) * 0.1;
+            // Level speed bonus: +15% per level (more noticeable)
+            const levelSpeedBonus = (this.level - 1) * 0.15;
+            this.config.speedMultiplier = 1 + levelSpeedBonus + timeSpeedBonus;
             this.showLevelUp();
+        } else {
+            // Update speed continuously between levels too
+            const levelSpeedBonus = (this.level - 1) * 0.15;
+            this.config.speedMultiplier = 1 + levelSpeedBonus + timeSpeedBonus;
+        }
+
+        // Speed lines effect at higher speeds
+        if (this.config.speedMultiplier > 1.3 && Math.random() < 0.3) {
+            this.particles.emitSpeedLines(this.canvas.width, this.canvas.height);
         }
 
         // Spawn obstacles - faster at higher levels

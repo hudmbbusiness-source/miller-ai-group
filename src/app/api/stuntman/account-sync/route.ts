@@ -23,9 +23,24 @@ export async function GET(request: NextRequest) {
     const lastSync = rithmicClient.getLastSyncTime();
     const dataSource = rithmicClient.getDataSource();
 
-    // If no data, return default Apex 150K config
+    // If no data, return default Apex 150K config with proper safety metrics
     if (!accountData) {
       const defaultConfig = APEX_ACCOUNT_CONFIGS['150K'];
+
+      // Get days remaining from query params or default to 6
+      const searchParams = request.nextUrl.searchParams;
+      const daysRemaining = parseInt(searchParams.get('daysRemaining') || '6');
+
+      // Calculate risk status even for estimated data
+      const estimatedRiskStatus = checkApexRiskStatus(
+        defaultConfig.startingBalance,
+        defaultConfig.startingBalance, // Assume at starting balance
+        0, // No daily P&L
+        defaultConfig.startingBalance, // High water mark = starting
+        0, // No trading days yet
+        undefined, // Use default safety config
+        daysRemaining
+      );
 
       return NextResponse.json({
         success: true,
@@ -54,10 +69,26 @@ export async function GET(request: NextRequest) {
         positions: [],
         trades: [],
         riskStatus: {
-          riskStatus: 'SAFE',
-          canTrade: true,
-          warnings: ['Account data is estimated - sync for real values'],
-          recommendations: ['Manually sync data from Apex dashboard'],
+          riskStatus: estimatedRiskStatus.riskStatus,
+          canTrade: estimatedRiskStatus.canTrade,
+          warnings: [
+            '⚠️ Account data is estimated - sync for real values',
+            ...estimatedRiskStatus.warnings.filter(w => !w.includes('estimated'))
+          ],
+          recommendations: [
+            'Manually sync data from Apex dashboard',
+            ...estimatedRiskStatus.recommendations
+          ],
+          // Safety metrics
+          safetyBuffer: estimatedRiskStatus.safetyBuffer,
+          maxAllowedLossToday: estimatedRiskStatus.maxAllowedLossToday,
+          recommendedPositionSize: estimatedRiskStatus.recommendedPositionSize,
+          stopTradingThreshold: estimatedRiskStatus.stopTradingThreshold,
+          daysRemaining: estimatedRiskStatus.daysRemaining,
+          requiredDailyProfit: estimatedRiskStatus.requiredDailyProfit,
+          trailingDrawdown: estimatedRiskStatus.trailingDrawdown,
+          drawdownRemaining: estimatedRiskStatus.maxTrailingDrawdown - estimatedRiskStatus.trailingDrawdown,
+          profitProgress: 0,
         },
         message: 'Using estimated data. Sync from Apex dashboard for real values.',
       });

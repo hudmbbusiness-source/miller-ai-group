@@ -23,6 +23,13 @@ import {
   AlertTriangle,
   Settings,
   BarChart3,
+  Newspaper,
+  Globe,
+  Zap,
+  ShieldAlert,
+  CheckCircle,
+  XCircle,
+  Radio,
 } from 'lucide-react'
 
 // Types
@@ -54,6 +61,23 @@ interface PropFirmStatus {
   isTradingAllowed: boolean
 }
 
+interface MarketIntelligence {
+  canTrade: boolean
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME'
+  reason: string
+  warnings: string[]
+  sentiment: {
+    overall: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'MIXED'
+    score: number
+    confidence: number
+  }
+  keyThemes: string[]
+  economicEvents: Array<{ name: string; impact: string }>
+  topHeadlines: Array<{ title: string; sentiment: string; source: string }>
+  volatilityExpectation: 'LOW' | 'NORMAL' | 'HIGH' | 'EXTREME'
+  trendBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+}
+
 export default function StuntManTerminal() {
   const [activeMarket, setActiveMarket] = useState<'crypto' | 'futures'>('futures')
   const [selectedPair, setSelectedPair] = useState('ES')
@@ -82,6 +106,9 @@ export default function StuntManTerminal() {
     riskLevel: 'safe',
     isTradingAllowed: true,
   })
+
+  const [marketIntel, setMarketIntel] = useState<MarketIntelligence | null>(null)
+  const [intelLoading, setIntelLoading] = useState(false)
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<any>(null)
@@ -218,6 +245,7 @@ export default function StuntManTerminal() {
 
   const runBot = async (mode: 'analyze' | 'trade') => {
     setBotStatus('scanning')
+    setIntelLoading(true)
     try {
       const res = await fetch('/api/stuntman/live-trade', {
         method: 'POST',
@@ -225,15 +253,56 @@ export default function StuntManTerminal() {
         body: JSON.stringify({ action: mode, market: activeMarket }),
       })
       const data = await res.json()
-      if (data.success) {
+      if (data.success || data.blocked) {
         setSignals(data.signals || [])
         setLastScan(new Date().toLocaleTimeString())
+        // Capture market intelligence
+        if (data.marketIntelligence) {
+          setMarketIntel(data.marketIntelligence)
+        }
       }
       setBotStatus('idle')
+      setIntelLoading(false)
     } catch (e) {
       console.error('Bot error:', e)
       setBotStatus('idle')
+      setIntelLoading(false)
     }
+  }
+
+  // Fetch market intel independently
+  const fetchMarketIntel = async () => {
+    setIntelLoading(true)
+    try {
+      const res = await fetch('/api/stuntman/market-intel?mode=full')
+      const data = await res.json()
+      if (data.success && data.data) {
+        const intel = data.data
+        setMarketIntel({
+          canTrade: intel.filter.shouldTrade,
+          riskLevel: intel.filter.riskLevel,
+          reason: intel.filter.reason,
+          warnings: intel.filter.warnings,
+          sentiment: {
+            overall: intel.filter.sentiment.overall,
+            score: intel.filter.sentiment.score,
+            confidence: intel.filter.sentiment.confidence,
+          },
+          keyThemes: intel.filter.sentiment.keyThemes,
+          economicEvents: intel.economicCalendar,
+          topHeadlines: intel.filter.sentiment.headlines.slice(0, 5).map((h: any) => ({
+            title: h.title,
+            sentiment: h.sentiment,
+            source: h.source,
+          })),
+          volatilityExpectation: intel.marketConditions.volatilityExpectation,
+          trendBias: intel.marketConditions.trendBias,
+        })
+      }
+    } catch (e) {
+      console.error('Market intel error:', e)
+    }
+    setIntelLoading(false)
   }
 
   const executeTrade = async (side: 'buy' | 'sell') => {
@@ -383,6 +452,14 @@ export default function StuntManTerminal() {
               Scan Markets
             </button>
             <button
+              onClick={fetchMarketIntel}
+              disabled={intelLoading}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 disabled:opacity-50 transition"
+            >
+              {intelLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+              Fetch News Intel
+            </button>
+            <button
               onClick={() => setAutoTrading(!autoTrading)}
               className={`w-full py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
                 autoTrading ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white'
@@ -392,6 +469,155 @@ export default function StuntManTerminal() {
               {autoTrading ? 'Stop Bot' : 'Start Bot'}
             </button>
           </div>
+
+          {/* Market Intelligence Panel */}
+          {marketIntel && (
+            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-blue-400" />
+                  Market Intel
+                </h3>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                  marketIntel.canTrade
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-red-500/20 text-red-400'
+                }`}>
+                  {marketIntel.canTrade ? 'SAFE TO TRADE' : 'TRADING BLOCKED'}
+                </span>
+              </div>
+
+              {/* Risk Level */}
+              <div className={`flex items-center gap-2 p-3 rounded-lg mb-3 ${
+                marketIntel.riskLevel === 'EXTREME' ? 'bg-red-500/10 border border-red-500/20' :
+                marketIntel.riskLevel === 'HIGH' ? 'bg-orange-500/10 border border-orange-500/20' :
+                marketIntel.riskLevel === 'MEDIUM' ? 'bg-yellow-500/10 border border-yellow-500/20' :
+                'bg-emerald-500/10 border border-emerald-500/20'
+              }`}>
+                <ShieldAlert className={`w-4 h-4 ${
+                  marketIntel.riskLevel === 'EXTREME' ? 'text-red-400' :
+                  marketIntel.riskLevel === 'HIGH' ? 'text-orange-400' :
+                  marketIntel.riskLevel === 'MEDIUM' ? 'text-yellow-400' :
+                  'text-emerald-400'
+                }`} />
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-white">Risk: {marketIntel.riskLevel}</p>
+                  <p className="text-xs text-zinc-400">{marketIntel.reason}</p>
+                </div>
+              </div>
+
+              {/* Sentiment */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-zinc-800/50 rounded-lg p-3">
+                  <p className="text-xs text-zinc-500 mb-1">Sentiment</p>
+                  <p className={`text-sm font-bold ${
+                    marketIntel.sentiment.overall === 'BULLISH' ? 'text-emerald-400' :
+                    marketIntel.sentiment.overall === 'BEARISH' ? 'text-red-400' :
+                    'text-zinc-400'
+                  }`}>
+                    {marketIntel.sentiment.overall}
+                  </p>
+                </div>
+                <div className="bg-zinc-800/50 rounded-lg p-3">
+                  <p className="text-xs text-zinc-500 mb-1">Score</p>
+                  <p className={`text-sm font-bold ${
+                    marketIntel.sentiment.score > 0 ? 'text-emerald-400' :
+                    marketIntel.sentiment.score < 0 ? 'text-red-400' :
+                    'text-zinc-400'
+                  }`}>
+                    {marketIntel.sentiment.score > 0 ? '+' : ''}{marketIntel.sentiment.score}
+                  </p>
+                </div>
+              </div>
+
+              {/* Volatility & Trend */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-zinc-800/50 rounded-lg p-3">
+                  <p className="text-xs text-zinc-500 mb-1">Volatility</p>
+                  <p className={`text-xs font-bold ${
+                    marketIntel.volatilityExpectation === 'EXTREME' ? 'text-red-400' :
+                    marketIntel.volatilityExpectation === 'HIGH' ? 'text-orange-400' :
+                    'text-zinc-300'
+                  }`}>
+                    {marketIntel.volatilityExpectation}
+                  </p>
+                </div>
+                <div className="bg-zinc-800/50 rounded-lg p-3">
+                  <p className="text-xs text-zinc-500 mb-1">Trend Bias</p>
+                  <p className={`text-xs font-bold ${
+                    marketIntel.trendBias === 'BULLISH' ? 'text-emerald-400' :
+                    marketIntel.trendBias === 'BEARISH' ? 'text-red-400' :
+                    'text-zinc-300'
+                  }`}>
+                    {marketIntel.trendBias}
+                  </p>
+                </div>
+              </div>
+
+              {/* Warnings */}
+              {marketIntel.warnings.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-zinc-500 mb-2">Warnings</p>
+                  <div className="space-y-1">
+                    {marketIntel.warnings.map((warning, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs text-amber-400">
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <span>{warning}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Economic Events */}
+              {marketIntel.economicEvents.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-zinc-500 mb-2">Economic Events</p>
+                  <div className="space-y-1">
+                    {marketIntel.economicEvents.slice(0, 3).map((event, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-300">{event.name}</span>
+                        <span className={`px-1.5 py-0.5 rounded ${
+                          event.impact === 'HIGH' ? 'bg-red-500/20 text-red-400' :
+                          event.impact === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400' :
+                          'bg-zinc-700 text-zinc-400'
+                        }`}>
+                          {event.impact}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Headlines */}
+              {marketIntel.topHeadlines.length > 0 && (
+                <div>
+                  <p className="text-xs text-zinc-500 mb-2 flex items-center gap-1">
+                    <Newspaper className="w-3 h-3" />
+                    Top Headlines
+                  </p>
+                  <div className="space-y-2 max-h-32 overflow-auto">
+                    {marketIntel.topHeadlines.slice(0, 3).map((headline, i) => (
+                      <div key={i} className="text-xs p-2 bg-zinc-800/50 rounded">
+                        <p className="text-zinc-300 line-clamp-2">{headline.title}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-zinc-500">{headline.source}</span>
+                          <span className={`${
+                            headline.sentiment === 'BULLISH' ? 'text-emerald-400' :
+                            headline.sentiment === 'BEARISH' ? 'text-red-400' :
+                            'text-zinc-500'
+                          }`}>
+                            {headline.sentiment}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Signals */}
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-5">

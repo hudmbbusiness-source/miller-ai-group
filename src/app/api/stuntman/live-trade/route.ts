@@ -16,6 +16,14 @@ import {
   type SignalResult,
   type MultiTimeframeSignal,
 } from '@/lib/stuntman/pro-signal-engine'
+import {
+  getMarketIntelligence,
+  quickTradingCheck,
+  getSentimentPositionMultiplier,
+  formatMarketIntelligence,
+  type MarketIntelligence,
+  type TradingFilter,
+} from '@/lib/stuntman/market-intelligence'
 
 // =============================================================================
 // CONFIGURATION
@@ -572,15 +580,25 @@ export async function POST(request: NextRequest) {
     if (market === 'futures') {
       switch (action) {
         case 'analyze': {
-          const opportunities = await getBestFuturesOpportunities()
-          const account = await getAccountStatus()
+          // Fetch market intelligence and signals in parallel
+          const [opportunities, account, marketIntel] = await Promise.all([
+            getBestFuturesOpportunities(),
+            getAccountStatus(),
+            getMarketIntelligence('ES NQ S&P 500 Nasdaq futures'),
+          ])
 
-          return NextResponse.json({
-            success: true,
-            mode: 'analyze',
-            market: 'futures',
-            isLive: !!FUTURES_WEBHOOK_URL,
-            signals: opportunities.map(o => ({
+          // Log market intel for debugging
+          console.log(formatMarketIntelligence(marketIntel))
+
+          // Adjust signals based on sentiment
+          const adjustedSignals = opportunities.map(o => {
+            const sentimentMultiplier = getSentimentPositionMultiplier(
+              marketIntel.filter.sentiment,
+              o.signal.action === 'BUY' ? 'LONG' : 'SHORT'
+            )
+            const adjustedSize = Math.max(1, Math.round(o.signal.positionSize * sentimentMultiplier))
+
+            return {
               instrument: o.symbol,
               market: 'futures',
               action: o.signal.action,
@@ -590,16 +608,82 @@ export async function POST(request: NextRequest) {
               takeProfit: ((o.signal.takeProfit / o.signal.entryPrice - 1) * 100),
               reasoning: o.signal.reasoning.join('. '),
               timestamp: o.signal.timestamp,
-              positionSize: o.signal.positionSize,
+              positionSize: adjustedSize,
+              originalSize: o.signal.positionSize,
+              sentimentAdjustment: sentimentMultiplier,
               regime: o.signal.regime.type,
               alignment: o.mtf?.alignment,
-            })),
+            }
+          })
+
+          return NextResponse.json({
+            success: true,
+            mode: 'analyze',
+            market: 'futures',
+            isLive: !!FUTURES_WEBHOOK_URL,
+            signals: adjustedSignals,
             account,
+            // Market Intelligence
+            marketIntelligence: {
+              canTrade: marketIntel.filter.shouldTrade,
+              riskLevel: marketIntel.filter.riskLevel,
+              reason: marketIntel.filter.reason,
+              warnings: marketIntel.filter.warnings,
+              sentiment: {
+                overall: marketIntel.filter.sentiment.overall,
+                score: marketIntel.filter.sentiment.score,
+                confidence: marketIntel.filter.sentiment.confidence,
+              },
+              keyThemes: marketIntel.filter.sentiment.keyThemes,
+              economicEvents: marketIntel.economicCalendar.slice(0, 5),
+              topHeadlines: marketIntel.filter.sentiment.headlines.slice(0, 5).map(h => ({
+                title: h.title,
+                sentiment: h.sentiment,
+                source: h.source,
+              })),
+              volatilityExpectation: marketIntel.marketConditions.volatilityExpectation,
+              trendBias: marketIntel.marketConditions.trendBias,
+            },
             timestamp: new Date().toISOString(),
           })
         }
 
         case 'trade': {
+          // CRITICAL: Check market intelligence before trading
+          const marketIntel = await getMarketIntelligence('ES NQ S&P 500 Nasdaq futures')
+
+          // Log market intel
+          console.log('[STUNTMAN] Market Intelligence Check:')
+          console.log(formatMarketIntelligence(marketIntel))
+
+          // Block trading if extreme risk detected
+          if (!marketIntel.filter.shouldTrade) {
+            console.warn(`[STUNTMAN] TRADING BLOCKED: ${marketIntel.filter.reason}`)
+            const account = await getAccountStatus()
+            return NextResponse.json({
+              success: false,
+              mode: 'trade',
+              market: 'futures',
+              blocked: true,
+              blockReason: marketIntel.filter.reason,
+              riskLevel: marketIntel.filter.riskLevel,
+              warnings: marketIntel.filter.warnings,
+              economicEvents: marketIntel.economicCalendar,
+              sentiment: {
+                overall: marketIntel.filter.sentiment.overall,
+                score: marketIntel.filter.sentiment.score,
+              },
+              account,
+              message: 'Trading blocked due to high-impact events or extreme market conditions. Safety first.',
+              timestamp: new Date().toISOString(),
+            })
+          }
+
+          // Warn but allow if HIGH risk (not EXTREME)
+          if (marketIntel.filter.riskLevel === 'HIGH') {
+            console.warn(`[STUNTMAN] HIGH RISK WARNING: ${marketIntel.filter.warnings.join('; ')}`)
+          }
+
           const opportunities = await getBestFuturesOpportunities()
           const trades: FuturesTrade[] = []
 
@@ -608,10 +692,24 @@ export async function POST(request: NextRequest) {
             if (opp.signal.confidence >= 65 &&
                 (opp.mtf?.alignment === 'ALIGNED' || opp.signal.confidence >= 75)) {
 
+              // Adjust position size based on sentiment alignment
+              const sentimentMultiplier = getSentimentPositionMultiplier(
+                marketIntel.filter.sentiment,
+                opp.signal.action === 'BUY' ? 'LONG' : 'SHORT'
+              )
+              const adjustedSize = Math.max(1, Math.round(opp.signal.positionSize * sentimentMultiplier))
+
+              // Reduce size further if HIGH risk
+              const riskAdjustedSize = marketIntel.filter.riskLevel === 'HIGH'
+                ? Math.max(1, Math.round(adjustedSize * 0.5))
+                : adjustedSize
+
+              console.log(`[STUNTMAN] Position sizing: Original=${opp.signal.positionSize}, Sentiment=${sentimentMultiplier}x, Final=${riskAdjustedSize}`)
+
               const trade = await executeRealFuturesTrade(
                 opp.symbol,
                 opp.signal.action as 'BUY' | 'SELL',
-                opp.signal.positionSize,
+                riskAdjustedSize,
                 opp.signal
               )
               trades.push(trade)
@@ -639,6 +737,12 @@ export async function POST(request: NextRequest) {
               webhookResponse: t.webhookResponse,
             })),
             account,
+            marketIntelligence: {
+              riskLevel: marketIntel.filter.riskLevel,
+              warnings: marketIntel.filter.warnings,
+              sentiment: marketIntel.filter.sentiment.overall,
+              sentimentScore: marketIntel.filter.sentiment.score,
+            },
             timestamp: new Date().toISOString(),
           })
         }

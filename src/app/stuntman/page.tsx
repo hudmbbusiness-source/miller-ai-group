@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createChart } from 'lightweight-charts'
 import {
   TrendingUp,
@@ -17,7 +17,6 @@ import {
   RefreshCw,
   Settings,
   Bell,
-  ChevronDown,
   Play,
   Pause,
   Circle,
@@ -27,38 +26,39 @@ import {
   DollarSign,
   Percent,
   LineChart,
-  CandlestickChart,
-  Layers,
   Bot,
-  Cpu,
   Brain,
-  Eye,
-  EyeOff,
+  Layers,
+  ChevronRight,
+  ExternalLink,
+  Gauge,
+  FlameKindling,
+  Trophy,
+  Calendar,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-interface RealBalance {
-  currency: string
-  quantity: number
-  valueUSD: number
-}
-
 interface Signal {
   instrument: string
-  action: string
+  market: 'crypto' | 'futures'
+  action: 'BUY' | 'SELL' | 'HOLD'
   confidence: number
-  risk_score: number
-  stop_loss: number
-  take_profit: number
-  sources: Array<{ name: string; signal: string; strength: number }>
+  riskScore: number
+  stopLoss: number
+  takeProfit: number
+  reasoning: string
+  timestamp: number
 }
 
 interface Trade {
   id: string
   instrument: string
+  market: 'crypto' | 'futures'
   side: 'BUY' | 'SELL'
   quantity: number
   price: number
@@ -68,36 +68,62 @@ interface Trade {
   status: 'pending' | 'filled' | 'cancelled'
 }
 
-interface OrderBookLevel {
-  price: number
-  quantity: number
-  total: number
+interface PropFirmStatus {
+  accountId: string
+  firm: string
+  accountSize: number
+  currentBalance: number
+  totalPnL: number
+  drawdownUsed: number
+  drawdownLimit: number
+  profitTarget: number
+  profitProgress: number
+  tradingDays: number
+  minTradingDays: number
+  maxContracts: number
+  riskLevel: 'safe' | 'caution' | 'warning' | 'danger' | 'critical'
+  isTradingAllowed: boolean
+  violations: string[]
 }
 
 // =============================================================================
-// PROFESSIONAL TRADING TERMINAL
+// STUNTMAN TRADING TERMINAL v2
 // =============================================================================
 
 export default function StuntManTerminal() {
   // State
-  const [selectedPair, setSelectedPair] = useState('BTC_USDT')
-  const [realBalances, setRealBalances] = useState<RealBalance[]>([])
-  const [totalBalance, setTotalBalance] = useState(0)
-  const [connected, setConnected] = useState(false)
+  const [activeMarket, setActiveMarket] = useState<'crypto' | 'futures'>('futures')
+  const [selectedPair, setSelectedPair] = useState('ES')
   const [currentPrice, setCurrentPrice] = useState(0)
-  const [priceChange24h, setPriceChange24h] = useState(0)
-  const [high24h, setHigh24h] = useState(0)
-  const [low24h, setLow24h] = useState(0)
-  const [volume24h, setVolume24h] = useState(0)
+  const [priceChange, setPriceChange] = useState(0)
   const [signals, setSignals] = useState<Signal[]>([])
   const [trades, setTrades] = useState<Trade[]>([])
-  const [bids, setBids] = useState<OrderBookLevel[]>([])
-  const [asks, setAsks] = useState<OrderBookLevel[]>([])
   const [autoTrading, setAutoTrading] = useState(false)
   const [botStatus, setBotStatus] = useState<'idle' | 'scanning' | 'trading'>('idle')
   const [lastScan, setLastScan] = useState<string>('')
   const [timeframe, setTimeframe] = useState('15m')
   const [showIndicators, setShowIndicators] = useState(true)
+  const [cryptoBalance, setCryptoBalance] = useState(0)
+  const [isConnected, setIsConnected] = useState(false)
+
+  // Prop firm status
+  const [propFirmStatus, setPropFirmStatus] = useState<PropFirmStatus>({
+    accountId: 'APEX-456334',
+    firm: 'Apex Trader Funding',
+    accountSize: 150000,
+    currentBalance: 150000,
+    totalPnL: 0,
+    drawdownUsed: 0,
+    drawdownLimit: 5000,
+    profitTarget: 9000,
+    profitProgress: 0,
+    tradingDays: 0,
+    minTradingDays: 7,
+    maxContracts: 17,
+    riskLevel: 'safe',
+    isTradingAllowed: true,
+    violations: [],
+  })
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null)
@@ -107,30 +133,36 @@ export default function StuntManTerminal() {
   const ema9Ref = useRef<any>(null)
   const ema21Ref = useRef<any>(null)
 
-  // Trading pairs
-  const pairs = [
+  // Instruments
+  const cryptoPairs = [
     { symbol: 'BTC_USDT', name: 'Bitcoin', icon: '₿' },
     { symbol: 'ETH_USDT', name: 'Ethereum', icon: 'Ξ' },
     { symbol: 'SOL_USDT', name: 'Solana', icon: '◎' },
-    { symbol: 'BNB_USDT', name: 'BNB', icon: '⬡' },
-    { symbol: 'XRP_USDT', name: 'Ripple', icon: '✕' },
-    { symbol: 'DOGE_USDT', name: 'Dogecoin', icon: 'Ð' },
+  ]
+
+  const futuresContracts = [
+    { symbol: 'ES', name: 'E-mini S&P 500', tickSize: 0.25, pointValue: 50 },
+    { symbol: 'NQ', name: 'E-mini Nasdaq', tickSize: 0.25, pointValue: 20 },
+    { symbol: 'MES', name: 'Micro E-mini S&P', tickSize: 0.25, pointValue: 5 },
+    { symbol: 'MNQ', name: 'Micro E-mini Nasdaq', tickSize: 0.25, pointValue: 2 },
+    { symbol: 'RTY', name: 'E-mini Russell', tickSize: 0.1, pointValue: 50 },
+    { symbol: 'CL', name: 'Crude Oil', tickSize: 0.01, pointValue: 1000 },
+    { symbol: 'GC', name: 'Gold', tickSize: 0.1, pointValue: 100 },
   ]
 
   // =============================================================================
   // DATA FETCHING
   // =============================================================================
 
-  // Fetch real balance
+  // Fetch crypto balance
   useEffect(() => {
     const fetchBalance = async () => {
       try {
         const res = await fetch('/api/stuntman/balance')
         const data = await res.json()
         if (data.success) {
-          setRealBalances(data.balances || [])
-          setTotalBalance(data.totalUSD || 0)
-          setConnected(true)
+          setCryptoBalance(data.totalUSD || 0)
+          setIsConnected(true)
         }
       } catch (e) {
         console.error('Balance fetch error:', e)
@@ -141,64 +173,50 @@ export default function StuntManTerminal() {
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch ticker data
+  // Fetch price data
   useEffect(() => {
-    const fetchTicker = async () => {
-      try {
-        const res = await fetch(`https://api.crypto.com/exchange/v1/public/get-ticker?instrument_name=${selectedPair}`)
-        const data = await res.json()
-        if (data.code === 0 && data.result?.data?.[0]) {
-          const t = data.result.data[0]
-          setCurrentPrice(parseFloat(t.a))
-          setPriceChange24h(parseFloat(t.c) * 100)
-          setHigh24h(parseFloat(t.h))
-          setLow24h(parseFloat(t.l))
-          setVolume24h(parseFloat(t.v) * parseFloat(t.a))
+    if (activeMarket === 'crypto') {
+      // Crypto price from Crypto.com
+      const fetchTicker = async () => {
+        try {
+          const res = await fetch(`https://api.crypto.com/exchange/v1/public/get-ticker?instrument_name=${selectedPair}`)
+          const data = await res.json()
+          if (data.code === 0 && data.result?.data?.[0]) {
+            const t = data.result.data[0]
+            setCurrentPrice(parseFloat(t.a))
+            setPriceChange(parseFloat(t.c) * 100)
+          }
+        } catch (e) {
+          console.error('Ticker error:', e)
         }
-      } catch (e) {
-        console.error('Ticker error:', e)
       }
-    }
-    fetchTicker()
-    const interval = setInterval(fetchTicker, 2000) // Fast updates
-    return () => clearInterval(interval)
-  }, [selectedPair])
+      fetchTicker()
+      const interval = setInterval(fetchTicker, 2000)
+      return () => clearInterval(interval)
+    } else {
+      // Futures - use simulated data until real connection
+      // In production, this would come from NinjaTrader or webhook data
+      const simulateFuturesPrice = () => {
+        const basePrice = selectedPair === 'ES' ? 5980 :
+                         selectedPair === 'NQ' ? 21200 :
+                         selectedPair === 'MES' ? 5980 :
+                         selectedPair === 'MNQ' ? 21200 :
+                         selectedPair === 'RTY' ? 2050 :
+                         selectedPair === 'CL' ? 72.50 :
+                         selectedPair === 'GC' ? 2650 : 5000
 
-  // Fetch order book
-  useEffect(() => {
-    const fetchOrderBook = async () => {
-      try {
-        const res = await fetch(`https://api.crypto.com/exchange/v1/public/get-book?instrument_name=${selectedPair}&depth=15`)
-        const data = await res.json()
-        if (data.code === 0 && data.result?.data?.[0]) {
-          const book = data.result.data[0]
-
-          let bidTotal = 0
-          const parsedBids = (book.bids || []).slice(0, 10).map((b: any) => {
-            bidTotal += parseFloat(b[1])
-            return { price: parseFloat(b[0]), quantity: parseFloat(b[1]), total: bidTotal }
-          })
-
-          let askTotal = 0
-          const parsedAsks = (book.asks || []).slice(0, 10).map((a: any) => {
-            askTotal += parseFloat(a[1])
-            return { price: parseFloat(a[0]), quantity: parseFloat(a[1]), total: askTotal }
-          })
-
-          setBids(parsedBids)
-          setAsks(parsedAsks.reverse())
-        }
-      } catch (e) {
-        console.error('Order book error:', e)
+        const variation = (Math.random() - 0.5) * basePrice * 0.001
+        setCurrentPrice(prev => prev === 0 ? basePrice : prev + variation)
+        setPriceChange((Math.random() - 0.5) * 2)
       }
+      simulateFuturesPrice()
+      const interval = setInterval(simulateFuturesPrice, 1000)
+      return () => clearInterval(interval)
     }
-    fetchOrderBook()
-    const interval = setInterval(fetchOrderBook, 1000)
-    return () => clearInterval(interval)
-  }, [selectedPair])
+  }, [activeMarket, selectedPair])
 
   // =============================================================================
-  // CANDLESTICK CHART
+  // CHART
   // =============================================================================
 
   useEffect(() => {
@@ -206,52 +224,49 @@ export default function StuntManTerminal() {
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { color: '#0a0a0a' },
+        background: { color: 'transparent' },
         textColor: '#71717a',
       },
       grid: {
-        vertLines: { color: '#1a1a1a' },
-        horzLines: { color: '#1a1a1a' },
+        vertLines: { color: 'rgba(255,255,255,0.03)' },
+        horzLines: { color: 'rgba(255,255,255,0.03)' },
       },
       crosshair: {
         mode: 1,
-        vertLine: { color: '#525252', style: 2 },
-        horzLine: { color: '#525252', style: 2 },
+        vertLine: { color: '#525252', style: 2, labelBackgroundColor: '#18181b' },
+        horzLine: { color: '#525252', style: 2, labelBackgroundColor: '#18181b' },
       },
       rightPriceScale: {
-        borderColor: '#262626',
+        borderColor: 'transparent',
         scaleMargins: { top: 0.1, bottom: 0.2 },
       },
       timeScale: {
-        borderColor: '#262626',
+        borderColor: 'transparent',
         timeVisible: true,
         secondsVisible: false,
       },
       width: chartContainerRef.current.clientWidth,
-      height: 500,
+      height: 400,
     })
 
-    // Candlestick series
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
+      upColor: '#10b981',
       downColor: '#ef4444',
-      borderUpColor: '#22c55e',
+      borderUpColor: '#10b981',
       borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
+      wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     })
 
-    // Volume series (histogram)
     const volumeSeries = chart.addHistogramSeries({
       color: '#3b82f6',
       priceFormat: { type: 'volume' },
       priceScaleId: '',
     })
     volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.85, bottom: 0 },
     })
 
-    // EMA 9
     const ema9 = chart.addLineSeries({
       color: '#f59e0b',
       lineWidth: 1,
@@ -259,7 +274,6 @@ export default function StuntManTerminal() {
       lastValueVisible: false,
     })
 
-    // EMA 21
     const ema21 = chart.addLineSeries({
       color: '#8b5cf6',
       lineWidth: 1,
@@ -288,6 +302,8 @@ export default function StuntManTerminal() {
 
   // Fetch candle data
   useEffect(() => {
+    if (activeMarket !== 'crypto') return
+
     const fetchCandles = async () => {
       try {
         const res = await fetch(
@@ -321,7 +337,7 @@ export default function StuntManTerminal() {
             volumeSeriesRef.current.setData(candles.map((c: any) => ({
               time: c.time,
               value: c.volume,
-              color: c.close >= c.open ? '#22c55e40' : '#ef444440',
+              color: c.close >= c.open ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)',
             })))
           }
 
@@ -352,9 +368,8 @@ export default function StuntManTerminal() {
     fetchCandles()
     const interval = setInterval(fetchCandles, 15000)
     return () => clearInterval(interval)
-  }, [selectedPair, timeframe, showIndicators])
+  }, [selectedPair, timeframe, showIndicators, activeMarket])
 
-  // EMA calculation
   function calculateEMA(data: number[], period: number): (number | null)[] {
     const result: (number | null)[] = []
     const multiplier = 2 / (period + 1)
@@ -375,6 +390,37 @@ export default function StuntManTerminal() {
   }
 
   // =============================================================================
+  // FETCH FUTURES ACCOUNT STATUS
+  // =============================================================================
+
+  useEffect(() => {
+    if (activeMarket !== 'futures') return
+
+    const fetchAccountStatus = async () => {
+      try {
+        const res = await fetch('/api/stuntman/live-trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status', market: 'futures' }),
+        })
+        const data = await res.json()
+        if (data.success && data.account) {
+          setPropFirmStatus(prev => ({
+            ...prev,
+            ...data.account,
+          }))
+        }
+      } catch (e) {
+        console.error('Account status error:', e)
+      }
+    }
+
+    fetchAccountStatus()
+    const interval = setInterval(fetchAccountStatus, 5000)
+    return () => clearInterval(interval)
+  }, [activeMarket])
+
+  // =============================================================================
   // TRADING BOT
   // =============================================================================
 
@@ -384,7 +430,7 @@ export default function StuntManTerminal() {
       const res = await fetch('/api/stuntman/live-trade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: mode }),
+        body: JSON.stringify({ action: mode, market: activeMarket }),
       })
       const data = await res.json()
 
@@ -392,12 +438,23 @@ export default function StuntManTerminal() {
         setSignals(data.signals || [])
         setLastScan(new Date().toLocaleTimeString())
 
+        // Update account status if returned
+        if (data.account) {
+          setPropFirmStatus(prev => ({
+            ...prev,
+            ...data.account,
+          }))
+        }
+
         if (mode === 'trade' && data.trades?.length > 0) {
           setTrades(prev => [...data.trades, ...prev].slice(0, 50))
           setBotStatus('trading')
+          setTimeout(() => setBotStatus('idle'), 2000)
         } else {
           setBotStatus('idle')
         }
+      } else {
+        setBotStatus('idle')
       }
     } catch (e) {
       console.error('Bot error:', e)
@@ -405,17 +462,47 @@ export default function StuntManTerminal() {
     }
   }
 
-  // Auto-trading loop
+  // Manual trade execution
+  const executeTrade = async (side: 'buy' | 'sell') => {
+    try {
+      const res = await fetch('/api/stuntman/live-trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: side,
+          market: activeMarket,
+          instrument: selectedPair,
+          quantity: activeMarket === 'futures' ? 1 : undefined,
+          amount: activeMarket === 'crypto' ? 100 : undefined, // $100 default for crypto
+        }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        if (data.trade) {
+          setTrades(prev => [data.trade, ...prev].slice(0, 50))
+        }
+        if (data.account) {
+          setPropFirmStatus(prev => ({
+            ...prev,
+            ...data.account,
+          }))
+        }
+      }
+    } catch (e) {
+      console.error('Trade error:', e)
+    }
+  }
+
   useEffect(() => {
     if (!autoTrading) return
-
     runBot('trade')
-    const interval = setInterval(() => runBot('trade'), 120000)
+    const interval = setInterval(() => runBot('trade'), 60000) // Every minute when auto-trading
     return () => clearInterval(interval)
-  }, [autoTrading])
+  }, [autoTrading, activeMarket])
 
   // =============================================================================
-  // RENDER
+  // HELPERS
   // =============================================================================
 
   const formatPrice = (price: number) => {
@@ -424,316 +511,447 @@ export default function StuntManTerminal() {
     return price.toFixed(6)
   }
 
-  const formatVolume = (vol: number) => {
-    if (vol >= 1e9) return `$${(vol / 1e9).toFixed(2)}B`
-    if (vol >= 1e6) return `$${(vol / 1e6).toFixed(2)}M`
-    if (vol >= 1e3) return `$${(vol / 1e3).toFixed(2)}K`
-    return `$${vol.toFixed(2)}`
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
   }
 
-  const maxBidTotal = bids.length > 0 ? Math.max(...bids.map(b => b.total)) : 1
-  const maxAskTotal = asks.length > 0 ? Math.max(...asks.map(a => a.total)) : 1
+  const getRiskLevelColor = (level: string) => {
+    switch (level) {
+      case 'safe': return 'text-emerald-400'
+      case 'caution': return 'text-yellow-400'
+      case 'warning': return 'text-orange-400'
+      case 'danger': return 'text-red-400'
+      case 'critical': return 'text-red-500'
+      default: return 'text-zinc-400'
+    }
+  }
+
+  const getRiskLevelBg = (level: string) => {
+    switch (level) {
+      case 'safe': return 'bg-emerald-500/10 border-emerald-500/30'
+      case 'caution': return 'bg-yellow-500/10 border-yellow-500/30'
+      case 'warning': return 'bg-orange-500/10 border-orange-500/30'
+      case 'danger': return 'bg-red-500/10 border-red-500/30'
+      case 'critical': return 'bg-red-500/20 border-red-500/50'
+      default: return 'bg-zinc-500/10 border-zinc-500/30'
+    }
+  }
+
+  // =============================================================================
+  // RENDER
+  // =============================================================================
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Top Bar */}
-      <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4">
-        <div className="flex items-center gap-6">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-              <Bot className="w-5 h-5 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-white">
+      {/* Header */}
+      <header className="h-16 border-b border-zinc-800/50 backdrop-blur-xl bg-zinc-900/30 sticky top-0 z-50">
+        <div className="h-full max-w-[1920px] mx-auto px-6 flex items-center justify-between">
+          {/* Logo & Market Toggle */}
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-lg tracking-tight">StuntMan</h1>
+                <p className="text-[10px] text-zinc-500 -mt-0.5">Algorithmic Trading System</p>
+              </div>
             </div>
-            <span className="font-bold text-lg">StuntMan</span>
-            <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">PRO</span>
+
+            {/* Market Toggle */}
+            <div className="flex items-center bg-zinc-800/50 rounded-xl p-1">
+              <button
+                onClick={() => { setActiveMarket('futures'); setSelectedPair('ES') }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeMarket === 'futures'
+                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4" />
+                  Futures
+                </span>
+              </button>
+              <button
+                onClick={() => { setActiveMarket('crypto'); setSelectedPair('BTC_USDT') }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeMarket === 'crypto'
+                    ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Crypto
+                </span>
+              </button>
+            </div>
           </div>
 
-          {/* Pair Selector */}
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedPair}
-              onChange={(e) => setSelectedPair(e.target.value)}
-              className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:border-emerald-500"
-            >
-              {pairs.map(p => (
-                <option key={p.symbol} value={p.symbol}>{p.icon} {p.symbol.replace('_', '/')}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Price Display */}
+          {/* Right Side */}
           <div className="flex items-center gap-4">
-            <div>
-              <span className="text-2xl font-bold font-mono">${formatPrice(currentPrice)}</span>
-              <span className={`ml-2 text-sm font-medium ${priceChange24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                {priceChange24h >= 0 ? '+' : ''}{priceChange24h.toFixed(2)}%
-              </span>
+            {/* Connection Status */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/50">
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className="text-xs text-zinc-400">{isConnected ? 'Connected' : 'Disconnected'}</span>
             </div>
-            <div className="text-xs text-zinc-500 space-y-0.5">
-              <div>H: <span className="text-zinc-300">${formatPrice(high24h)}</span></div>
-              <div>L: <span className="text-zinc-300">${formatPrice(low24h)}</span></div>
+
+            {/* Bot Status */}
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+              autoTrading ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800/50 text-zinc-400'
+            }`}>
+              {botStatus === 'scanning' && <RefreshCw className="w-4 h-4 animate-spin" />}
+              {botStatus === 'trading' && <Activity className="w-4 h-4" />}
+              {botStatus === 'idle' && <Circle className="w-4 h-4" />}
+              <span className="text-xs font-medium uppercase">{botStatus}</span>
             </div>
-            <div className="text-xs text-zinc-500">
-              <div>Vol: <span className="text-zinc-300">{formatVolume(volume24h)}</span></div>
-            </div>
+
+            {/* Settings */}
+            <button className="p-2 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white transition-colors">
+              <Settings className="w-5 h-5" />
+            </button>
           </div>
         </div>
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-4">
-          {/* Connection Status */}
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'} animate-pulse`} />
-            <span className="text-xs text-zinc-400">{connected ? 'Connected' : 'Disconnected'}</span>
-          </div>
-
-          {/* Balance */}
-          <div className="flex items-center gap-2 bg-zinc-900 rounded-lg px-3 py-1.5">
-            <Wallet className="w-4 h-4 text-emerald-500" />
-            <span className="font-mono font-medium">${totalBalance.toFixed(2)}</span>
-          </div>
-
-          {/* Bot Status */}
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-            autoTrading ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-900 text-zinc-400'
-          }`}>
-            {botStatus === 'scanning' && <RefreshCw className="w-4 h-4 animate-spin" />}
-            {botStatus === 'trading' && <Activity className="w-4 h-4" />}
-            {botStatus === 'idle' && <Circle className="w-4 h-4" />}
-            <span className="text-xs font-medium uppercase">{botStatus}</span>
-          </div>
-        </div>
-      </div>
+      </header>
 
       {/* Main Content */}
-      <div className="flex h-[calc(100vh-48px)]">
-        {/* Left Sidebar - Watchlist & Positions */}
-        <div className="w-64 border-r border-zinc-800 flex flex-col">
-          {/* Portfolio */}
-          <div className="p-4 border-b border-zinc-800">
-            <div className="text-xs text-zinc-500 mb-2">PORTFOLIO</div>
-            <div className="space-y-2">
-              {realBalances.map(bal => (
-                <div key={bal.currency} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold">
-                      {bal.currency.slice(0, 2)}
+      <main className="max-w-[1920px] mx-auto p-6">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Left Column - Account Status */}
+          <div className="col-span-3 space-y-6">
+            {/* Account Overview */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 overflow-hidden">
+              <div className="p-4 border-b border-zinc-800/50">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-sm text-zinc-300">Account Overview</h2>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getRiskLevelBg(propFirmStatus.riskLevel)} ${getRiskLevelColor(propFirmStatus.riskLevel)}`}>
+                    {propFirmStatus.riskLevel.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {activeMarket === 'futures' ? (
+                  <>
+                    {/* Apex Account Info */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                          <Trophy className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Apex 150K</p>
+                          <p className="text-xs text-zinc-500">{propFirmStatus.accountId}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold">{formatCurrency(propFirmStatus.currentBalance)}</p>
+                        <p className={`text-xs ${propFirmStatus.totalPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {propFirmStatus.totalPnL >= 0 ? '+' : ''}{formatCurrency(propFirmStatus.totalPnL)}
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-sm font-medium">{bal.currency}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-mono">{bal.quantity < 0.001 ? bal.quantity.toFixed(8) : bal.quantity.toFixed(4)}</div>
-                    <div className="text-xs text-zinc-500">${bal.valueUSD.toFixed(2)}</div>
+
+                    {/* Drawdown Meter */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-500">Drawdown Used</span>
+                        <span className={getRiskLevelColor(propFirmStatus.riskLevel)}>
+                          {formatCurrency(propFirmStatus.drawdownUsed)} / {formatCurrency(propFirmStatus.drawdownLimit)}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            propFirmStatus.drawdownUsed / propFirmStatus.drawdownLimit > 0.8 ? 'bg-red-500' :
+                            propFirmStatus.drawdownUsed / propFirmStatus.drawdownLimit > 0.6 ? 'bg-orange-500' :
+                            propFirmStatus.drawdownUsed / propFirmStatus.drawdownLimit > 0.4 ? 'bg-yellow-500' :
+                            'bg-emerald-500'
+                          }`}
+                          style={{ width: `${(propFirmStatus.drawdownUsed / propFirmStatus.drawdownLimit) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-zinc-600">
+                        ${(propFirmStatus.drawdownLimit - propFirmStatus.drawdownUsed).toFixed(0)} remaining before breach
+                      </p>
+                    </div>
+
+                    {/* Profit Target */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-500">Profit Target</span>
+                        <span className="text-emerald-400">
+                          {formatCurrency(propFirmStatus.totalPnL)} / {formatCurrency(propFirmStatus.profitTarget)}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full transition-all"
+                          style={{ width: `${Math.max(0, Math.min(100, (propFirmStatus.totalPnL / propFirmStatus.profitTarget) * 100))}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-zinc-600">
+                        {((propFirmStatus.totalPnL / propFirmStatus.profitTarget) * 100).toFixed(1)}% to funded account
+                      </p>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-zinc-800/30 rounded-xl p-3">
+                        <div className="flex items-center gap-2 text-zinc-500 text-xs mb-1">
+                          <Calendar className="w-3 h-3" />
+                          Trading Days
+                        </div>
+                        <p className="text-lg font-bold">{propFirmStatus.tradingDays} / {propFirmStatus.minTradingDays}</p>
+                      </div>
+                      <div className="bg-zinc-800/30 rounded-xl p-3">
+                        <div className="flex items-center gap-2 text-zinc-500 text-xs mb-1">
+                          <Layers className="w-3 h-3" />
+                          Max Contracts
+                        </div>
+                        <p className="text-lg font-bold">{propFirmStatus.maxContracts}</p>
+                      </div>
+                    </div>
+
+                    {/* Trading Status */}
+                    <div className={`flex items-center gap-2 p-3 rounded-xl ${propFirmStatus.isTradingAllowed ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                      {propFirmStatus.isTradingAllowed ? (
+                        <>
+                          <Unlock className="w-4 h-4 text-emerald-400" />
+                          <span className="text-sm text-emerald-400">Trading Enabled</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-4 h-4 text-red-400" />
+                          <span className="text-sm text-red-400">Trading Disabled</span>
+                        </>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Crypto Balance */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                          <Wallet className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Crypto Portfolio</p>
+                          <p className="text-xs text-zinc-500">Crypto.com</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold">{formatCurrency(cryptoBalance)}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* AI Signals */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 overflow-hidden">
+              <div className="p-4 border-b border-zinc-800/50">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-sm text-zinc-300">AI Signals</h2>
+                  {lastScan && <span className="text-xs text-zinc-500">{lastScan}</span>}
+                </div>
+              </div>
+              <div className="p-4 space-y-3 max-h-80 overflow-auto">
+                {signals.length === 0 ? (
+                  <p className="text-xs text-zinc-600 text-center py-8">Click "Scan Markets" to analyze</p>
+                ) : (
+                  signals.map((sig, i) => (
+                    <div key={i} className={`p-3 rounded-xl border ${
+                      sig.action === 'BUY' ? 'bg-emerald-500/5 border-emerald-500/20' :
+                      sig.action === 'SELL' ? 'bg-red-500/5 border-red-500/20' :
+                      'bg-zinc-500/5 border-zinc-500/20'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">{sig.instrument}</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          sig.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' :
+                          sig.action === 'SELL' ? 'bg-red-500/20 text-red-400' :
+                          'bg-zinc-500/20 text-zinc-400'
+                        }`}>
+                          {sig.action}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-zinc-500">
+                        <span>{sig.confidence}% confidence</span>
+                        <span>•</span>
+                        <span>Risk: {sig.riskScore}/10</span>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-lg">
+                          SL: {sig.stopLoss.toFixed(1)}%
+                        </span>
+                        <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-lg">
+                          TP: {sig.takeProfit.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Bot Controls */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 p-4 space-y-3">
+              <button
+                onClick={() => runBot('analyze')}
+                disabled={botStatus === 'scanning'}
+                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+              >
+                <Brain className="w-4 h-4" />
+                Scan Markets
+              </button>
+              <button
+                onClick={() => setAutoTrading(!autoTrading)}
+                className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  autoTrading
+                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
+                    : 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white shadow-lg shadow-emerald-500/20'
+                }`}
+              >
+                {autoTrading ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {autoTrading ? 'Stop Bot' : 'Start Bot'}
+              </button>
+            </div>
+          </div>
+
+          {/* Center Column - Chart & Trading */}
+          <div className="col-span-6 space-y-6">
+            {/* Instrument Selector & Price */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <select
+                    value={selectedPair}
+                    onChange={(e) => setSelectedPair(e.target.value)}
+                    className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm font-medium focus:outline-none focus:border-emerald-500 transition-colors"
+                  >
+                    {activeMarket === 'futures' ? (
+                      futuresContracts.map(c => (
+                        <option key={c.symbol} value={c.symbol}>{c.symbol} - {c.name}</option>
+                      ))
+                    ) : (
+                      cryptoPairs.map(p => (
+                        <option key={p.symbol} value={p.symbol}>{p.icon} {p.symbol.replace('_', '/')}</option>
+                      ))
+                    )}
+                  </select>
+
+                  <div>
+                    <span className="text-3xl font-bold font-mono">{formatPrice(currentPrice)}</span>
+                    <span className={`ml-3 text-sm font-medium ${priceChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Signals */}
-          <div className="flex-1 overflow-auto p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-zinc-500">AI SIGNALS</div>
-              {lastScan && <div className="text-xs text-zinc-600">{lastScan}</div>}
+                {/* Timeframe Selector */}
+                <div className="flex items-center gap-1 bg-zinc-800/50 rounded-xl p-1">
+                  {['1m', '5m', '15m', '1h', '4h', '1d'].map(tf => (
+                    <button
+                      key={tf}
+                      onClick={() => setTimeframe(tf)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        timeframe === tf ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      {tf.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              {signals.length === 0 ? (
-                <div className="text-xs text-zinc-600 text-center py-4">Click Scan to analyze markets</div>
-              ) : (
-                signals.map((sig, i) => (
-                  <div key={i} className={`p-3 rounded-lg border ${
-                    sig.action.includes('BUY') ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">{sig.instrument.replace('_', '/')}</span>
-                      <span className={`text-xs font-bold ${sig.action.includes('BUY') ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {sig.action}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-zinc-400">
-                      <span>{sig.confidence}% conf</span>
-                      <span>•</span>
-                      <span>Risk: {sig.risk_score}/10</span>
-                    </div>
-                    <div className="mt-2 flex gap-2">
-                      <div className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">
-                        SL: {sig.stop_loss.toFixed(1)}%
-                      </div>
-                      <div className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-                        TP: {sig.take_profit.toFixed(1)}%
-                      </div>
-                    </div>
+
+            {/* Chart */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowIndicators(!showIndicators)}
+                    className={`p-2 rounded-lg transition-colors ${showIndicators ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    <LineChart className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center gap-3 text-xs text-zinc-500">
+                    <span className="flex items-center gap-1"><div className="w-3 h-0.5 bg-amber-500 rounded" /> EMA 9</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-0.5 bg-violet-500 rounded" /> EMA 21</span>
                   </div>
-                ))
-              )}
+                </div>
+              </div>
+              <div ref={chartContainerRef} className="rounded-xl overflow-hidden" />
             </div>
-          </div>
 
-          {/* Bot Controls */}
-          <div className="p-4 border-t border-zinc-800 space-y-2">
-            <button
-              onClick={() => runBot('analyze')}
-              disabled={botStatus === 'scanning'}
-              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Brain className="w-4 h-4" />
-              Scan Markets
-            </button>
-            <button
-              onClick={() => setAutoTrading(!autoTrading)}
-              className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
-                autoTrading
-                  ? 'bg-red-500 hover:bg-red-600 text-white'
-                  : 'bg-emerald-500 hover:bg-emerald-600 text-white'
-              }`}
-            >
-              {autoTrading ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              {autoTrading ? 'Stop Bot' : 'Start Bot'}
-            </button>
-          </div>
-        </div>
-
-        {/* Center - Chart */}
-        <div className="flex-1 flex flex-col">
-          {/* Chart Controls */}
-          <div className="h-10 border-b border-zinc-800 flex items-center justify-between px-4">
-            <div className="flex items-center gap-1">
-              {['1m', '5m', '15m', '1h', '4h', '1d'].map(tf => (
+            {/* Quick Trade Panel */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 p-4">
+              <div className="grid grid-cols-2 gap-4">
                 <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={`px-3 py-1 text-xs font-medium rounded ${
-                    timeframe === tf ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
-                  }`}
+                  onClick={() => executeTrade('buy')}
+                  className="py-4 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-lg font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
                 >
-                  {tf.toUpperCase()}
+                  <ArrowUpRight className="w-5 h-5" /> BUY / LONG
                 </button>
-              ))}
+                <button
+                  onClick={() => executeTrade('sell')}
+                  className="py-4 bg-red-500 hover:bg-red-600 rounded-xl text-lg font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-red-500/20"
+                >
+                  <ArrowDownRight className="w-5 h-5" /> SELL / SHORT
+                </button>
+              </div>
+              <p className="text-xs text-zinc-600 text-center mt-3">
+                {activeMarket === 'futures' ? 'Paper Trading Mode - 1 contract per trade' : 'Live Trading - $100 per trade'}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowIndicators(!showIndicators)}
-                className={`p-1.5 rounded ${showIndicators ? 'bg-zinc-700 text-white' : 'text-zinc-500'}`}
-                title="Toggle Indicators"
-              >
-                <LineChart className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-1 text-xs text-zinc-500">
-                <div className="w-3 h-0.5 bg-amber-500 rounded" /> EMA 9
-                <div className="w-3 h-0.5 bg-violet-500 rounded ml-2" /> EMA 21
+          </div>
+
+          {/* Right Column - Trade History */}
+          <div className="col-span-3 space-y-6">
+            {/* Recent Trades */}
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800/50 overflow-hidden h-[calc(100vh-200px)]">
+              <div className="p-4 border-b border-zinc-800/50">
+                <h2 className="font-semibold text-sm text-zinc-300">Trade History</h2>
+              </div>
+              <div className="overflow-auto h-full">
+                {trades.length === 0 ? (
+                  <p className="text-xs text-zinc-600 text-center py-8">No trades yet</p>
+                ) : (
+                  <div className="divide-y divide-zinc-800/30">
+                    {trades.map((trade, i) => (
+                      <div key={i} className="p-4 hover:bg-zinc-800/30 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              trade.side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                            }`}>
+                              {trade.side === 'BUY' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">{trade.instrument}</p>
+                              <p className="text-xs text-zinc-500">{trade.quantity} @ {formatPrice(trade.price)}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-mono text-sm">{formatCurrency(trade.value)}</p>
+                            <p className={`text-xs ${trade.pnl && trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {trade.pnl ? `${trade.pnl >= 0 ? '+' : ''}${formatCurrency(trade.pnl)}` : trade.status}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Chart */}
-          <div ref={chartContainerRef} className="flex-1" />
-
-          {/* Trade History */}
-          <div className="h-48 border-t border-zinc-800 overflow-auto">
-            <div className="px-4 py-2 border-b border-zinc-800 text-xs text-zinc-500 sticky top-0 bg-[#0a0a0a]">
-              TRADE HISTORY
-            </div>
-            <div className="divide-y divide-zinc-800/50">
-              {trades.length === 0 ? (
-                <div className="text-xs text-zinc-600 text-center py-8">No trades yet</div>
-              ) : (
-                trades.map((trade, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-6 h-6 rounded flex items-center justify-center ${
-                        trade.side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                      }`}>
-                        {trade.side === 'BUY' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">{trade.instrument.replace('_', '/')}</div>
-                        <div className="text-xs text-zinc-500">{trade.quantity.toFixed(6)} @ ${trade.price.toFixed(2)}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-mono">${trade.value.toFixed(2)}</div>
-                      <div className="text-xs text-zinc-500">{trade.status}</div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
-
-        {/* Right Sidebar - Order Book */}
-        <div className="w-72 border-l border-zinc-800 flex flex-col">
-          <div className="px-4 py-2 border-b border-zinc-800 text-xs text-zinc-500">
-            ORDER BOOK
-          </div>
-
-          {/* Headers */}
-          <div className="flex items-center justify-between px-4 py-1 text-xs text-zinc-600">
-            <span>Price (USDT)</span>
-            <span>Amount</span>
-            <span>Total</span>
-          </div>
-
-          {/* Asks */}
-          <div className="flex-1 overflow-hidden">
-            <div className="h-1/2 flex flex-col-reverse overflow-hidden">
-              {asks.map((ask, i) => (
-                <div key={i} className="relative flex items-center justify-between px-4 py-0.5 text-xs">
-                  <div
-                    className="absolute inset-0 bg-red-500/10"
-                    style={{ width: `${(ask.total / maxAskTotal) * 100}%`, right: 0, left: 'auto' }}
-                  />
-                  <span className="text-red-400 font-mono relative z-10">{formatPrice(ask.price)}</span>
-                  <span className="text-zinc-400 font-mono relative z-10">{ask.quantity.toFixed(4)}</span>
-                  <span className="text-zinc-500 font-mono relative z-10">{ask.total.toFixed(4)}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Spread */}
-            <div className="flex items-center justify-center py-2 border-y border-zinc-800 bg-zinc-900/50">
-              <span className="text-lg font-bold font-mono">${formatPrice(currentPrice)}</span>
-            </div>
-
-            {/* Bids */}
-            <div className="h-1/2 overflow-hidden">
-              {bids.map((bid, i) => (
-                <div key={i} className="relative flex items-center justify-between px-4 py-0.5 text-xs">
-                  <div
-                    className="absolute inset-0 bg-emerald-500/10"
-                    style={{ width: `${(bid.total / maxBidTotal) * 100}%`, right: 0, left: 'auto' }}
-                  />
-                  <span className="text-emerald-400 font-mono relative z-10">{formatPrice(bid.price)}</span>
-                  <span className="text-zinc-400 font-mono relative z-10">{bid.quantity.toFixed(4)}</span>
-                  <span className="text-zinc-500 font-mono relative z-10">{bid.total.toFixed(4)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Quick Trade */}
-          <div className="p-4 border-t border-zinc-800 space-y-3">
-            <div className="text-xs text-zinc-500 mb-2">QUICK TRADE</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                className="py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm font-bold flex items-center justify-center gap-1"
-                onClick={() => alert('Manual trading coming soon')}
-              >
-                <ArrowUpRight className="w-4 h-4" /> BUY
-              </button>
-              <button
-                className="py-2 bg-red-500 hover:bg-red-600 rounded-lg text-sm font-bold flex items-center justify-center gap-1"
-                onClick={() => alert('Manual trading coming soon')}
-              >
-                <ArrowDownRight className="w-4 h-4" /> SELL
-              </button>
-            </div>
-            <div className="text-xs text-zinc-600 text-center">
-              Use AI Bot for automated trading
-            </div>
-          </div>
-        </div>
-      </div>
+      </main>
     </div>
   )
 }

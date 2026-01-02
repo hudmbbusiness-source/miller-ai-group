@@ -51,9 +51,9 @@ const navItems = [
 ]
 
 const toolItems = [
+  { href: '/stuntman', label: 'StuntMan Trading', icon: BarChart3 },
   { href: '/app/tools/playground', label: 'Code Playground', icon: Code2 },
   { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },
-  { href: '/app/tools/stuntman', label: 'StuntMan AI', icon: BarChart3 },
   { href: '/app/tools/brainbox', label: 'BrainBox', icon: Brain },
 ]
 

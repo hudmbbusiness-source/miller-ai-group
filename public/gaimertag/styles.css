@@ -924,8 +924,94 @@ body {
 
 .power-ups-selection {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: var(--gap-med);
-    margin-top: var(--gap-huge);
+    margin-top: var(--gap-big);
+    width: 100%;
+    max-width: 320px;
+}
+
+.powerups-title {
+    font-family: var(--font-accent);
+    font-size: 14px;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.powerups-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--gap-small);
+}
+
+.powerup-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: var(--card-bg);
+    border: 2px solid var(--card-border);
+    border-radius: var(--round-med);
+    padding: var(--gap-small) var(--gap-med);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 70px;
+}
+
+.powerup-item:hover {
+    border-color: var(--neon-blue);
+    transform: translateY(-2px);
+}
+
+.powerup-item.selected {
+    background: linear-gradient(135deg, var(--neon-blue) 0%, #0088cc 100%);
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 20px var(--glow-blue);
+}
+
+.powerup-icon {
+    font-size: 24px;
+}
+
+.powerup-name {
+    font-size: 10px;
+    color: var(--text-soft);
+    text-align: center;
+}
+
+.powerup-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--neon-yellow);
+}
+
+.powerups-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-med);
+    color: var(--text-dim);
+    font-size: 14px;
+}
+
+.powerups-shop-btn {
+    background: linear-gradient(135deg, var(--neon-pink) 0%, #cc0066 100%);
+    border: none;
+    border-radius: var(--round-full);
+    padding: var(--gap-small) var(--gap-big);
+    color: var(--text-bright);
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.powerups-shop-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px var(--glow-pink);
 }
 
 .controls-hint {

@@ -750,6 +750,7 @@ class FlappyGame {
         this.characterColor = '#2196F3';
 
         this.shake = { x: 0, y: 0, intensity: 0, duration: 0 };
+        this.activePowerups = {};
 
         this.init();
     }
@@ -866,7 +867,7 @@ class FlappyGame {
         return themeData ? themeData.colors : GAME_DATA.themes.forest.colors;
     }
 
-    start() {
+    start(powerups = {}) {
         // Ensure canvas has proper dimensions before starting
         this.resize();
 
@@ -878,6 +879,10 @@ class FlappyGame {
         this.gameOver = false;
 
         this.reset();
+
+        // Apply power-ups passed from app
+        this.activePowerups = { ...powerups };
+
         this.background = new FlappyBackground(this);
         this.lastTime = performance.now();
         requestAnimationFrame((t) => this.gameLoop(t));

@@ -7,6 +7,7 @@ class App {
     constructor() {
         this.currentScreen = 'games';
         this.currentGame = 'runner'; // Track which game is active
+        this.selectedPowerups = []; // Power-ups selected for next game
         this.init();
     }
 
@@ -118,6 +119,7 @@ class App {
                 break;
             case 'play':
                 this.updateLoadout();
+                this.renderPowerups();
                 break;
         }
     }
@@ -327,6 +329,18 @@ class App {
     startGame(gameId = 'runner') {
         this.currentGame = gameId;
 
+        // Consume selected power-ups from inventory
+        const activePowerups = {};
+        this.selectedPowerups.forEach(powerupId => {
+            if (progression.usePowerup(powerupId)) {
+                const powerupData = GAME_DATA.powerups[powerupId];
+                if (powerupData) {
+                    activePowerups[powerupData.effect] = powerupData.value;
+                }
+            }
+        });
+        this.selectedPowerups = [];
+
         // Hide all screens
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.remove('active');
@@ -342,10 +356,10 @@ class App {
             if (!window.flappyGame) {
                 window.flappyGame = new FlappyGame();
             }
-            window.flappyGame.start();
+            window.flappyGame.start(activePowerups);
         } else if (window.game) {
             // Start Runner
-            window.game.start();
+            window.game.start(activePowerups);
         } else {
             console.error('[gAImertag] Game not initialized');
         }
@@ -358,6 +372,76 @@ class App {
 
         if (char) document.getElementById('selectedCharacter').textContent = char.icon;
         if (theme) document.getElementById('selectedTheme').textContent = theme.icon;
+    }
+
+    // ========================================================================
+    // POWER-UPS SELECTION
+    // ========================================================================
+
+    renderPowerups() {
+        const container = document.getElementById('powerUpsSelection');
+        if (!container) return;
+
+        container.innerHTML = '';
+        this.selectedPowerups = [];
+
+        // Get owned power-ups
+        const ownedPowerups = progression.data.ownedPowerups || {};
+        const hasPowerups = Object.values(ownedPowerups).some(count => count > 0);
+
+        if (!hasPowerups) {
+            container.innerHTML = `
+                <div class="powerups-empty">
+                    <span>No power-ups owned</span>
+                    <button class="powerups-shop-btn" id="powerupsShopBtn">Shop</button>
+                </div>
+            `;
+            document.getElementById('powerupsShopBtn')?.addEventListener('click', () => {
+                this.showScreen('store');
+                document.querySelectorAll('.store-tab').forEach(t => t.classList.remove('active'));
+                document.querySelector('[data-tab="powerups"]').classList.add('active');
+                store.currentTab = 'powerups';
+                store.renderStore();
+            });
+            return;
+        }
+
+        container.innerHTML = '<div class="powerups-title">Select Power-Ups</div><div class="powerups-grid" id="powerupsGrid"></div>';
+        const grid = document.getElementById('powerupsGrid');
+
+        Object.entries(GAME_DATA.powerups).forEach(([id, powerup]) => {
+            const count = ownedPowerups[id] || 0;
+            if (count <= 0) return;
+
+            const item = document.createElement('div');
+            item.className = 'powerup-item';
+            item.dataset.powerupId = id;
+            item.innerHTML = `
+                <div class="powerup-icon">${powerup.icon}</div>
+                <div class="powerup-name">${powerup.name}</div>
+                <div class="powerup-count">x${count}</div>
+            `;
+
+            item.addEventListener('click', () => this.togglePowerup(id, item));
+            grid.appendChild(item);
+        });
+    }
+
+    togglePowerup(powerupId, element) {
+        const index = this.selectedPowerups.indexOf(powerupId);
+
+        if (index === -1) {
+            // Max 3 power-ups at a time
+            if (this.selectedPowerups.length >= 3) {
+                store.showMessage('Max 3 power-ups per game!');
+                return;
+            }
+            this.selectedPowerups.push(powerupId);
+            element.classList.add('selected');
+        } else {
+            this.selectedPowerups.splice(index, 1);
+            element.classList.remove('selected');
+        }
     }
 
     // ========================================================================

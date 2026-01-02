@@ -1673,7 +1673,7 @@ class Game {
         return themeData ? themeData.colors : GAME_DATA.themes.forest.colors;
     }
 
-    start() {
+    start(powerups = {}) {
         // Ensure canvas has proper dimensions before starting
         this.resize();
 
@@ -1685,6 +1685,15 @@ class Game {
         this.gameOver = false;
 
         this.reset();
+
+        // Apply power-ups passed from app
+        this.activePowerups = { ...powerups };
+
+        // Shield gives an extra life
+        if (this.activePowerups.extraLife) {
+            this.player.hasShield = true;
+        }
+
         this.background = new Background(this);
         this.lastTime = performance.now();
         requestAnimationFrame((t) => this.gameLoop(t));

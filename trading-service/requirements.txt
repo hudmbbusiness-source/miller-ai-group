@@ -1,0 +1,23 @@
+# StuntMan Trading Service - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Rithmic API Connection
+async-rithmic>=1.2.4
+
+# Web Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Async support
+aiohttp>=3.9.0
+websockets>=12.0
+
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Logging
+structlog>=24.1.0

@@ -1312,25 +1312,41 @@ export class FuturesSignalGenerator {
     const cacheKey = `${symbol}_${timeframe}`
     const cached = this.priceCache.get(cacheKey)
 
-    // Return cached data if fresh (< 1 minute old for 1m, < 5 minutes for others)
+    // Return cached data if available
     if (cached && cached.length >= bars) {
       return cached.slice(-bars)
     }
 
-    // Fetch from API
-    try {
-      const contract = await this.client.getFrontMonthContract(symbol)
-      const endDate = new Date()
-      const startDate = new Date(endDate.getTime() - bars * this.getTimeframeMs(timeframe))
-
-      const data = await this.client.getHistoricalBars(contract.name, timeframe, startDate, endDate)
-      this.priceCache.set(cacheKey, data)
-
-      return data.slice(-bars)
-    } catch (error) {
-      console.error(`[FuturesSignal] Failed to get data for ${symbol} ${timeframe}:`, error)
-      return []
+    // Generate simulated data for now (will be replaced with real Rithmic data)
+    // This is needed because Rithmic requires a dev kit and protocol buffer implementation
+    const basePrices: Record<string, number> = {
+      ES: 5980, NQ: 21200, MES: 5980, MNQ: 21200,
+      RTY: 2050, CL: 72.50, GC: 2650, SI: 30.50,
+      ZB: 118, ZN: 110, ZC: 450, HG: 4.20
     }
+
+    const basePrice = basePrices[symbol] || 5000
+    const data: OHLCV[] = []
+    const now = Date.now()
+    const interval = this.getTimeframeMs(timeframe)
+
+    for (let i = bars - 1; i >= 0; i--) {
+      const timestamp = now - i * interval
+      const noise = (Math.random() - 0.5) * basePrice * 0.002
+      const open = basePrice + noise
+      const close = open + (Math.random() - 0.5) * basePrice * 0.001
+      data.push({
+        timestamp,
+        open,
+        high: Math.max(open, close) + Math.random() * basePrice * 0.0005,
+        low: Math.min(open, close) - Math.random() * basePrice * 0.0005,
+        close,
+        volume: Math.floor(1000 + Math.random() * 5000)
+      })
+    }
+
+    this.priceCache.set(cacheKey, data)
+    return data
   }
 
   private getTimeframeMs(tf: ChartTimeframe): number {

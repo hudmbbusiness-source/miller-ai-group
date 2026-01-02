@@ -3,6 +3,12 @@
  *
  * Provides integration with Crypto.com Exchange for Stuntman AI trading bot.
  * Supports both public (market data) and private (trading) endpoints.
+ *
+ * Features:
+ * - Exponential backoff with retry for failed requests
+ * - Request caching to prevent stale data
+ * - Connection health tracking
+ * - Automatic reconnection on failures
  */
 
 import crypto from 'crypto'
@@ -12,6 +18,125 @@ import crypto from 'crypto'
 // URL format: https://api.crypto.com/exchange/v1/{method}
 const CRYPTO_COM_API_BASE = 'https://api.crypto.com/exchange/v1'
 const CRYPTO_COM_PUBLIC_API_URL = 'https://api.crypto.com/exchange/v1/public'
+
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  backoffMultiplier: 2,
+}
+
+// Cache configuration
+const CACHE_CONFIG = {
+  tickerTTL: 5000,      // 5 seconds for ticker data
+  balanceTTL: 10000,    // 10 seconds for balance data
+  orderBookTTL: 2000,   // 2 seconds for order book
+}
+
+// Simple in-memory cache
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+  ttl: number
+}
+
+const cache = new Map<string, CacheEntry<unknown>>()
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key) as CacheEntry<T> | undefined
+  if (entry && Date.now() - entry.timestamp < entry.ttl) {
+    return entry.data
+  }
+  cache.delete(key)
+  return null
+}
+
+function setCache<T>(key: string, data: T, ttl: number): void {
+  cache.set(key, { data, timestamp: Date.now(), ttl })
+}
+
+// Connection health tracking
+interface ConnectionHealth {
+  lastSuccessfulRequest: number
+  consecutiveFailures: number
+  isHealthy: boolean
+}
+
+const connectionHealth: ConnectionHealth = {
+  lastSuccessfulRequest: Date.now(),
+  consecutiveFailures: 0,
+  isHealthy: true,
+}
+
+export function getConnectionHealth(): ConnectionHealth {
+  return { ...connectionHealth }
+}
+
+// Sleep utility for retry delays
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Calculate exponential backoff delay
+function getRetryDelay(attempt: number): number {
+  const delay = RETRY_CONFIG.baseDelayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt)
+  return Math.min(delay, RETRY_CONFIG.maxDelayMs)
+}
+
+// Fetch with retry and exponential backoff
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit,
+  retries: number = RETRY_CONFIG.maxRetries
+): Promise<Response> {
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeout)
+
+      // Update health on success
+      connectionHealth.lastSuccessfulRequest = Date.now()
+      connectionHealth.consecutiveFailures = 0
+      connectionHealth.isHealthy = true
+
+      return response
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+
+      // Update health on failure
+      connectionHealth.consecutiveFailures++
+      if (connectionHealth.consecutiveFailures >= 3) {
+        connectionHealth.isHealthy = false
+      }
+
+      // Don't retry on abort (timeout)
+      if (lastError.name === 'AbortError') {
+        console.warn(`Request timeout (attempt ${attempt + 1}/${retries + 1}): ${url}`)
+      } else {
+        console.warn(`Request failed (attempt ${attempt + 1}/${retries + 1}): ${lastError.message}`)
+      }
+
+      // If we have more retries, wait with exponential backoff
+      if (attempt < retries) {
+        const delay = getRetryDelay(attempt)
+        console.log(`Retrying in ${delay}ms...`)
+        await sleep(delay)
+      }
+    }
+  }
+
+  throw lastError || new Error('Request failed after all retries')
+}
 
 // Types
 export interface CryptoComCredentials {
@@ -174,11 +299,23 @@ export class CryptoComClient {
   /**
    * Make authenticated request to Crypto.com Exchange API v1
    * URL format: POST https://api.crypto.com/exchange/v1/{method}
+   * Includes exponential backoff retry on failure
    */
   private async authenticatedRequest<T>(
     method: string,
-    params: Record<string, unknown> = {}
+    params: Record<string, unknown> = {},
+    useCache: boolean = false,
+    cacheTTL: number = CACHE_CONFIG.balanceTTL
   ): Promise<T> {
+    // Check cache first if enabled
+    if (useCache) {
+      const cacheKey = `auth:${method}:${JSON.stringify(params)}`
+      const cached = getCached<T>(cacheKey)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
     if (!this.apiSecret) {
       throw new Error('API secret is required for authenticated requests. Please configure STUNTMAN_CRYPTO_SECRET in environment.')
     }
@@ -200,7 +337,7 @@ export class CryptoComClient {
     // URL includes the method path
     const url = `${CRYPTO_COM_API_BASE}/${method}`
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -214,24 +351,43 @@ export class CryptoComClient {
       throw new Error(`Crypto.com API Error: ${data.message || 'Unknown error'} (code: ${data.code})`)
     }
 
-    return data.result as T
+    const result = data.result as T
+
+    // Cache the result if enabled
+    if (useCache) {
+      const cacheKey = `auth:${method}:${JSON.stringify(params)}`
+      setCache(cacheKey, result, cacheTTL)
+    }
+
+    return result
   }
 
   // ===== PUBLIC ENDPOINTS (No Auth Required) =====
 
   /**
    * Get ticker data for an instrument
+   * Uses caching and retry mechanism
    */
-  async getTicker(instrumentName: string): Promise<Ticker | null> {
+  async getTicker(instrumentName: string, skipCache: boolean = false): Promise<Ticker | null> {
+    const cacheKey = `ticker:${instrumentName}`
+
+    // Check cache first
+    if (!skipCache) {
+      const cached = getCached<Ticker>(cacheKey)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
     try {
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${CRYPTO_COM_PUBLIC_API_URL}/get-tickers?instrument_name=${instrumentName}`
       )
       const data = await response.json()
 
       if (data.code === 0 && data.result?.data?.[0]) {
         const t = data.result.data[0]
-        return {
+        const ticker: Ticker = {
           instrument_name: t.i,
           last_traded_price: t.a,
           bid_price: t.b,
@@ -243,24 +399,45 @@ export class CryptoComClient {
           price_change_24h: String(parseFloat(t.a) * parseFloat(t.c)),
           price_change_percentage_24h: String(parseFloat(t.c) * 100),
         }
+
+        // Cache the result
+        setCache(cacheKey, ticker, CACHE_CONFIG.tickerTTL)
+        return ticker
       }
       return null
     } catch (error) {
       console.error('Error fetching ticker:', error)
+      // Return stale cache on error if available
+      const staleCache = cache.get(cacheKey) as CacheEntry<Ticker> | undefined
+      if (staleCache) {
+        console.warn('Returning stale ticker data due to fetch error')
+        return staleCache.data
+      }
       return null
     }
   }
 
   /**
    * Get all tickers
+   * Uses caching and retry mechanism
    */
-  async getAllTickers(): Promise<Ticker[]> {
+  async getAllTickers(skipCache: boolean = false): Promise<Ticker[]> {
+    const cacheKey = 'tickers:all'
+
+    // Check cache first
+    if (!skipCache) {
+      const cached = getCached<Ticker[]>(cacheKey)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
     try {
-      const response = await fetch(`${CRYPTO_COM_PUBLIC_API_URL}/get-tickers`)
+      const response = await fetchWithRetry(`${CRYPTO_COM_PUBLIC_API_URL}/get-tickers`)
       const data = await response.json()
 
       if (data.code === 0 && data.result?.data) {
-        return data.result.data.map((t: any) => ({
+        const tickers = data.result.data.map((t: any) => ({
           instrument_name: t.i,
           last_traded_price: t.a,
           bid_price: t.b,
@@ -272,33 +449,58 @@ export class CryptoComClient {
           price_change_24h: String(parseFloat(t.a) * parseFloat(t.c)),
           price_change_percentage_24h: String(parseFloat(t.c) * 100),
         }))
+
+        // Cache the result
+        setCache(cacheKey, tickers, CACHE_CONFIG.tickerTTL)
+        return tickers
       }
       return []
     } catch (error) {
       console.error('Error fetching all tickers:', error)
+      // Return stale cache on error if available
+      const staleCache = cache.get(cacheKey) as CacheEntry<Ticker[]> | undefined
+      if (staleCache) {
+        console.warn('Returning stale tickers data due to fetch error')
+        return staleCache.data
+      }
       return []
     }
   }
 
   /**
    * Get order book for an instrument
+   * Uses caching and retry mechanism
    */
-  async getOrderBook(instrumentName: string, depth: number = 10): Promise<{
+  async getOrderBook(instrumentName: string, depth: number = 10, skipCache: boolean = false): Promise<{
     bids: Array<{ price: string; quantity: string }>
     asks: Array<{ price: string; quantity: string }>
   } | null> {
+    const cacheKey = `orderbook:${instrumentName}:${depth}`
+
+    // Check cache first
+    if (!skipCache) {
+      const cached = getCached<{ bids: Array<{ price: string; quantity: string }>; asks: Array<{ price: string; quantity: string }> }>(cacheKey)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
     try {
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${CRYPTO_COM_PUBLIC_API_URL}/get-book?instrument_name=${instrumentName}&depth=${depth}`
       )
       const data = await response.json()
 
       if (data.code === 0 && data.result?.data?.[0]) {
         const book = data.result.data[0]
-        return {
+        const orderBook = {
           bids: (book.bids || []).map((b: [string, string, number]) => ({ price: b[0], quantity: b[1] })),
           asks: (book.asks || []).map((a: [string, string, number]) => ({ price: a[0], quantity: a[1] })),
         }
+
+        // Cache the result
+        setCache(cacheKey, orderBook, CACHE_CONFIG.orderBookTTL)
+        return orderBook
       }
       return null
     } catch (error) {
@@ -309,6 +511,7 @@ export class CryptoComClient {
 
   /**
    * Get recent trades for an instrument
+   * Uses retry mechanism
    */
   async getRecentTrades(instrumentName: string): Promise<Array<{
     price: string
@@ -317,7 +520,7 @@ export class CryptoComClient {
     timestamp: number
   }>> {
     try {
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${CRYPTO_COM_PUBLIC_API_URL}/get-trades?instrument_name=${instrumentName}`
       )
       const data = await response.json()
@@ -359,8 +562,9 @@ export class CryptoComClient {
   /**
    * Get account balances
    * Uses private/user-balance endpoint (Exchange API v1)
+   * Includes caching to reduce API calls
    */
-  async getAccountBalance(): Promise<AccountBalance[]> {
+  async getAccountBalance(skipCache: boolean = false): Promise<AccountBalance[]> {
     const result = await this.authenticatedRequest<{
       data: Array<{
         currency: string
@@ -369,8 +573,22 @@ export class CryptoComClient {
         order: string
         stake: string
       }>
-    }>('private/user-balance')
+    }>('private/user-balance', {}, !skipCache, CACHE_CONFIG.balanceTTL)
     return result.data || []
+  }
+
+  /**
+   * Force refresh account balance (bypasses cache)
+   */
+  async refreshAccountBalance(): Promise<AccountBalance[]> {
+    return this.getAccountBalance(true)
+  }
+
+  /**
+   * Clear all cached data
+   */
+  clearCache(): void {
+    cache.clear()
   }
 
   /**

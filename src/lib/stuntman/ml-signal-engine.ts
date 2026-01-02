@@ -50,7 +50,7 @@ interface MLSignal {
   timestamp: number;
 }
 
-interface MarketRegime {
+export interface MarketRegime {
   type: 'TRENDING_UP' | 'TRENDING_DOWN' | 'RANGING' | 'VOLATILE' | 'BREAKOUT';
   strength: number;
   duration: number;
@@ -798,7 +798,8 @@ export function generateMLSignal(
   if (existingSignals && existingSignals.length > 0) {
     existingScore = existingSignals.reduce((sum, s) => {
       const weight = s.confidence / 100;
-      return sum + (s.direction === 'LONG' ? weight : s.direction === 'SHORT' ? -weight : 0);
+      const side = s.side?.toUpperCase() || s.signalType;
+      return sum + (side === 'BUY' || side === 'LONG' ? weight : side === 'SELL' || side === 'SHORT' ? -weight : 0);
     }, 0) / existingSignals.length;
   }
 

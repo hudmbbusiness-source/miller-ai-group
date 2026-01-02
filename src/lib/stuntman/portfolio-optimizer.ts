@@ -330,7 +330,8 @@ export class PortfolioOptimizer {
 
     // Calculate metrics for each asset
     for (const position of positions) {
-      const candles = assetData.get(position.symbol);
+      const symbol = position.instrumentName || (position as any).symbol;
+      const candles = assetData.get(symbol);
       if (!candles || candles.length < 30) continue;
 
       const returns = this.calculateReturns(candles);
@@ -343,7 +344,7 @@ export class PortfolioOptimizer {
       totalValue += positionValue;
 
       assets.push({
-        symbol: position.symbol,
+        symbol,
         returns,
         volatility,
         sharpeRatio: volatility > 0 ? (avgReturn - riskFreeRate) / volatility : 0,

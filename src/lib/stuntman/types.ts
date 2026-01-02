@@ -821,3 +821,45 @@ export const TIMEFRAME_CANDLES_PER_DAY: Record<Timeframe, number> = {
   '1d': 1,
   '1w': 0.143,
 }
+
+// =============================================================================
+// ADDITIONAL TYPES FOR ADVANCED MODULES
+// =============================================================================
+
+// Candle type (simplified OHLCV for advanced analysis)
+export interface Candle {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+// Order book data for order flow analysis
+export interface OrderBookData {
+  bids: [number, number][]  // [price, quantity][]
+  asks: [number, number][]  // [price, quantity][]
+  timestamp?: number
+}
+
+// Convert OHLCV to Candle
+export function ohlcvToCandle(ohlcv: OHLCV): Candle {
+  return {
+    time: ohlcv.openTime,
+    open: ohlcv.open,
+    high: ohlcv.high,
+    low: ohlcv.low,
+    close: ohlcv.close,
+    volume: ohlcv.volume,
+  }
+}
+
+// Convert OrderBook to OrderBookData
+export function orderBookToData(orderBook: OrderBook): OrderBookData {
+  return {
+    bids: orderBook.bids.map(b => [b.price, b.quantity]),
+    asks: orderBook.asks.map(a => [a.price, a.quantity]),
+    timestamp: orderBook.timestamp,
+  }
+}

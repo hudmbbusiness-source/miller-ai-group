@@ -1350,20 +1350,12 @@ export class FuturesSignalGenerator {
   }
 
   private getTimeframeMs(tf: ChartTimeframe): number {
-    const map: Record<ChartTimeframe, number> = {
+    const map: Record<string, number> = {
       '1Min': 60 * 1000,
-      '2Min': 2 * 60 * 1000,
-      '3Min': 3 * 60 * 1000,
       '5Min': 5 * 60 * 1000,
-      '10Min': 10 * 60 * 1000,
       '15Min': 15 * 60 * 1000,
-      '30Min': 30 * 60 * 1000,
       '1Hour': 60 * 60 * 1000,
-      '2Hour': 2 * 60 * 60 * 1000,
-      '4Hour': 4 * 60 * 60 * 1000,
       'Daily': 24 * 60 * 60 * 1000,
-      'Weekly': 7 * 24 * 60 * 60 * 1000,
-      'Monthly': 30 * 24 * 60 * 60 * 1000,
     }
     return map[tf] || 60 * 1000
   }

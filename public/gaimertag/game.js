@@ -1708,11 +1708,19 @@ class Game {
     }
 }
 
-// Create global instance only when DOM is ready
+// Create global instance only when DOM is ready and dependencies loaded
 function initGame() {
-    if (!window.game) {
-        window.game = new Game();
-    }
+    const checkReady = () => {
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas && typeof GAME_DATA !== 'undefined' && typeof progression !== 'undefined') {
+            if (!window.game) {
+                window.game = new Game();
+            }
+        } else {
+            setTimeout(checkReady, 50);
+        }
+    };
+    checkReady();
 }
 
 if (document.readyState === 'loading') {

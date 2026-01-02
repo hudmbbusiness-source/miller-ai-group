@@ -179,7 +179,7 @@ export default function GaimertagPage() {
           </div>
 
           {/* Games Screen */}
-          <div className="screen games-screen active" id="gamesScreen">
+          <div className="screen games-screen" id="gamesScreen">
             <div className="screen-header">
               <h2>🎮 gAImertag</h2>
             </div>
@@ -357,12 +357,12 @@ export default function GaimertagPage() {
         </div>
       </div>
 
-      <Script src="/gaimertag/data.js" strategy="beforeInteractive" />
-      <Script src="/gaimertag/progression.js" strategy="beforeInteractive" />
-      <Script src="/gaimertag/store.js" strategy="beforeInteractive" />
-      <Script src="/gaimertag/game.js" strategy="beforeInteractive" />
-      <Script src="/gaimertag/flappy.js" strategy="beforeInteractive" />
-      <Script src="/gaimertag/app.js" strategy="afterInteractive" />
+      <Script src="/gaimertag/data.js" strategy="afterInteractive" />
+      <Script src="/gaimertag/progression.js" strategy="afterInteractive" />
+      <Script src="/gaimertag/store.js" strategy="afterInteractive" />
+      <Script src="/gaimertag/game.js" strategy="afterInteractive" />
+      <Script src="/gaimertag/flappy.js" strategy="afterInteractive" />
+      <Script src="/gaimertag/app.js" strategy="lazyOnload" />
     </>
   )
 }

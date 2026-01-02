@@ -11,11 +11,22 @@ class App {
     }
 
     init() {
-        // Wait for DOM
+        // Wait for DOM and all dependencies
+        const checkDependencies = () => {
+            if (typeof GAME_DATA !== 'undefined' &&
+                typeof progression !== 'undefined' &&
+                typeof store !== 'undefined' &&
+                document.getElementById('gameCanvas')) {
+                this.setup();
+            } else {
+                setTimeout(checkDependencies, 50);
+            }
+        };
+
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => this.setup());
+            document.addEventListener('DOMContentLoaded', checkDependencies);
         } else {
-            this.setup();
+            checkDependencies();
         }
     }
 
@@ -36,13 +47,8 @@ class App {
         progression.updateUI();
         this.updateLoadout();
 
-        // Render games screen by default
-        this.renderGames();
-
-        // Set games nav button as active
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.screen === 'games');
-        });
+        // Show games screen by default
+        this.showScreen('games');
 
         // Check for daily reward
         if (progression.shouldShowDailyReward()) {

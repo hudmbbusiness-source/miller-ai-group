@@ -30,6 +30,14 @@ import {
   CheckCircle,
   XCircle,
   Radio,
+  Upload,
+  Download,
+  Clock,
+  Target,
+  Shield,
+  Gauge,
+  LineChart,
+  X,
 } from 'lucide-react'
 
 // Types
@@ -109,6 +117,24 @@ export default function StuntManTerminal() {
 
   const [marketIntel, setMarketIntel] = useState<MarketIntelligence | null>(null)
   const [intelLoading, setIntelLoading] = useState(false)
+
+  // Account sync state
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [syncData, setSyncData] = useState({
+    balance: '150000',
+    openPnL: '0',
+    closedPnL: '0',
+    trailingDrawdown: '0',
+    tradingDays: '0',
+  })
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+  const [dataSource, setDataSource] = useState<'estimated' | 'manual' | 'webhook'>('estimated')
+  const [riskStatus, setRiskStatus] = useState<{
+    status: string
+    canTrade: boolean
+    warnings: string[]
+    recommendations: string[]
+  } | null>(null)
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<any>(null)
@@ -305,6 +331,81 @@ export default function StuntManTerminal() {
     setIntelLoading(false)
   }
 
+  // Fetch account data on load
+  useEffect(() => {
+    const fetchAccountData = async () => {
+      try {
+        const res = await fetch('/api/stuntman/account-sync')
+        const data = await res.json()
+        if (data.success) {
+          setDataSource(data.dataSource)
+          setLastSyncTime(data.syncAge)
+          if (data.account) {
+            setPropFirmStatus(prev => ({
+              ...prev,
+              currentBalance: data.account.balance?.netLiquidation || prev.currentBalance,
+              totalPnL: data.account.balance?.totalPnL || 0,
+              drawdownUsed: data.riskStatus?.trailingDrawdown || 0,
+              tradingDays: data.account.tradingDays || 0,
+            }))
+          }
+          if (data.riskStatus) {
+            setRiskStatus({
+              status: data.riskStatus.riskStatus,
+              canTrade: data.riskStatus.canTrade,
+              warnings: data.riskStatus.warnings || [],
+              recommendations: data.riskStatus.recommendations || [],
+            })
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch account data:', e)
+      }
+    }
+    fetchAccountData()
+  }, [])
+
+  // Handle manual sync
+  const handleManualSync = async () => {
+    try {
+      const res = await fetch('/api/stuntman/account-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: propFirmStatus.accountId,
+          balance: syncData.balance,
+          openPnL: syncData.openPnL,
+          closedPnL: syncData.closedPnL,
+          trailingDrawdown: syncData.trailingDrawdown,
+          tradingDays: syncData.tradingDays,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setDataSource('manual')
+        setLastSyncTime('just now')
+        setPropFirmStatus(prev => ({
+          ...prev,
+          currentBalance: data.account.balance.netLiquidation,
+          totalPnL: data.account.balance.totalPnL,
+          drawdownUsed: parseFloat(syncData.trailingDrawdown),
+          tradingDays: parseInt(syncData.tradingDays),
+        }))
+        if (data.riskStatus) {
+          setRiskStatus({
+            status: data.riskStatus.riskStatus,
+            canTrade: data.riskStatus.canTrade,
+            warnings: data.riskStatus.warnings || [],
+            recommendations: data.riskStatus.recommendations || [],
+          })
+        }
+        setShowSyncModal(false)
+      }
+    } catch (e) {
+      console.error('Sync failed:', e)
+    }
+  }
+
   const executeTrade = async (side: 'buy' | 'sell') => {
     try {
       await fetch('/api/stuntman/live-trade', {
@@ -363,9 +464,24 @@ export default function StuntManTerminal() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Account Overview</h3>
               {activeMarket === 'futures' && (
-                <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded">
-                  ⚠️ Estimated Data
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    dataSource === 'estimated'
+                      ? 'text-amber-400 bg-amber-500/10'
+                      : dataSource === 'manual'
+                      ? 'text-blue-400 bg-blue-500/10'
+                      : 'text-emerald-400 bg-emerald-500/10'
+                  }`}>
+                    {dataSource === 'estimated' ? '⚠️ Estimated' : dataSource === 'manual' ? '📋 Manual Sync' : '🔗 Live'}
+                  </span>
+                  <button
+                    onClick={() => setShowSyncModal(true)}
+                    className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white transition"
+                    title="Sync Account Data"
+                  >
+                    <Upload className="w-4 h-4" />
+                  </button>
+                </div>
               )}
             </div>
 
@@ -421,11 +537,57 @@ export default function StuntManTerminal() {
                   </div>
                 </div>
 
-                {/* Warning */}
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <p className="text-xs text-amber-400">Account data is estimated. Check Apex dashboard for real values.</p>
-                </div>
+                {/* Risk Status or Warning */}
+                {riskStatus ? (
+                  <div className={`p-3 rounded-lg border ${
+                    riskStatus.status === 'SAFE' ? 'bg-emerald-500/10 border-emerald-500/20' :
+                    riskStatus.status === 'WARNING' ? 'bg-amber-500/10 border-amber-500/20' :
+                    riskStatus.status === 'DANGER' ? 'bg-orange-500/10 border-orange-500/20' :
+                    'bg-red-500/10 border-red-500/20'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {riskStatus.canTrade ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-400" />
+                      )}
+                      <span className={`text-xs font-bold ${
+                        riskStatus.status === 'SAFE' ? 'text-emerald-400' :
+                        riskStatus.status === 'WARNING' ? 'text-amber-400' :
+                        riskStatus.status === 'DANGER' ? 'text-orange-400' :
+                        'text-red-400'
+                      }`}>
+                        {riskStatus.status} - {riskStatus.canTrade ? 'Trading Allowed' : 'Trading Blocked'}
+                      </span>
+                    </div>
+                    {riskStatus.warnings.length > 0 && (
+                      <div className="space-y-1">
+                        {riskStatus.warnings.slice(0, 2).map((w, i) => (
+                          <p key={i} className="text-xs text-zinc-400">{w}</p>
+                        ))}
+                      </div>
+                    )}
+                    {lastSyncTime && (
+                      <p className="text-xs text-zinc-500 mt-2 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Synced {lastSyncTime}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div>
+                      <p className="text-xs text-amber-400">Account data is estimated.</p>
+                      <button
+                        onClick={() => setShowSyncModal(true)}
+                        className="text-xs text-amber-300 underline hover:text-amber-200 mt-1"
+                      >
+                        Click to sync from Apex dashboard
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-3">
@@ -724,6 +886,113 @@ export default function StuntManTerminal() {
           )}
         </div>
       </div>
+
+      {/* Account Sync Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-xl border border-zinc-700 w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <Upload className="w-5 h-5 text-blue-400" />
+                Sync Apex Account Data
+              </h3>
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-zinc-400">
+                Copy values from your Apex Trader Funding dashboard to get accurate account data.
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-zinc-500 block mb-1">Current Balance ($)</label>
+                  <input
+                    type="number"
+                    value={syncData.balance}
+                    onChange={(e) => setSyncData({ ...syncData, balance: e.target.value })}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                    placeholder="150000"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-zinc-500 block mb-1">Open P&L ($)</label>
+                    <input
+                      type="number"
+                      value={syncData.openPnL}
+                      onChange={(e) => setSyncData({ ...syncData, openPnL: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 block mb-1">Closed P&L ($)</label>
+                    <input
+                      type="number"
+                      value={syncData.closedPnL}
+                      onChange={(e) => setSyncData({ ...syncData, closedPnL: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-zinc-500 block mb-1">Trailing Drawdown ($)</label>
+                    <input
+                      type="number"
+                      value={syncData.trailingDrawdown}
+                      onChange={(e) => setSyncData({ ...syncData, trailingDrawdown: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 block mb-1">Trading Days</label>
+                    <input
+                      type="number"
+                      value={syncData.tradingDays}
+                      onChange={(e) => setSyncData({ ...syncData, tradingDays: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-xs text-zinc-400">
+                  <strong className="text-zinc-300">Tip:</strong> Open your Apex dashboard, go to Account Overview, and copy the values shown there. The trailing drawdown is the amount used from your $5,000 limit.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-4 border-t border-zinc-800">
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium text-zinc-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleManualSync}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Sync Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

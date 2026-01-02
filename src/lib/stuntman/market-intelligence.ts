@@ -266,74 +266,156 @@ export function detectEconomicEvents(results: WebSearchResult[]): EconomicEvent[
   })
 }
 
+// ============================================================================
+// TRADING FILTER CONFIGURATION
+// Adjust these thresholds to control how strict the filter is
+// ============================================================================
+
+export interface TradingFilterConfig {
+  // If true, FOMC/NFP days only WARN but still allow trading with reduced size
+  allowTradingOnEventDays: boolean
+  // Minimum number of emergency keywords needed to block trading
+  emergencyKeywordThreshold: number
+  // Only block if breaking news is from last N hours
+  breakingNewsMaxAge: number
+  // Position size multipliers for different risk levels
+  positionSizeMultipliers: {
+    LOW: number
+    MEDIUM: number
+    HIGH: number
+    EXTREME: number
+  }
+}
+
+// DEFAULT CONFIG - More permissive for active trading
+export const DEFAULT_FILTER_CONFIG: TradingFilterConfig = {
+  allowTradingOnEventDays: true, // Allow trading, just reduce size
+  emergencyKeywordThreshold: 2, // Need 2+ emergency keywords to block
+  breakingNewsMaxAge: 2, // Only consider news from last 2 hours
+  positionSizeMultipliers: {
+    LOW: 1.0,      // Full size
+    MEDIUM: 0.75,  // 75% size
+    HIGH: 0.5,     // 50% size
+    EXTREME: 0.25  // 25% size (but still trade!)
+  }
+}
+
 /**
  * Generate trading filter based on market intelligence
+ *
+ * UPDATED: Less strict filtering - prefers warnings over blocking
+ * Only blocks trading for REAL emergencies (circuit breakers, halts)
  */
 export function generateTradingFilter(
   sentiment: MarketSentiment,
   events: EconomicEvent[],
-  breakingNews: WebSearchResult[]
+  breakingNews: WebSearchResult[],
+  config: TradingFilterConfig = DEFAULT_FILTER_CONFIG
 ): TradingFilter {
   const warnings: string[] = []
   let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME' = 'LOW'
   let shouldTrade = true
   let reason = 'Market conditions appear normal for trading'
 
-  // Check for high-impact events
+  // Check for high-impact events - WARN but don't block
   const highImpactEvents = events.filter(e => e.impact === 'HIGH')
   if (highImpactEvents.length > 0) {
-    riskLevel = 'HIGH'
-    warnings.push(`${highImpactEvents.length} HIGH IMPACT event(s) detected: ${highImpactEvents.map(e => e.name).join(', ')}`)
+    riskLevel = 'MEDIUM' // Changed from HIGH - events are normal
+    warnings.push(`Economic event(s) today: ${highImpactEvents.map(e => e.name).join(', ')} - consider smaller positions`)
 
-    // Check for FOMC specifically
+    // Check for FOMC specifically - WARN but allow trading
     const fomcEvent = highImpactEvents.find(e =>
       e.name.toLowerCase().includes('fomc') ||
       e.name.toLowerCase().includes('fed decision')
     )
     if (fomcEvent) {
-      riskLevel = 'EXTREME'
-      shouldTrade = false
-      reason = 'FOMC meeting/decision day - extreme volatility expected'
+      riskLevel = 'HIGH'
+      if (!config.allowTradingOnEventDays) {
+        shouldTrade = false
+        reason = 'FOMC meeting/decision day - trading disabled by config'
+      } else {
+        warnings.push('⚠️ FOMC day - use 50% position size, avoid trading 30min before/after announcement')
+        reason = 'FOMC day - reduced position sizing recommended'
+      }
     }
 
-    // Check for NFP
+    // Check for NFP - WARN but allow trading
     const nfpEvent = highImpactEvents.find(e =>
       e.name.toLowerCase().includes('nfp') ||
       e.name.toLowerCase().includes('non-farm') ||
       e.name.toLowerCase().includes('jobs report')
     )
     if (nfpEvent) {
-      riskLevel = 'EXTREME'
-      shouldTrade = false
-      reason = 'NFP/Jobs Report day - extreme volatility expected'
-    }
-  }
-
-  // Check for breaking news emergencies
-  const emergencyKeywords = ['crash', 'circuit breaker', 'halt', 'black swan', 'emergency']
-  for (const news of breakingNews) {
-    const text = `${news.title} ${news.snippet || ''}`.toLowerCase()
-    for (const keyword of emergencyKeywords) {
-      if (text.includes(keyword)) {
-        riskLevel = 'EXTREME'
+      riskLevel = 'HIGH'
+      if (!config.allowTradingOnEventDays) {
         shouldTrade = false
-        reason = `EMERGENCY: Market disruption detected - "${news.title}"`
-        warnings.push(`Breaking news alert: ${news.title}`)
-        break
+        reason = 'NFP/Jobs Report day - trading disabled by config'
+      } else {
+        warnings.push('⚠️ NFP day - use 50% position size, avoid trading during 8:30 AM release')
+        reason = 'NFP day - reduced position sizing recommended'
       }
     }
   }
 
-  // Check sentiment extremes
+  // Check for REAL emergencies only - need multiple indicators
+  // Single keyword mentions are NOT emergencies (news often mentions past crashes)
+  const realEmergencyKeywords = ['circuit breaker activated', 'trading halted', 'market closed', 'flash crash happening']
+  let emergencyCount = 0
+
+  for (const news of breakingNews) {
+    const text = `${news.title} ${news.snippet || ''}`.toLowerCase()
+
+    // Check for REAL emergency phrases (not just keyword mentions)
+    for (const phrase of realEmergencyKeywords) {
+      if (text.includes(phrase)) {
+        emergencyCount += 2 // Real emergencies count more
+        warnings.push(`🚨 ALERT: ${news.title}`)
+      }
+    }
+
+    // Check for concerning keywords (but don't immediately block)
+    const concerningKeywords = ['crash', 'plunge', 'collapse']
+    for (const keyword of concerningKeywords) {
+      // Only count if it's current/happening, not historical reference
+      if (text.includes(keyword) && (text.includes('today') || text.includes('now') || text.includes('breaking'))) {
+        emergencyCount++
+      }
+    }
+  }
+
+  // Only block if multiple real emergency indicators
+  if (emergencyCount >= config.emergencyKeywordThreshold) {
+    riskLevel = 'EXTREME'
+    shouldTrade = false
+    reason = 'Multiple market disruption indicators detected - trading paused for safety'
+  }
+
+  // Check sentiment extremes - informational only
   if (sentiment.overall === 'MIXED' && sentiment.confidence > 70) {
     if (riskLevel === 'LOW') riskLevel = 'MEDIUM'
-    warnings.push('Market sentiment is mixed/uncertain - conflicting signals')
+    warnings.push('Mixed market sentiment - conflicting signals in news')
+  }
+
+  // Very bearish sentiment is a warning, not a block
+  if (sentiment.score < -50) {
+    warnings.push('Strongly bearish news sentiment - consider short bias or wait for confirmation')
+  }
+
+  // Very bullish sentiment
+  if (sentiment.score > 50) {
+    warnings.push('Strongly bullish news sentiment - consider long bias')
   }
 
   // Generate news context summary
   const newsContext = sentiment.headlines.length > 0
     ? `Top headlines: ${sentiment.headlines.slice(0, 3).map(h => h.title).join('; ')}`
     : 'No significant news detected'
+
+  // Add position size recommendation
+  const recommendedSize = config.positionSizeMultipliers[riskLevel]
+  if (recommendedSize < 1.0) {
+    warnings.push(`Recommended position size: ${(recommendedSize * 100).toFixed(0)}% of normal`)
+  }
 
   return {
     shouldTrade,

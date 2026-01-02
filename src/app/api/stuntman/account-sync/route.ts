@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Calculate risk status
+    // Calculate risk status with safety features
     const config = APEX_ACCOUNT_CONFIGS['150K'];
     const currentDrawdown = config.startingBalance - accountData.balance.netLiquidation;
     const highWaterMark = Math.max(
@@ -71,12 +71,18 @@ export async function GET(request: NextRequest) {
       accountData.balance.netLiquidation + currentDrawdown
     );
 
+    // Get days remaining from query params or default to 6
+    const searchParams = request.nextUrl.searchParams;
+    const daysRemaining = parseInt(searchParams.get('daysRemaining') || '6');
+
     const riskStatus = checkApexRiskStatus(
       config.startingBalance,
       accountData.balance.netLiquidation,
       accountData.balance.closedPnL, // Daily P&L
       highWaterMark,
-      0 // Trading days - would need to track separately
+      0, // Trading days - would need to track separately
+      undefined, // Use default safety config
+      daysRemaining // Pass evaluation deadline
     );
 
     // Calculate sync age
@@ -98,6 +104,13 @@ export async function GET(request: NextRequest) {
         profitProgress: (accountData.balance.totalPnL / config.profitTarget) * 100,
         warnings: riskStatus.warnings,
         recommendations: riskStatus.recommendations,
+        // NEW safety metrics
+        safetyBuffer: riskStatus.safetyBuffer,
+        maxAllowedLossToday: riskStatus.maxAllowedLossToday,
+        recommendedPositionSize: riskStatus.recommendedPositionSize,
+        stopTradingThreshold: riskStatus.stopTradingThreshold,
+        daysRemaining: riskStatus.daysRemaining,
+        requiredDailyProfit: riskStatus.requiredDailyProfit,
       },
     });
   } catch (error) {
@@ -151,19 +164,24 @@ export async function POST(request: NextRequest) {
       })),
     });
 
-    // Calculate risk status
+    // Calculate risk status with safety features
     const config = APEX_ACCOUNT_CONFIGS['150K'];
     const highWaterMark = Math.max(
       config.startingBalance,
       accountData.balance.netLiquidation
     );
 
+    // Get days remaining from body or default to 6
+    const daysRemaining = parseInt(body.daysRemaining || '6');
+
     const riskStatus = checkApexRiskStatus(
       config.startingBalance,
       accountData.balance.netLiquidation,
       accountData.balance.closedPnL,
       highWaterMark,
-      parseInt(tradingDays || 0)
+      parseInt(tradingDays || 0),
+      undefined, // Use default safety config
+      daysRemaining // Pass evaluation deadline
     );
 
     return NextResponse.json({
@@ -176,6 +194,13 @@ export async function POST(request: NextRequest) {
         canTrade: riskStatus.canTrade,
         warnings: riskStatus.warnings,
         recommendations: riskStatus.recommendations,
+        // NEW safety metrics
+        safetyBuffer: riskStatus.safetyBuffer,
+        maxAllowedLossToday: riskStatus.maxAllowedLossToday,
+        recommendedPositionSize: riskStatus.recommendedPositionSize,
+        stopTradingThreshold: riskStatus.stopTradingThreshold,
+        daysRemaining: riskStatus.daysRemaining,
+        requiredDailyProfit: riskStatus.requiredDailyProfit,
       },
     });
   } catch (error) {

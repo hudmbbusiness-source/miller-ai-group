@@ -813,14 +813,63 @@ export interface ApexRiskStatus {
   canTrade: boolean;
   warnings: string[];
   recommendations: string[];
+  // NEW: Safety features
+  safetyBuffer: number;              // How much buffer before limit
+  maxAllowedLossToday: number;       // How much more can be lost today
+  recommendedPositionSize: number;   // % of normal position size
+  stopTradingThreshold: number;      // Auto-stop at this drawdown %
+  daysRemaining: number;             // Days left to hit profit target
+  requiredDailyProfit: number;       // $ needed per day to pass
 }
+
+// ============================================================================
+// APEX SAFETY CONFIGURATION
+// These settings help protect you from account violations and extra fees
+// ============================================================================
+
+export interface ApexSafetyConfig {
+  // SAFETY BUFFER: Stop trading BEFORE hitting the limit
+  // Set to 0.75 = stop at 75% of max drawdown ($3,750 of $5,000)
+  // This gives you a $1,250 buffer to avoid violations
+  drawdownSafetyBuffer: number;
+
+  // DAILY LOSS LIMIT: % of remaining drawdown allowed per day
+  // Set to 0.25 = can only lose 25% of remaining drawdown in a day
+  dailyLossPercent: number;
+
+  // POSITION SIZING: Automatically reduce size as drawdown increases
+  positionSizeReduction: {
+    safe: number;      // 0-40% drawdown used
+    warning: number;   // 40-60% drawdown used
+    danger: number;    // 60-80% drawdown used
+    critical: number;  // 80%+ drawdown used
+  };
+
+  // AUTO-STOP: Completely stop trading at this drawdown %
+  autoStopPercent: number;
+}
+
+// DEFAULT SAFETY CONFIG - Conservative for passing evaluation
+export const DEFAULT_APEX_SAFETY: ApexSafetyConfig = {
+  drawdownSafetyBuffer: 0.80,  // Stop at 80% ($4,000 of $5,000) - $1,000 buffer
+  dailyLossPercent: 0.30,      // Max 30% of remaining drawdown per day
+  positionSizeReduction: {
+    safe: 1.0,      // Full size when safe
+    warning: 0.75,  // 75% when warning
+    danger: 0.50,   // 50% when danger
+    critical: 0.25, // 25% when critical (or stop)
+  },
+  autoStopPercent: 0.85,  // Auto-stop at 85% drawdown used
+};
 
 export function checkApexRiskStatus(
   accountSize: number,
   currentBalance: number,
   dailyPnL: number,
   highWaterMark: number,
-  tradingDays: number
+  tradingDays: number,
+  config: ApexSafetyConfig = DEFAULT_APEX_SAFETY,
+  evaluationDeadlineDays: number = 6  // Days remaining in evaluation
 ): ApexRiskStatus {
   // Apex 150K account rules
   const maxTrailingDrawdown = 5000;  // $5,000 trailing drawdown
@@ -828,7 +877,7 @@ export function checkApexRiskStatus(
   const requiredTradingDays = 7;     // Minimum 7 trading days
 
   // Calculate trailing drawdown
-  const trailingDrawdown = highWaterMark - currentBalance;
+  const trailingDrawdown = Math.max(0, highWaterMark - currentBalance);
 
   const warnings: string[] = [];
   const recommendations: string[] = [];
@@ -837,40 +886,104 @@ export function checkApexRiskStatus(
   // Check drawdown status
   const drawdownPercent = (trailingDrawdown / maxTrailingDrawdown) * 100;
 
+  // Safety buffer calculation
+  const safetyBufferAmount = maxTrailingDrawdown * config.drawdownSafetyBuffer;
+  const safetyBuffer = safetyBufferAmount - trailingDrawdown;
+
+  // How much more can be lost TODAY (daily risk limit)
+  const remainingDrawdown = maxTrailingDrawdown - trailingDrawdown;
+  const maxAllowedLossToday = Math.min(
+    remainingDrawdown * config.dailyLossPercent,
+    safetyBuffer * 0.5  // Never risk more than half the safety buffer in a day
+  );
+
+  // Determine position size based on drawdown zone
+  let recommendedPositionSize = config.positionSizeReduction.safe;
+
   if (trailingDrawdown >= maxTrailingDrawdown) {
     riskStatus = 'VIOLATED';
-    warnings.push('ACCOUNT VIOLATED: Trailing drawdown limit breached');
-  } else if (drawdownPercent >= 80) {
+    recommendedPositionSize = 0;
+    warnings.push('🚫 ACCOUNT VIOLATED: Trailing drawdown limit breached!');
+    warnings.push('⚠️ You may need to pay a reset fee to continue');
+  } else if (drawdownPercent >= config.autoStopPercent * 100) {
     riskStatus = 'DANGER';
-    warnings.push(`DANGER: ${drawdownPercent.toFixed(1)}% of drawdown limit used`);
-    recommendations.push('Reduce position size to 25% of normal');
-    recommendations.push('Consider stopping trading for the day');
+    recommendedPositionSize = 0; // STOP TRADING
+    warnings.push(`🛑 AUTO-STOP ACTIVE: ${drawdownPercent.toFixed(1)}% of drawdown used`);
+    warnings.push(`Only $${(maxTrailingDrawdown - trailingDrawdown).toFixed(2)} remaining before violation!`);
+    recommendations.push('STOP TRADING - Too close to violation');
+    recommendations.push('Wait for winning days to rebuild buffer');
   } else if (drawdownPercent >= 60) {
+    riskStatus = 'DANGER';
+    recommendedPositionSize = config.positionSizeReduction.danger;
+    warnings.push(`⚠️ DANGER: ${drawdownPercent.toFixed(1)}% of drawdown used`);
+    warnings.push(`Safety buffer: $${safetyBuffer.toFixed(2)} remaining`);
+    recommendations.push(`Reduce position size to ${(recommendedPositionSize * 100).toFixed(0)}%`);
+    recommendations.push(`Max loss allowed today: $${maxAllowedLossToday.toFixed(2)}`);
+    recommendations.push('Consider stopping if you lose one more trade');
+  } else if (drawdownPercent >= 40) {
     riskStatus = 'WARNING';
-    warnings.push(`WARNING: ${drawdownPercent.toFixed(1)}% of drawdown limit used`);
-    recommendations.push('Reduce position size to 50% of normal');
+    recommendedPositionSize = config.positionSizeReduction.warning;
+    warnings.push(`⚡ WARNING: ${drawdownPercent.toFixed(1)}% of drawdown used`);
+    recommendations.push(`Reduce position size to ${(recommendedPositionSize * 100).toFixed(0)}%`);
+    recommendations.push(`Max loss allowed today: $${maxAllowedLossToday.toFixed(2)}`);
   }
 
-  // Check daily loss
-  if (dailyPnL < -1000) {
-    warnings.push(`Daily loss of $${Math.abs(dailyPnL).toFixed(2)} - consider stopping`);
+  // Check daily loss against our safe daily limit
+  if (dailyPnL < 0 && Math.abs(dailyPnL) >= maxAllowedLossToday * 0.8) {
+    warnings.push(`📊 Daily loss ($${Math.abs(dailyPnL).toFixed(2)}) approaching limit ($${maxAllowedLossToday.toFixed(2)})`);
+    recommendations.push('Consider stopping for today');
     if (riskStatus === 'SAFE') riskStatus = 'WARNING';
   }
 
+  if (dailyPnL < 0 && Math.abs(dailyPnL) >= maxAllowedLossToday) {
+    warnings.push(`🛑 DAILY LIMIT REACHED: Lost $${Math.abs(dailyPnL).toFixed(2)} today`);
+    recommendations.push('STOP TRADING FOR TODAY - Daily safety limit reached');
+    if (riskStatus !== 'VIOLATED') riskStatus = 'DANGER';
+    recommendedPositionSize = 0;
+  }
+
   // Check progress to target
-  const progressToTarget = ((currentBalance - accountSize) / profitTarget) * 100;
+  const currentProfit = currentBalance - accountSize;
+  const progressToTarget = (currentProfit / profitTarget) * 100;
+  const profitRemaining = profitTarget - currentProfit;
+
+  // Calculate required daily profit to pass
+  const daysRemaining = Math.max(1, evaluationDeadlineDays);
+  const requiredDailyProfit = profitRemaining > 0 ? profitRemaining / daysRemaining : 0;
+
   if (progressToTarget < 0) {
-    recommendations.push('Focus on capital preservation until positive');
-  } else if (progressToTarget >= 80) {
-    recommendations.push('Close to profit target - consider reducing risk');
+    recommendations.push('📉 Currently in drawdown - focus on capital preservation');
+    recommendations.push(`Need to make $${Math.abs(currentProfit).toFixed(2)} just to break even`);
+  } else if (progressToTarget >= 90) {
+    recommendations.push('🎯 Almost there! Consider smaller size to protect gains');
+    recommendations.push(`Only $${profitRemaining.toFixed(2)} more to pass!`);
+  } else if (progressToTarget >= 70) {
+    recommendations.push('💪 Great progress! Stay disciplined');
+    recommendations.push(`$${profitRemaining.toFixed(2)} more to pass`);
+  }
+
+  // Time-based recommendations
+  if (profitRemaining > 0) {
+    if (requiredDailyProfit > 2500) {
+      warnings.push(`⏰ Need $${requiredDailyProfit.toFixed(2)}/day - very aggressive target`);
+      recommendations.push('Focus on A+ setups only, avoid forcing trades');
+    } else if (requiredDailyProfit > 1500) {
+      recommendations.push(`📅 Target: $${requiredDailyProfit.toFixed(2)}/day over ${daysRemaining} days`);
+    } else if (requiredDailyProfit > 0) {
+      recommendations.push(`✅ Manageable target: $${requiredDailyProfit.toFixed(2)}/day`);
+    }
   }
 
   // Trading days check
   if (tradingDays < requiredTradingDays) {
-    recommendations.push(`Need ${requiredTradingDays - tradingDays} more trading days`);
+    const daysNeeded = requiredTradingDays - tradingDays;
+    recommendations.push(`📆 Need ${daysNeeded} more trading day${daysNeeded > 1 ? 's' : ''} minimum`);
   }
 
-  const canTrade = riskStatus !== 'VIOLATED' && drawdownPercent < 90;
+  // Determine if trading is allowed
+  const canTrade = riskStatus !== 'VIOLATED' &&
+                   recommendedPositionSize > 0 &&
+                   drawdownPercent < (config.autoStopPercent * 100);
 
   return {
     accountSize,
@@ -885,5 +998,67 @@ export function checkApexRiskStatus(
     canTrade,
     warnings,
     recommendations,
+    // NEW fields
+    safetyBuffer,
+    maxAllowedLossToday,
+    recommendedPositionSize,
+    stopTradingThreshold: config.autoStopPercent * 100,
+    daysRemaining,
+    requiredDailyProfit,
+  };
+}
+
+// ============================================================================
+// POSITION SIZE CALCULATOR
+// Calculates safe position size based on current risk status
+// ============================================================================
+
+export interface PositionSizeRecommendation {
+  maxContracts: number;
+  recommendedContracts: number;
+  stopLossPoints: number;
+  maxRiskPerTrade: number;
+  reasoning: string;
+}
+
+export function calculateSafePositionSize(
+  riskStatus: ApexRiskStatus,
+  instrumentTickValue: number = 12.50,  // ES = $12.50 per tick
+  ticksToStopLoss: number = 8,          // Default 8 tick stop = $100 per contract
+  maxContractsAllowed: number = 17      // Apex 150K limit
+): PositionSizeRecommendation {
+  const riskPerContract = instrumentTickValue * ticksToStopLoss;
+
+  // Start with max allowed
+  let maxContracts = maxContractsAllowed;
+
+  // Reduce based on recommended position size
+  const recommendedContracts = Math.floor(
+    maxContractsAllowed * riskStatus.recommendedPositionSize
+  );
+
+  // Further limit based on max allowed loss today
+  const contractsBasedOnDailyLimit = Math.floor(
+    riskStatus.maxAllowedLossToday / riskPerContract
+  );
+
+  // Take the more conservative option
+  const finalContracts = Math.max(0, Math.min(recommendedContracts, contractsBasedOnDailyLimit));
+
+  let reasoning = '';
+  if (finalContracts === 0) {
+    reasoning = 'Trading not recommended - risk limits reached';
+  } else if (finalContracts < recommendedContracts) {
+    reasoning = `Limited by daily loss allowance ($${riskStatus.maxAllowedLossToday.toFixed(0)})`;
+  } else {
+    reasoning = `Based on ${(riskStatus.recommendedPositionSize * 100).toFixed(0)}% position sizing`;
+  }
+
+  return {
+    maxContracts: maxContractsAllowed,
+    recommendedContracts: finalContracts,
+    stopLossPoints: ticksToStopLoss,
+    maxRiskPerTrade: finalContracts * riskPerContract,
+    reasoning,
   };
 }

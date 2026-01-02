@@ -32,7 +32,7 @@ const expandedNav = [
   { href: '/app/assets', label: 'Assets', icon: ShoppingBag },
   { href: '/app/zuckerberg', label: 'Zuckerberg', icon: FileCheck },
   { href: '/app/tools/kachow', label: 'Kachow AI', icon: Zap },
-  { href: '/app/tools/stuntman', label: 'Stuntman', icon: BarChart3 },
+  { href: '/stuntman', label: 'StuntMan', icon: BarChart3 },
   { href: '/app/settings', label: 'Settings', icon: Settings },
 ]
 

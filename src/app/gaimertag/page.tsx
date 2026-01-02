@@ -179,10 +179,9 @@ export default function GaimertagPage() {
           </div>
 
           {/* Games Screen */}
-          <div className="screen games-screen" id="gamesScreen">
+          <div className="screen games-screen active" id="gamesScreen">
             <div className="screen-header">
-              <button className="back-btn" data-back="true">←</button>
-              <h2>🎮 Games</h2>
+              <h2>🎮 gAImertag</h2>
             </div>
             <div className="screen-content">
               <div className="games-grid" id="gamesGrid"></div>
@@ -230,7 +229,7 @@ export default function GaimertagPage() {
           </div>
 
           {/* Play Screen (Start) */}
-          <div className="screen play-screen active" id="playScreen">
+          <div className="screen play-screen" id="playScreen">
             <div className="play-content">
               <div className="game-logo">SUPER RUNNER</div>
               <div className="game-tagline">RUN • JUMP • COLLECT</div>

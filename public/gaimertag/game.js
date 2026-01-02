@@ -1321,7 +1321,7 @@ class Game {
         document.getElementById('hud').style.display = 'none';
         document.getElementById('topBar').style.display = 'flex';
         document.getElementById('navButtons').style.display = 'flex';
-        document.getElementById('playScreen').classList.add('active');
+        document.getElementById('gamesScreen').classList.add('active');
         this.reset();
         this.draw();
     }

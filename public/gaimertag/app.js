@@ -5,7 +5,7 @@
 
 class App {
     constructor() {
-        this.currentScreen = 'play';
+        this.currentScreen = 'games';
         this.currentGame = 'runner'; // Track which game is active
         this.init();
     }
@@ -36,6 +36,14 @@ class App {
         progression.updateUI();
         this.updateLoadout();
 
+        // Render games screen by default
+        this.renderGames();
+
+        // Set games nav button as active
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.screen === 'games');
+        });
+
         // Check for daily reward
         if (progression.shouldShowDailyReward()) {
             setTimeout(() => this.showDailyReward(), 500);
@@ -58,7 +66,7 @@ class App {
         // Back buttons
         document.querySelectorAll('.back-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                this.showScreen('play');
+                this.showScreen('games');
             });
         });
     }
@@ -127,13 +135,7 @@ class App {
         // Home button
         document.getElementById('homeBtn').addEventListener('click', () => {
             document.getElementById('gameoverScreen').classList.remove('show');
-            this.showScreen('play');
-            // Redraw the appropriate game in idle state
-            if (this.currentGame === 'flappy' && window.flappyGame) {
-                window.flappyGame.draw();
-            } else if (window.game) {
-                game.draw();
-            }
+            this.showScreen('games');
         });
 
         // Share button
@@ -319,20 +321,27 @@ class App {
     startGame(gameId = 'runner') {
         this.currentGame = gameId;
 
-        document.getElementById('playScreen').classList.remove('active');
+        // Hide all screens
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+
+        // Hide UI elements
         document.getElementById('topBar').style.display = 'none';
         document.getElementById('navButtons').style.display = 'none';
         document.getElementById('hud').style.display = 'flex';
 
         if (gameId === 'flappy' && window.FlappyGame) {
-            // Start Flappy Bird
+            // Start Heading South
             if (!window.flappyGame) {
                 window.flappyGame = new FlappyGame();
             }
             window.flappyGame.start();
+        } else if (window.game) {
+            // Start Runner
+            window.game.start();
         } else {
-            // Start Runner (default)
-            game.start();
+            console.error('[gAImertag] Game not initialized');
         }
     }
 
@@ -550,8 +559,7 @@ class App {
         if (isUnlocked) {
             card.addEventListener('click', () => {
                 if (gameData.id === 'runner') {
-                    this.currentGame = 'runner';
-                    this.showScreen('play');
+                    this.startGame('runner');
                 } else if (gameData.id === 'flappy') {
                     this.startGame('flappy');
                 } else {

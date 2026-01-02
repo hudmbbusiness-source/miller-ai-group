@@ -1650,6 +1650,11 @@ class Game {
 
         document.getElementById('gameoverScreen').classList.add('show');
         document.getElementById('hud').style.display = 'none';
+
+        // Submit score to leaderboard
+        if (window.app && stats.score > 0) {
+            window.app.submitScore('runner', stats.score);
+        }
     }
 
     screenShake(intensity, duration) {

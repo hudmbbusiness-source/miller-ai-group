@@ -1017,6 +1017,11 @@ class FlappyGame {
 
         document.getElementById('gameoverScreen').classList.add('show');
         document.getElementById('hud').style.display = 'none';
+
+        // Submit score to leaderboard
+        if (window.app && this.score > 0) {
+            window.app.submitScore('flappy', this.score);
+        }
     }
 
     screenShake(intensity, duration) {

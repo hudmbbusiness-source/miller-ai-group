@@ -311,11 +311,36 @@ export default function GaimertagPage() {
                 <button className="btn-secondary" id="homeBtn">Home</button>
               </div>
 
-              <div className="watch-ad-bonus" id="watchAdBonus">
-                <button className="btn-ad">
-                  <span>🎬</span>
-                  <span>Watch Ad for 2x Coins!</span>
+              <div className="gameover-social">
+                <button className="btn-share" id="shareBtn">
+                  <span>📤</span>
+                  <span>Share Score</span>
                 </button>
+                <button className="btn-leaderboard" id="leaderboardBtn">
+                  <span>🏆</span>
+                  <span>Leaderboard</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Leaderboard Modal */}
+          <div className="modal-overlay" id="leaderboardModal">
+            <div className="modal leaderboard-modal">
+              <div className="modal-header">
+                <h2>🏆 Leaderboard</h2>
+                <button className="modal-close" id="closeLeaderboard">✕</button>
+              </div>
+              <div className="leaderboard-tabs">
+                <button className="leaderboard-tab active" data-game="runner">Super Runner</button>
+                <button className="leaderboard-tab" data-game="flappy">Heading South</button>
+              </div>
+              <div className="leaderboard-content" id="leaderboardContent">
+                <div className="leaderboard-loading">Loading...</div>
+              </div>
+              <div className="leaderboard-player" id="playerRank">
+                <span className="rank-label">Your Rank</span>
+                <span className="rank-value" id="yourRank">--</span>
               </div>
             </div>
           </div>

@@ -136,6 +136,30 @@ class App {
             }
         });
 
+        // Share button
+        document.getElementById('shareBtn').addEventListener('click', () => {
+            this.shareScore();
+        });
+
+        // Leaderboard button
+        document.getElementById('leaderboardBtn').addEventListener('click', () => {
+            this.showLeaderboard();
+        });
+
+        // Close leaderboard
+        document.getElementById('closeLeaderboard').addEventListener('click', () => {
+            document.getElementById('leaderboardModal').classList.remove('show');
+        });
+
+        // Leaderboard tabs
+        document.querySelectorAll('.leaderboard-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.leaderboard-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.loadLeaderboard(tab.dataset.game);
+            });
+        });
+
         // Loadout clicks
         document.getElementById('selectedCharacter').addEventListener('click', () => {
             this.showScreen('store');
@@ -149,6 +173,147 @@ class App {
             store.currentTab = 'themes';
             store.renderStore();
         });
+    }
+
+    // ========================================================================
+    // SHARE & LEADERBOARD
+    // ========================================================================
+
+    async shareScore() {
+        const gameName = this.currentGame === 'flappy' ? 'Heading South' : 'Super Runner';
+        const score = document.getElementById('finalScore').textContent;
+        const distance = document.getElementById('finalDistance').textContent;
+
+        const shareText = `I just scored ${score} points in ${gameName}! Can you beat my score? Play now at kachow.app/gaimertag`;
+        const shareUrl = 'https://kachow.app/gaimertag';
+
+        // Try native share first (mobile)
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: `${gameName} - High Score!`,
+                    text: shareText,
+                    url: shareUrl
+                });
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    this.fallbackShare(shareText, shareUrl);
+                }
+            }
+        } else {
+            this.fallbackShare(shareText, shareUrl);
+        }
+    }
+
+    fallbackShare(text, url) {
+        // Copy to clipboard as fallback
+        const fullText = `${text}\n${url}`;
+        navigator.clipboard.writeText(fullText).then(() => {
+            store.showMessage('Score copied to clipboard!');
+        }).catch(() => {
+            // Final fallback - prompt user
+            prompt('Copy your score:', fullText);
+        });
+    }
+
+    showLeaderboard() {
+        const modal = document.getElementById('leaderboardModal');
+        modal.classList.add('show');
+
+        // Set active tab to current game
+        document.querySelectorAll('.leaderboard-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.game === this.currentGame);
+        });
+
+        this.loadLeaderboard(this.currentGame);
+    }
+
+    async loadLeaderboard(gameId) {
+        const content = document.getElementById('leaderboardContent');
+        const yourRank = document.getElementById('yourRank');
+
+        content.innerHTML = '<div class="leaderboard-loading">Loading...</div>';
+        yourRank.textContent = '--';
+
+        try {
+            const response = await fetch(`/api/gaimertag/leaderboard?game=${gameId}`);
+            const data = await response.json();
+
+            if (!data.scores || data.scores.length === 0) {
+                content.innerHTML = `
+                    <div class="leaderboard-empty">
+                        <div class="leaderboard-empty-icon">🏆</div>
+                        <div class="leaderboard-empty-text">No scores yet! Be the first!</div>
+                    </div>
+                `;
+                return;
+            }
+
+            content.innerHTML = '';
+
+            // Get player's ID from localStorage
+            const playerId = this.getPlayerId();
+            let playerRank = null;
+
+            data.scores.forEach((entry, index) => {
+                const rank = index + 1;
+                const isCurrentPlayer = entry.player_id === playerId;
+
+                if (isCurrentPlayer) {
+                    playerRank = rank;
+                }
+
+                const entryEl = document.createElement('div');
+                entryEl.className = `leaderboard-entry ${rank <= 3 ? `top-${rank}` : ''} ${isCurrentPlayer ? 'current-player' : ''}`;
+
+                entryEl.innerHTML = `
+                    <div class="leaderboard-rank">${rank <= 3 ? ['🥇', '🥈', '🥉'][rank-1] : rank}</div>
+                    <div class="leaderboard-name">${entry.player_name || 'Player'}</div>
+                    <div class="leaderboard-score">${entry.score.toLocaleString()}</div>
+                `;
+
+                content.appendChild(entryEl);
+            });
+
+            yourRank.textContent = playerRank || '--';
+        } catch (error) {
+            console.error('[gAImertag] Failed to load leaderboard:', error);
+            content.innerHTML = `
+                <div class="leaderboard-empty">
+                    <div class="leaderboard-empty-icon">😢</div>
+                    <div class="leaderboard-empty-text">Failed to load leaderboard</div>
+                </div>
+            `;
+        }
+    }
+
+    getPlayerId() {
+        let playerId = localStorage.getItem('gaimertag_player_id');
+        if (!playerId) {
+            playerId = 'player_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('gaimertag_player_id', playerId);
+        }
+        return playerId;
+    }
+
+    async submitScore(gameId, score) {
+        try {
+            const playerId = this.getPlayerId();
+            const playerName = localStorage.getItem('gaimertag_player_name') || 'Player';
+
+            await fetch('/api/gaimertag/leaderboard', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    game_id: gameId,
+                    player_id: playerId,
+                    player_name: playerName,
+                    score: score
+                })
+            });
+        } catch (error) {
+            console.error('[gAImertag] Failed to submit score:', error);
+        }
     }
 
     startGame(gameId = 'runner') {

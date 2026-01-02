@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createChart } from 'lightweight-charts'
+import { createChart, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts'
 import {
   TrendingUp,
   TrendingDown,
@@ -249,7 +249,7 @@ export default function StuntManTerminal() {
       height: 400,
     })
 
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -258,7 +258,7 @@ export default function StuntManTerminal() {
       wickDownColor: '#ef4444',
     })
 
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       color: '#3b82f6',
       priceFormat: { type: 'volume' },
       priceScaleId: '',
@@ -267,14 +267,14 @@ export default function StuntManTerminal() {
       scaleMargins: { top: 0.85, bottom: 0 },
     })
 
-    const ema9 = chart.addLineSeries({
+    const ema9 = chart.addSeries(LineSeries, {
       color: '#f59e0b',
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     })
 
-    const ema21 = chart.addLineSeries({
+    const ema21 = chart.addSeries(LineSeries, {
       color: '#8b5cf6',
       lineWidth: 1,
       priceLineVisible: false,

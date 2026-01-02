@@ -53,10 +53,12 @@ function LoginContent() {
 
     try {
       const supabase = createClient()
+      // Use the redirect param from URL, default to /app
+      const redirectPath = searchParams.get('redirect') || '/app'
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/app`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectPath)}`,
         },
       })
 
@@ -79,7 +81,8 @@ function LoginContent() {
   }
 
   const handleEnterSystem = () => {
-    router.push('/app')
+    const redirectPath = searchParams.get('redirect') || '/app'
+    router.push(redirectPath)
   }
 
   return (

@@ -2,44 +2,43 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Link from 'next/link'
-import { createChart, ColorType, LineSeries } from 'lightweight-charts'
+import { createChart, CandlestickSeries, VolumeSeries, LineSeries } from 'lightweight-charts'
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Zap,
+  Shield,
+  Target,
+  BarChart3,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownRight,
+  RefreshCw,
+  Settings,
+  Bell,
+  ChevronDown,
+  Play,
+  Pause,
+  Circle,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Percent,
+  LineChart,
+  CandlestickChart,
+  Layers,
+  Bot,
+  Cpu,
+  Brain,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
 
 // =============================================================================
 // TYPES
 // =============================================================================
-
-interface Ticker {
-  instrumentName: string
-  lastPrice: number
-  priceChange24h: number
-  priceChangePercent24h: number
-  highPrice: number
-  lowPrice: number
-  volume: number
-}
-
-interface Account {
-  id: string
-  name: string
-  is_paper: boolean
-  balance: number
-  initial_balance: number
-  realized_pnl: number
-  unrealized_pnl?: number
-}
-
-interface Position {
-  id: string
-  instrument_name: string
-  side: string
-  quantity: number
-  entry_price: number
-  current_price: number
-  unrealized_pnl: number
-  stop_loss?: number
-  take_profit?: number
-}
 
 interface RealBalance {
   currency: string
@@ -47,86 +46,236 @@ interface RealBalance {
   valueUSD: number
 }
 
-interface AdvancedSignal {
+interface Signal {
   instrument: string
   action: string
   confidence: number
   risk_score: number
   stop_loss: number
   take_profit: number
-  position_size: number
   sources: Array<{ name: string; signal: string; strength: number }>
-  currentPrice: number
-  trade?: { success: boolean; message: string }
+}
+
+interface Trade {
+  id: string
+  instrument: string
+  side: 'BUY' | 'SELL'
+  quantity: number
+  price: number
+  value: number
+  timestamp: number
+  pnl?: number
+  status: 'pending' | 'filled' | 'cancelled'
+}
+
+interface OrderBookLevel {
+  price: number
+  quantity: number
+  total: number
 }
 
 // =============================================================================
-// PRICE CHART - Using Line Series (v5 compatible)
+// PROFESSIONAL TRADING TERMINAL
 // =============================================================================
 
-function PriceChart({ instrument, isPositive }: { instrument: string; isPositive: boolean }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
-  const seriesRef = useRef<any>(null)
-  const [timeframe, setTimeframe] = useState<'1D' | '1W' | '1M'>('1D')
+export default function StuntManTerminal() {
+  // State
+  const [selectedPair, setSelectedPair] = useState('BTC_USDT')
+  const [realBalances, setRealBalances] = useState<RealBalance[]>([])
+  const [totalBalance, setTotalBalance] = useState(0)
+  const [connected, setConnected] = useState(false)
+  const [currentPrice, setCurrentPrice] = useState(0)
+  const [priceChange24h, setPriceChange24h] = useState(0)
+  const [high24h, setHigh24h] = useState(0)
+  const [low24h, setLow24h] = useState(0)
+  const [volume24h, setVolume24h] = useState(0)
+  const [signals, setSignals] = useState<Signal[]>([])
+  const [trades, setTrades] = useState<Trade[]>([])
+  const [bids, setBids] = useState<OrderBookLevel[]>([])
+  const [asks, setAsks] = useState<OrderBookLevel[]>([])
+  const [autoTrading, setAutoTrading] = useState(false)
+  const [botStatus, setBotStatus] = useState<'idle' | 'scanning' | 'trading'>('idle')
+  const [lastScan, setLastScan] = useState<string>('')
+  const [timeframe, setTimeframe] = useState('15m')
+  const [showIndicators, setShowIndicators] = useState(true)
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/stuntman/market?action=history&instrument=${instrument}&timeframe=${timeframe}`)
-      const data = await res.json()
+  // Chart refs
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<any>(null)
+  const candleSeriesRef = useRef<any>(null)
+  const volumeSeriesRef = useRef<any>(null)
+  const ema9Ref = useRef<any>(null)
+  const ema21Ref = useRef<any>(null)
 
-      if (data.success && data.history && seriesRef.current) {
-        const chartData = data.history.map((h: any) => ({
-          time: h.time,
-          value: h.close,
-        }))
-        seriesRef.current.setData(chartData)
-        chartRef.current?.timeScale().fitContent()
+  // Trading pairs
+  const pairs = [
+    { symbol: 'BTC_USDT', name: 'Bitcoin', icon: '₿' },
+    { symbol: 'ETH_USDT', name: 'Ethereum', icon: 'Ξ' },
+    { symbol: 'SOL_USDT', name: 'Solana', icon: '◎' },
+    { symbol: 'BNB_USDT', name: 'BNB', icon: '⬡' },
+    { symbol: 'XRP_USDT', name: 'Ripple', icon: '✕' },
+    { symbol: 'DOGE_USDT', name: 'Dogecoin', icon: 'Ð' },
+  ]
+
+  // =============================================================================
+  // DATA FETCHING
+  // =============================================================================
+
+  // Fetch real balance
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch('/api/stuntman/balance')
+        const data = await res.json()
+        if (data.success) {
+          setRealBalances(data.balances || [])
+          setTotalBalance(data.totalUSD || 0)
+          setConnected(true)
+        }
+      } catch (e) {
+        console.error('Balance fetch error:', e)
       }
-    } catch (e) {
-      console.error('Chart error:', e)
     }
-  }, [instrument, timeframe])
+    fetchBalance()
+    const interval = setInterval(fetchBalance, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Fetch ticker data
+  useEffect(() => {
+    const fetchTicker = async () => {
+      try {
+        const res = await fetch(`https://api.crypto.com/exchange/v1/public/get-ticker?instrument_name=${selectedPair}`)
+        const data = await res.json()
+        if (data.code === 0 && data.result?.data?.[0]) {
+          const t = data.result.data[0]
+          setCurrentPrice(parseFloat(t.a))
+          setPriceChange24h(parseFloat(t.c) * 100)
+          setHigh24h(parseFloat(t.h))
+          setLow24h(parseFloat(t.l))
+          setVolume24h(parseFloat(t.v) * parseFloat(t.a))
+        }
+      } catch (e) {
+        console.error('Ticker error:', e)
+      }
+    }
+    fetchTicker()
+    const interval = setInterval(fetchTicker, 2000) // Fast updates
+    return () => clearInterval(interval)
+  }, [selectedPair])
+
+  // Fetch order book
+  useEffect(() => {
+    const fetchOrderBook = async () => {
+      try {
+        const res = await fetch(`https://api.crypto.com/exchange/v1/public/get-book?instrument_name=${selectedPair}&depth=15`)
+        const data = await res.json()
+        if (data.code === 0 && data.result?.data?.[0]) {
+          const book = data.result.data[0]
+
+          let bidTotal = 0
+          const parsedBids = (book.bids || []).slice(0, 10).map((b: any) => {
+            bidTotal += parseFloat(b[1])
+            return { price: parseFloat(b[0]), quantity: parseFloat(b[1]), total: bidTotal }
+          })
+
+          let askTotal = 0
+          const parsedAsks = (book.asks || []).slice(0, 10).map((a: any) => {
+            askTotal += parseFloat(a[1])
+            return { price: parseFloat(a[0]), quantity: parseFloat(a[1]), total: askTotal }
+          })
+
+          setBids(parsedBids)
+          setAsks(parsedAsks.reverse())
+        }
+      } catch (e) {
+        console.error('Order book error:', e)
+      }
+    }
+    fetchOrderBook()
+    const interval = setInterval(fetchOrderBook, 1000)
+    return () => clearInterval(interval)
+  }, [selectedPair])
+
+  // =============================================================================
+  // CANDLESTICK CHART
+  // =============================================================================
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!chartContainerRef.current) return
 
-    const chart = createChart(containerRef.current, {
+    const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
+        background: { color: '#0a0a0a' },
         textColor: '#71717a',
       },
       grid: {
-        vertLines: { visible: false },
-        horzLines: { visible: false },
+        vertLines: { color: '#1a1a1a' },
+        horzLines: { color: '#1a1a1a' },
       },
-      width: containerRef.current.clientWidth,
-      height: 200,
-      rightPriceScale: { visible: false },
-      leftPriceScale: { visible: false },
-      timeScale: { visible: false },
       crosshair: {
-        horzLine: { visible: false },
-        vertLine: { visible: false },
+        mode: 1,
+        vertLine: { color: '#525252', style: 2 },
+        horzLine: { color: '#525252', style: 2 },
       },
-      handleScale: false,
-      handleScroll: false,
+      rightPriceScale: {
+        borderColor: '#262626',
+        scaleMargins: { top: 0.1, bottom: 0.2 },
+      },
+      timeScale: {
+        borderColor: '#262626',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 500,
     })
 
-    // Use LineSeries for v5 compatibility
-    const series = chart.addSeries(LineSeries, {
-      color: isPositive ? '#10b981' : '#ef4444',
-      lineWidth: 2,
+    // Candlestick series
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
+    })
+
+    // Volume series
+    const volumeSeries = chart.addSeries(VolumeSeries, {
+      color: '#3b82f6',
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+    })
+    volumeSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.8, bottom: 0 },
+    })
+
+    // EMA 9
+    const ema9 = chart.addSeries(LineSeries, {
+      color: '#f59e0b',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    })
+
+    // EMA 21
+    const ema21 = chart.addSeries(LineSeries, {
+      color: '#8b5cf6',
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     })
 
     chartRef.current = chart
-    seriesRef.current = series
+    candleSeriesRef.current = candleSeries
+    volumeSeriesRef.current = volumeSeries
+    ema9Ref.current = ema9
+    ema21Ref.current = ema21
 
     const handleResize = () => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth })
+      if (chartContainerRef.current) {
+        chart.applyOptions({ width: chartContainerRef.current.clientWidth })
       }
     }
     window.addEventListener('resize', handleResize)
@@ -135,573 +284,455 @@ function PriceChart({ instrument, isPositive }: { instrument: string; isPositive
       window.removeEventListener('resize', handleResize)
       chart.remove()
     }
-  }, [isPositive])
+  }, [])
 
+  // Fetch candle data
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
-  }, [fetchData])
-
-  return (
-    <div>
-      <div ref={containerRef} className="w-full" />
-      <div className="flex gap-1 mt-4">
-        {(['1D', '1W', '1M'] as const).map((tf) => (
-          <button
-            key={tf}
-            onClick={() => setTimeframe(tf)}
-            className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-              timeframe === tf
-                ? 'bg-white text-black'
-                : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
-            }`}
-          >
-            {tf}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// =============================================================================
-// MAIN DASHBOARD
-// =============================================================================
-
-export default function StuntManDashboard() {
-  const [tickers, setTickers] = useState<Ticker[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [positions, setPositions] = useState<Position[]>([])
-  const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
-  const [selectedInstrument, setSelectedInstrument] = useState('BTC_USDT')
-  const [loading, setLoading] = useState(true)
-  const [botRunning, setBotRunning] = useState(false)
-  const [opportunities, setOpportunities] = useState<AdvancedSignal[]>([])
-  const [lastScan, setLastScan] = useState<string | null>(null)
-  const [realBalances, setRealBalances] = useState<RealBalance[]>([])
-  const [realTotalUSD, setRealTotalUSD] = useState(0)
-  const [realConnected, setRealConnected] = useState(false)
-  const [autoTrading, setAutoTrading] = useState(false)
-  const [tradingStatus, setTradingStatus] = useState<string>('')
-  const [recentTrades, setRecentTrades] = useState<any[]>([])
-  const [liveSignals, setLiveSignals] = useState<any[]>([])
-
-  // Fetch real Crypto.com balance
-  useEffect(() => {
-    const fetchRealBalance = async () => {
+    const fetchCandles = async () => {
       try {
-        const res = await fetch('/api/stuntman/balance')
+        const res = await fetch(
+          `https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name=${selectedPair}&timeframe=${timeframe}&count=200`
+        )
         const data = await res.json()
-        if (data.success) {
-          setRealBalances(data.balances || [])
-          setRealTotalUSD(data.totalUSD || 0)
-          setRealConnected(true)
+
+        if (data.code === 0 && data.result?.data) {
+          const candles = data.result.data
+            .sort((a: any, b: any) => a.t - b.t)
+            .map((c: any) => ({
+              time: Math.floor(c.t / 1000),
+              open: parseFloat(c.o),
+              high: parseFloat(c.h),
+              low: parseFloat(c.l),
+              close: parseFloat(c.c),
+              volume: parseFloat(c.v),
+            }))
+
+          if (candleSeriesRef.current) {
+            candleSeriesRef.current.setData(candles.map((c: any) => ({
+              time: c.time,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+            })))
+          }
+
+          if (volumeSeriesRef.current) {
+            volumeSeriesRef.current.setData(candles.map((c: any) => ({
+              time: c.time,
+              value: c.volume,
+              color: c.close >= c.open ? '#22c55e40' : '#ef444440',
+            })))
+          }
+
+          // Calculate EMAs
+          if (showIndicators && ema9Ref.current && ema21Ref.current) {
+            const closes = candles.map((c: any) => c.close)
+            const ema9Data = calculateEMA(closes, 9).map((val, i) => ({
+              time: candles[i].time,
+              value: val,
+            })).filter(d => d.value !== null)
+
+            const ema21Data = calculateEMA(closes, 21).map((val, i) => ({
+              time: candles[i].time,
+              value: val,
+            })).filter(d => d.value !== null)
+
+            ema9Ref.current.setData(ema9Data)
+            ema21Ref.current.setData(ema21Data)
+          }
+
+          chartRef.current?.timeScale().fitContent()
         }
       } catch (e) {
-        console.error('Real balance error:', e)
+        console.error('Candle fetch error:', e)
       }
     }
 
-    fetchRealBalance()
-    const interval = setInterval(fetchRealBalance, 30000)
+    fetchCandles()
+    const interval = setInterval(fetchCandles, 15000)
     return () => clearInterval(interval)
-  }, [])
+  }, [selectedPair, timeframe, showIndicators])
+
+  // EMA calculation
+  function calculateEMA(data: number[], period: number): (number | null)[] {
+    const result: (number | null)[] = []
+    const multiplier = 2 / (period + 1)
+    let ema: number | null = null
+
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        result.push(null)
+      } else if (i === period - 1) {
+        ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period
+        result.push(ema)
+      } else {
+        ema = (data[i] - ema!) * multiplier + ema!
+        result.push(ema)
+      }
+    }
+    return result
+  }
+
+  // =============================================================================
+  // TRADING BOT
+  // =============================================================================
+
+  const runBot = async (mode: 'analyze' | 'trade') => {
+    setBotStatus('scanning')
+    try {
+      const res = await fetch('/api/stuntman/live-trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: mode }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        setSignals(data.signals || [])
+        setLastScan(new Date().toLocaleTimeString())
+
+        if (mode === 'trade' && data.trades?.length > 0) {
+          setTrades(prev => [...data.trades, ...prev].slice(0, 50))
+          setBotStatus('trading')
+        } else {
+          setBotStatus('idle')
+        }
+      }
+    } catch (e) {
+      console.error('Bot error:', e)
+      setBotStatus('idle')
+    }
+  }
 
   // Auto-trading loop
   useEffect(() => {
     if (!autoTrading) return
 
-    const runAutoTrade = async () => {
-      setTradingStatus('Scanning markets...')
-      try {
-        const res = await fetch('/api/stuntman/live-trade', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'trade' }),
-        })
-        const data = await res.json()
-
-        if (data.success) {
-          setLiveSignals(data.signals || [])
-          if (data.trades?.length > 0) {
-            setRecentTrades(prev => [...data.trades, ...prev].slice(0, 10))
-            setTradingStatus(`Executed ${data.trades.length} trade(s)`)
-          } else {
-            setTradingStatus('No trades - waiting for opportunities')
-          }
-        } else {
-          setTradingStatus(`Error: ${data.error}`)
-        }
-      } catch (e) {
-        setTradingStatus('Trading error - retrying...')
-      }
-    }
-
-    // Run immediately
-    runAutoTrade()
-
-    // Then run every 2 minutes
-    const interval = setInterval(runAutoTrade, 120000)
+    runBot('trade')
+    const interval = setInterval(() => runBot('trade'), 120000)
     return () => clearInterval(interval)
   }, [autoTrading])
 
-  // Toggle auto-trading
-  const toggleAutoTrading = () => {
-    if (!autoTrading) {
-      if (!confirm('Start LIVE automated trading? This will use REAL funds on Crypto.com.')) {
-        return
-      }
-    }
-    setAutoTrading(!autoTrading)
-    setTradingStatus(autoTrading ? 'Stopped' : 'Starting...')
+  // =============================================================================
+  // RENDER
+  // =============================================================================
+
+  const formatPrice = (price: number) => {
+    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    if (price >= 1) return price.toFixed(4)
+    return price.toFixed(6)
   }
 
-  // Manual scan
-  const scanMarkets = async () => {
-    setBotRunning(true)
-    setTradingStatus('Scanning...')
-    try {
-      const res = await fetch('/api/stuntman/live-trade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze' }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setLiveSignals(data.signals || [])
-        setTradingStatus(`Found ${data.signals?.length || 0} opportunities`)
-      }
-    } catch (e) {
-      setTradingStatus('Scan failed')
-    } finally {
-      setBotRunning(false)
-    }
+  const formatVolume = (vol: number) => {
+    if (vol >= 1e9) return `$${(vol / 1e9).toFixed(2)}B`
+    if (vol >= 1e6) return `$${(vol / 1e6).toFixed(2)}M`
+    if (vol >= 1e3) return `$${(vol / 1e3).toFixed(2)}K`
+    return `$${vol.toFixed(2)}`
   }
 
-  // Fetch market data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [tickersRes, accountsRes] = await Promise.all([
-          fetch('/api/stuntman/market?action=tickers'),
-          fetch('/api/stuntman/accounts'),
-        ])
-        const [tickersData, accountsData] = await Promise.all([
-          tickersRes.json(),
-          accountsRes.json(),
-        ])
-
-        if (tickersData.success) setTickers(tickersData.tickers || [])
-        if (accountsData.success) {
-          setAccounts(accountsData.accounts || [])
-          if (accountsData.accounts?.length && !selectedAccount) {
-            setSelectedAccount(accountsData.accounts[0].id)
-          }
-        }
-      } catch (e) {
-        console.error('Fetch error:', e)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-    const interval = setInterval(fetchData, 10000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Fetch positions
-  useEffect(() => {
-    if (!selectedAccount) return
-
-    const fetchPositions = async () => {
-      try {
-        const res = await fetch(`/api/stuntman/positions?accountId=${selectedAccount}&status=open`)
-        const data = await res.json()
-        if (data.success) setPositions(data.positions || [])
-      } catch (e) {
-        console.error('Position error:', e)
-      }
-    }
-
-    fetchPositions()
-    const interval = setInterval(fetchPositions, 5000)
-    return () => clearInterval(interval)
-  }, [selectedAccount])
-
-  // Run advanced bot
-  const runBot = async (mode: 'analyze' | 'run') => {
-    if (!selectedAccount || botRunning) return
-    setBotRunning(true)
-
-    try {
-      const res = await fetch('/api/stuntman/bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: mode, accountId: selectedAccount }),
-      })
-      const data = await res.json()
-
-      if (data.success && data.results) {
-        setOpportunities(data.results)
-        setLastScan(new Date().toLocaleTimeString())
-      }
-    } catch (e) {
-      console.error('Bot error:', e)
-    } finally {
-      setBotRunning(false)
-    }
-  }
-
-  const currentAccount = accounts.find(a => a.id === selectedAccount)
-  const totalValue = (currentAccount?.balance ?? 0) + positions.reduce((sum, p) => sum + (p.unrealized_pnl || 0), 0)
-  const totalPnL = totalValue - (currentAccount?.initial_balance ?? 1000)
-  const pnlPercent = ((totalPnL / (currentAccount?.initial_balance ?? 1000)) * 100)
-  const selectedTicker = tickers.find(t => t.instrumentName === selectedInstrument)
-  const isPositive = (selectedTicker?.priceChangePercent24h ?? 0) >= 0
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  // Onboarding
-  if (accounts.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="max-w-sm w-full text-center">
-          <div className="text-4xl font-bold tracking-tight mb-2">StuntMan</div>
-          <p className="text-zinc-500 text-sm mb-8">
-            AI-powered crypto trading with smart money detection, whale tracking, and advanced market analysis.
-          </p>
-          <button
-            onClick={async () => {
-              const res = await fetch('/api/stuntman/accounts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: 'Paper Trading', is_paper: true, initial_balance: 1000 }),
-              })
-              const data = await res.json()
-              if (data.success) {
-                setAccounts([data.account])
-                setSelectedAccount(data.account.id)
-              }
-            }}
-            className="w-full py-3 bg-white text-black font-semibold rounded-lg hover:bg-zinc-200 transition-colors"
-          >
-            Start with $1,000
-          </button>
-          <p className="text-zinc-600 text-xs mt-4">Paper trading only. No real funds.</p>
-        </div>
-      </div>
-    )
-  }
+  const maxBidTotal = bids.length > 0 ? Math.max(...bids.map(b => b.total)) : 1
+  const maxAskTotal = asks.length > 0 ? Math.max(...asks.map(a => a.total)) : 1
 
   return (
-    <div className="min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      {/* Top Bar */}
+      <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4">
+        <div className="flex items-center gap-6">
+          {/* Logo */}
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-lg">StuntMan</span>
+            <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">PRO</span>
+          </div>
 
-        {/* Real Exchange Balance + Live Trading Controls */}
-        {realConnected && (
-          <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/10 border border-emerald-500/30 rounded-2xl p-4 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${autoTrading ? 'bg-red-500' : 'bg-emerald-500'} animate-pulse`} />
-                <span className="text-sm font-semibold text-emerald-400">
-                  Crypto.com Exchange - {autoTrading ? 'AUTO TRADING' : 'LIVE'}
-                </span>
-              </div>
-              <span className="text-2xl font-bold text-white">
-                ${realTotalUSD.toFixed(2)}
+          {/* Pair Selector */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedPair}
+              onChange={(e) => setSelectedPair(e.target.value)}
+              className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:border-emerald-500"
+            >
+              {pairs.map(p => (
+                <option key={p.symbol} value={p.symbol}>{p.icon} {p.symbol.replace('_', '/')}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Price Display */}
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-2xl font-bold font-mono">${formatPrice(currentPrice)}</span>
+              <span className={`ml-2 text-sm font-medium ${priceChange24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                {priceChange24h >= 0 ? '+' : ''}{priceChange24h.toFixed(2)}%
               </span>
             </div>
-
-            {/* Holdings */}
-            <div className="flex flex-wrap gap-3 mb-4">
-              {realBalances.map((bal) => (
-                <div key={bal.currency} className="bg-black/30 rounded-lg px-3 py-2">
-                  <div className="text-xs text-zinc-400">{bal.currency}</div>
-                  <div className="font-mono text-sm text-white">
-                    {bal.quantity < 0.001 ? bal.quantity.toFixed(8) : bal.quantity.toFixed(4)}
-                  </div>
-                  <div className="text-xs text-emerald-400">${bal.valueUSD.toFixed(2)}</div>
-                </div>
-              ))}
+            <div className="text-xs text-zinc-500 space-y-0.5">
+              <div>H: <span className="text-zinc-300">${formatPrice(high24h)}</span></div>
+              <div>L: <span className="text-zinc-300">${formatPrice(low24h)}</span></div>
             </div>
-
-            {/* Trading Controls */}
-            <div className="flex gap-3 mb-3">
-              <button
-                onClick={scanMarkets}
-                disabled={botRunning}
-                className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-50"
-              >
-                {botRunning ? 'Scanning...' : 'Scan Markets'}
-              </button>
-              <button
-                onClick={toggleAutoTrading}
-                className={`flex-1 py-2 font-medium rounded-lg text-sm transition-colors ${
-                  autoTrading
-                    ? 'bg-red-600 hover:bg-red-500 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                }`}
-              >
-                {autoTrading ? 'Stop Auto-Trade' : 'Start Auto-Trade'}
-              </button>
-            </div>
-
-            {/* Status */}
-            {tradingStatus && (
-              <div className="text-xs text-zinc-400 mb-3">
-                Status: {tradingStatus}
-              </div>
-            )}
-
-            {/* Live Signals */}
-            {liveSignals.length > 0 && (
-              <div className="border-t border-emerald-500/20 pt-3">
-                <div className="text-xs text-zinc-400 mb-2">Live Signals:</div>
-                <div className="space-y-2">
-                  {liveSignals.map((sig, i) => (
-                    <div key={i} className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${
-                          sig.action?.includes('BUY') ? 'bg-emerald-500' : 'bg-red-500'
-                        }`} />
-                        <span className="text-sm font-medium">{sig.instrument?.replace('_', '/')}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-semibold ${
-                          sig.action?.includes('BUY') ? 'text-emerald-400' : 'text-red-400'
-                        }`}>
-                          {sig.action}
-                        </div>
-                        <div className="text-xs text-zinc-500">{sig.confidence}% conf</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Trades */}
-            {recentTrades.length > 0 && (
-              <div className="border-t border-emerald-500/20 pt-3 mt-3">
-                <div className="text-xs text-zinc-400 mb-2">Recent Trades:</div>
-                <div className="space-y-1">
-                  {recentTrades.slice(0, 5).map((trade, i) => (
-                    <div key={i} className={`text-xs px-2 py-1 rounded ${
-                      trade.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                    }`}>
-                      {trade.message}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Portfolio Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-zinc-500 text-sm">Paper Trading Value</div>
-            {currentAccount?.is_paper && (
-              <span className="text-xs text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">PAPER</span>
-            )}
-          </div>
-          <div className="text-4xl font-bold tracking-tight">
-            ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className={`text-sm font-medium ${totalPnL >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {totalPnL >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}% ({totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)})
-          </div>
-        </div>
-
-        {/* Chart + Asset Info */}
-        <div className="bg-zinc-900/40 rounded-2xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-sm">
-                {selectedInstrument.split('_')[0].slice(0, 3)}
-              </div>
-              <div>
-                <div className="font-semibold">{selectedInstrument.replace('_', '/')}</div>
-                <div className="text-xs text-zinc-500">{selectedInstrument.split('_')[0]}</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold font-mono">
-                ${(selectedTicker?.lastPrice ?? 0).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: (selectedTicker?.lastPrice ?? 0) < 1 ? 6 : 2,
-                })}
-              </div>
-              <div className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-                {isPositive ? '+' : ''}{(selectedTicker?.priceChangePercent24h ?? 0).toFixed(2)}%
-              </div>
-            </div>
-          </div>
-
-          <PriceChart instrument={selectedInstrument} isPositive={isPositive} />
-
-          <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-zinc-800/50">
-            <div>
-              <div className="text-xs text-zinc-500 mb-1">24h High</div>
-              <div className="font-mono text-sm">${(selectedTicker?.highPrice ?? 0).toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-xs text-zinc-500 mb-1">24h Low</div>
-              <div className="font-mono text-sm">${(selectedTicker?.lowPrice ?? 0).toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-xs text-zinc-500 mb-1">Volume</div>
-              <div className="font-mono text-sm">${((selectedTicker?.volume ?? 0) / 1e6).toFixed(1)}M</div>
+            <div className="text-xs text-zinc-500">
+              <div>Vol: <span className="text-zinc-300">{formatVolume(volume24h)}</span></div>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 mb-6">
-          <button
-            onClick={() => runBot('analyze')}
-            disabled={botRunning}
-            className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
-          >
-            {botRunning ? 'Scanning...' : 'Scan Markets'}
-          </button>
-          <button
-            onClick={() => runBot('run')}
-            disabled={botRunning}
-            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
-          >
-            {botRunning ? 'Running...' : 'Auto Trade'}
-          </button>
-        </div>
+        {/* Right Controls */}
+        <div className="flex items-center gap-4">
+          {/* Connection Status */}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'} animate-pulse`} />
+            <span className="text-xs text-zinc-400">{connected ? 'Connected' : 'Disconnected'}</span>
+          </div>
 
-        {/* Opportunities */}
-        {opportunities.length > 0 && (
-          <div className="bg-zinc-900/40 rounded-2xl p-4 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-semibold">Trading Opportunities</div>
-              {lastScan && <div className="text-xs text-zinc-500">Last scan: {lastScan}</div>}
-            </div>
+          {/* Balance */}
+          <div className="flex items-center gap-2 bg-zinc-900 rounded-lg px-3 py-1.5">
+            <Wallet className="w-4 h-4 text-emerald-500" />
+            <span className="font-mono font-medium">${totalBalance.toFixed(2)}</span>
+          </div>
+
+          {/* Bot Status */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+            autoTrading ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-900 text-zinc-400'
+          }`}>
+            {botStatus === 'scanning' && <RefreshCw className="w-4 h-4 animate-spin" />}
+            {botStatus === 'trading' && <Activity className="w-4 h-4" />}
+            {botStatus === 'idle' && <Circle className="w-4 h-4" />}
+            <span className="text-xs font-medium uppercase">{botStatus}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex h-[calc(100vh-48px)]">
+        {/* Left Sidebar - Watchlist & Positions */}
+        <div className="w-64 border-r border-zinc-800 flex flex-col">
+          {/* Portfolio */}
+          <div className="p-4 border-b border-zinc-800">
+            <div className="text-xs text-zinc-500 mb-2">PORTFOLIO</div>
             <div className="space-y-2">
-              {opportunities.filter(o => o.action !== 'HOLD').slice(0, 5).map((opp, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${
-                      opp.action.includes('BUY') ? 'bg-emerald-500' : 'bg-red-500'
-                    }`} />
-                    <div>
-                      <div className="font-medium text-sm">{opp.instrument.replace('_', '/')}</div>
-                      <div className="text-xs text-zinc-500">
-                        {opp.sources.slice(0, 2).map(s => s.name).join(', ')}
-                      </div>
+              {realBalances.map(bal => (
+                <div key={bal.currency} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold">
+                      {bal.currency.slice(0, 2)}
                     </div>
+                    <span className="text-sm font-medium">{bal.currency}</span>
                   </div>
                   <div className="text-right">
-                    <div className={`text-sm font-semibold ${
-                      opp.action.includes('BUY') ? 'text-emerald-500' : 'text-red-500'
-                    }`}>
-                      {opp.action.replace('_', ' ')}
-                    </div>
-                    <div className="text-xs text-zinc-500">{opp.confidence}% conf</div>
+                    <div className="text-sm font-mono">{bal.quantity < 0.001 ? bal.quantity.toFixed(8) : bal.quantity.toFixed(4)}</div>
+                    <div className="text-xs text-zinc-500">${bal.valueUSD.toFixed(2)}</div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Markets */}
-        <div className="bg-zinc-900/40 rounded-2xl p-4 mb-6">
-          <div className="text-sm font-semibold mb-4">Markets</div>
-          <div className="space-y-1">
-            {tickers.filter(t => t?.instrumentName).slice(0, 10).map(ticker => (
-              <button
-                key={ticker.instrumentName}
-                onClick={() => setSelectedInstrument(ticker.instrumentName)}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors ${
-                  selectedInstrument === ticker.instrumentName
-                    ? 'bg-zinc-800'
-                    : 'hover:bg-zinc-800/50'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
-                    {ticker.instrumentName.split('_')[0].slice(0, 2)}
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium text-sm">{ticker.instrumentName.split('_')[0]}</div>
-                    <div className="text-xs text-zinc-500">{ticker.instrumentName.replace('_', '/')}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono text-sm">
-                    ${ticker.lastPrice >= 1000
-                      ? Math.round(ticker.lastPrice).toLocaleString()
-                      : ticker.lastPrice.toFixed(2)}
-                  </div>
-                  <div className={`text-xs font-medium ${
-                    (ticker.priceChangePercent24h ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+          {/* Signals */}
+          <div className="flex-1 overflow-auto p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-zinc-500">AI SIGNALS</div>
+              {lastScan && <div className="text-xs text-zinc-600">{lastScan}</div>}
+            </div>
+            <div className="space-y-2">
+              {signals.length === 0 ? (
+                <div className="text-xs text-zinc-600 text-center py-4">Click Scan to analyze markets</div>
+              ) : (
+                signals.map((sig, i) => (
+                  <div key={i} className={`p-3 rounded-lg border ${
+                    sig.action.includes('BUY') ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'
                   }`}>
-                    {(ticker.priceChangePercent24h ?? 0) >= 0 ? '+' : ''}
-                    {(ticker.priceChangePercent24h ?? 0).toFixed(2)}%
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{sig.instrument.replace('_', '/')}</span>
+                      <span className={`text-xs font-bold ${sig.action.includes('BUY') ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {sig.action}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                      <span>{sig.confidence}% conf</span>
+                      <span>•</span>
+                      <span>Risk: {sig.risk_score}/10</span>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <div className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">
+                        SL: {sig.stop_loss.toFixed(1)}%
+                      </div>
+                      <div className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
+                        TP: {sig.take_profit.toFixed(1)}%
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Bot Controls */}
+          <div className="p-4 border-t border-zinc-800 space-y-2">
+            <button
+              onClick={() => runBot('analyze')}
+              disabled={botStatus === 'scanning'}
+              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Brain className="w-4 h-4" />
+              Scan Markets
+            </button>
+            <button
+              onClick={() => setAutoTrading(!autoTrading)}
+              className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
+                autoTrading
+                  ? 'bg-red-500 hover:bg-red-600 text-white'
+                  : 'bg-emerald-500 hover:bg-emerald-600 text-white'
+              }`}
+            >
+              {autoTrading ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {autoTrading ? 'Stop Bot' : 'Start Bot'}
+            </button>
           </div>
         </div>
 
-        {/* Positions */}
-        {positions.length > 0 && (
-          <div className="bg-zinc-900/40 rounded-2xl p-4 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-semibold">Open Positions</div>
-              <Link href="/stuntman/history" className="text-xs text-zinc-500 hover:text-white">
-                View all
-              </Link>
+        {/* Center - Chart */}
+        <div className="flex-1 flex flex-col">
+          {/* Chart Controls */}
+          <div className="h-10 border-b border-zinc-800 flex items-center justify-between px-4">
+            <div className="flex items-center gap-1">
+              {['1m', '5m', '15m', '1h', '4h', '1d'].map(tf => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf)}
+                  className={`px-3 py-1 text-xs font-medium rounded ${
+                    timeframe === tf ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
+                  }`}
+                >
+                  {tf.toUpperCase()}
+                </button>
+              ))}
             </div>
-            <div className="space-y-2">
-              {positions.map(pos => (
-                <div key={pos.id} className="p-3 bg-zinc-800/50 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                        pos.side === 'long' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowIndicators(!showIndicators)}
+                className={`p-1.5 rounded ${showIndicators ? 'bg-zinc-700 text-white' : 'text-zinc-500'}`}
+                title="Toggle Indicators"
+              >
+                <LineChart className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1 text-xs text-zinc-500">
+                <div className="w-3 h-0.5 bg-amber-500 rounded" /> EMA 9
+                <div className="w-3 h-0.5 bg-violet-500 rounded ml-2" /> EMA 21
+              </div>
+            </div>
+          </div>
+
+          {/* Chart */}
+          <div ref={chartContainerRef} className="flex-1" />
+
+          {/* Trade History */}
+          <div className="h-48 border-t border-zinc-800 overflow-auto">
+            <div className="px-4 py-2 border-b border-zinc-800 text-xs text-zinc-500 sticky top-0 bg-[#0a0a0a]">
+              TRADE HISTORY
+            </div>
+            <div className="divide-y divide-zinc-800/50">
+              {trades.length === 0 ? (
+                <div className="text-xs text-zinc-600 text-center py-8">No trades yet</div>
+              ) : (
+                trades.map((trade, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-2 hover:bg-zinc-900/50">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-6 h-6 rounded flex items-center justify-center ${
+                        trade.side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
                       }`}>
-                        {pos.side.toUpperCase()}
-                      </span>
-                      <span className="font-medium text-sm">{pos.instrument_name.replace('_', '/')}</span>
+                        {trade.side === 'BUY' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{trade.instrument.replace('_', '/')}</div>
+                        <div className="text-xs text-zinc-500">{trade.quantity.toFixed(6)} @ ${trade.price.toFixed(2)}</div>
+                      </div>
                     </div>
-                    <span className={`font-mono font-semibold ${
-                      (pos.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
-                    }`}>
-                      {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-zinc-500">
-                    <span>{pos.quantity.toFixed(6)} @ ${pos.entry_price.toFixed(2)}</span>
-                    <span>Now: ${pos.current_price.toFixed(2)}</span>
-                  </div>
-                  {(pos.stop_loss || pos.take_profit) && (
-                    <div className="flex gap-4 mt-2 text-xs">
-                      {pos.stop_loss && <span className="text-red-400">SL: ${pos.stop_loss.toFixed(2)}</span>}
-                      {pos.take_profit && <span className="text-emerald-400">TP: ${pos.take_profit.toFixed(2)}</span>}
+                    <div className="text-right">
+                      <div className="text-sm font-mono">${trade.value.toFixed(2)}</div>
+                      <div className="text-xs text-zinc-500">{trade.status}</div>
                     </div>
-                  )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Sidebar - Order Book */}
+        <div className="w-72 border-l border-zinc-800 flex flex-col">
+          <div className="px-4 py-2 border-b border-zinc-800 text-xs text-zinc-500">
+            ORDER BOOK
+          </div>
+
+          {/* Headers */}
+          <div className="flex items-center justify-between px-4 py-1 text-xs text-zinc-600">
+            <span>Price (USDT)</span>
+            <span>Amount</span>
+            <span>Total</span>
+          </div>
+
+          {/* Asks */}
+          <div className="flex-1 overflow-hidden">
+            <div className="h-1/2 flex flex-col-reverse overflow-hidden">
+              {asks.map((ask, i) => (
+                <div key={i} className="relative flex items-center justify-between px-4 py-0.5 text-xs">
+                  <div
+                    className="absolute inset-0 bg-red-500/10"
+                    style={{ width: `${(ask.total / maxAskTotal) * 100}%`, right: 0, left: 'auto' }}
+                  />
+                  <span className="text-red-400 font-mono relative z-10">{formatPrice(ask.price)}</span>
+                  <span className="text-zinc-400 font-mono relative z-10">{ask.quantity.toFixed(4)}</span>
+                  <span className="text-zinc-500 font-mono relative z-10">{ask.total.toFixed(4)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Spread */}
+            <div className="flex items-center justify-center py-2 border-y border-zinc-800 bg-zinc-900/50">
+              <span className="text-lg font-bold font-mono">${formatPrice(currentPrice)}</span>
+            </div>
+
+            {/* Bids */}
+            <div className="h-1/2 overflow-hidden">
+              {bids.map((bid, i) => (
+                <div key={i} className="relative flex items-center justify-between px-4 py-0.5 text-xs">
+                  <div
+                    className="absolute inset-0 bg-emerald-500/10"
+                    style={{ width: `${(bid.total / maxBidTotal) * 100}%`, right: 0, left: 'auto' }}
+                  />
+                  <span className="text-emerald-400 font-mono relative z-10">{formatPrice(bid.price)}</span>
+                  <span className="text-zinc-400 font-mono relative z-10">{bid.quantity.toFixed(4)}</span>
+                  <span className="text-zinc-500 font-mono relative z-10">{bid.total.toFixed(4)}</span>
                 </div>
               ))}
             </div>
           </div>
-        )}
 
+          {/* Quick Trade */}
+          <div className="p-4 border-t border-zinc-800 space-y-3">
+            <div className="text-xs text-zinc-500 mb-2">QUICK TRADE</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className="py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm font-bold flex items-center justify-center gap-1"
+                onClick={() => alert('Manual trading coming soon')}
+              >
+                <ArrowUpRight className="w-4 h-4" /> BUY
+              </button>
+              <button
+                className="py-2 bg-red-500 hover:bg-red-600 rounded-lg text-sm font-bold flex items-center justify-center gap-1"
+                onClick={() => alert('Manual trading coming soon')}
+              >
+                <ArrowDownRight className="w-4 h-4" /> SELL
+              </button>
+            </div>
+            <div className="text-xs text-zinc-600 text-center">
+              Use AI Bot for automated trading
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

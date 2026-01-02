@@ -161,31 +161,46 @@ export default function AssetsPage() {
   const handleSubmit = async () => {
     if (!name.trim()) return
 
-    if (editingAsset) {
-      await updateAsset(editingAsset.id, {
-        name,
-        description: description || null,
-        image_url: imageUrl || null,
-        external_link: externalLink || null,
-        category,
-        priority,
-        notes: notes || null,
-      })
-    } else {
-      await createAsset({
-        name,
-        description: description || undefined,
-        image_url: imageUrl || undefined,
-        external_link: externalLink || undefined,
-        category,
-        priority,
-        notes: notes || undefined,
-      })
-    }
+    try {
+      if (editingAsset) {
+        const result = await updateAsset(editingAsset.id, {
+          name,
+          description: description || null,
+          image_url: imageUrl || null,
+          external_link: externalLink || null,
+          category,
+          priority,
+          notes: notes || null,
+        })
+        if (!result.success) {
+          console.error('Update failed:', result.error)
+          alert(`Failed to update item: ${result.error || 'Unknown error'}`)
+          return
+        }
+      } else {
+        const result = await createAsset({
+          name,
+          description: description || undefined,
+          image_url: imageUrl || undefined,
+          external_link: externalLink || undefined,
+          category,
+          priority,
+          notes: notes || undefined,
+        })
+        if (!result.success) {
+          console.error('Create failed:', result.error)
+          alert(`Failed to add item: ${result.error || 'Unknown error'}`)
+          return
+        }
+      }
 
-    setIsDialogOpen(false)
-    resetForm()
-    loadAssets()
+      setIsDialogOpen(false)
+      resetForm()
+      loadAssets()
+    } catch (error) {
+      console.error('Submit error:', error)
+      alert(`An error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   const handleMarkOwned = async (id: string) => {

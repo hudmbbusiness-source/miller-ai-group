@@ -155,11 +155,14 @@ let learningState: LearningState = {
     'BREAKOUT': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
   },
   optimalParams: {
-    stopMultiplier: { trending: 1.5, ranging: 1.0, volatile: 2.0 },
-    targetMultiplier: { trending: 3.0, ranging: 1.5, volatile: 2.5 },
-    confidenceThreshold: 60,
-    minHoldingBars: 3,
-    maxHoldingBars: 100,
+    // WIDER STOPS - give trades room to breathe
+    stopMultiplier: { trending: 2.0, ranging: 1.5, volatile: 2.5 },
+    // BETTER R:R - aim for 2:1+ risk/reward
+    targetMultiplier: { trending: 4.0, ranging: 2.5, volatile: 3.5 },
+    // HIGHER THRESHOLD - only trade on strong signals
+    confidenceThreshold: 75,
+    minHoldingBars: 5,  // Hold longer, don't exit early
+    maxHoldingBars: 150,
   },
   featureWeights: {
     priceChange1: 0.5,
@@ -889,11 +892,14 @@ function getDefaultLearningState(): LearningState {
       'BREAKOUT': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
     },
     optimalParams: {
-      stopMultiplier: { trending: 1.5, ranging: 1.0, volatile: 2.0 },
-      targetMultiplier: { trending: 3.0, ranging: 1.5, volatile: 2.5 },
-      confidenceThreshold: 60,
-      minHoldingBars: 3,
-      maxHoldingBars: 100,
+      // WIDER STOPS - give trades room to breathe
+      stopMultiplier: { trending: 2.0, ranging: 1.5, volatile: 2.5 },
+      // BETTER R:R - aim for 2:1+ risk/reward
+      targetMultiplier: { trending: 4.0, ranging: 2.5, volatile: 3.5 },
+      // HIGHER THRESHOLD - only trade on strong signals
+      confidenceThreshold: 75,
+      minHoldingBars: 5,
+      maxHoldingBars: 150,
     },
     featureWeights: {
       priceChange1: 0.5, priceChange5: 0.8, priceChange15: 0.6,

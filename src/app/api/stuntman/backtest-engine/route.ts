@@ -738,24 +738,24 @@ let config: EngineConfig = {
 // - Clear, mechanical rules
 
 const FOCUSED_MODE = {
-  enabled: true,               // Use ONLY ORB strategy, ignore others
+  enabled: false,              // DISABLED - ORB signals not generating properly
   onlyORBSignals: true,        // Only take ORB breakout trades
-  onlyTrendingDays: true,      // Skip ranging/choppy days
+  onlyTrendingDays: false,     // Allow all days for now
 
   // Time window for ORB trades (after range forms, before exhaustion)
   orbTradeWindowStart: 1000,   // 10:00 AM ET (after 30-min range forms)
-  orbTradeWindowEnd: 1300,     // 1:00 PM ET (ORB edge diminishes later)
+  orbTradeWindowEnd: 1500,     // 3:00 PM ET (extended window)
 
-  // ORB-specific requirements
-  minORBRangePoints: 3,        // Need at least 3-point range ($150 on ES)
-  maxORBRangePoints: 15,       // Skip if range too wide (choppy open)
-  minBreakoutVolume: 1.3,      // Need 130% of average volume on breakout
+  // ORB-specific requirements - LOOSENED
+  minORBRangePoints: 1,        // Min 1 point range
+  maxORBRangePoints: 50,       // Allow larger ranges
+  minBreakoutVolume: 1.0,      // No volume requirement
 
   // Only trade ONE direction per day (first clear breakout)
-  oneDirectionPerDay: true,
+  oneDirectionPerDay: false,
 
   // Maximum trades per day in focused mode
-  maxDailyTrades: 2,           // ORB is typically 1-2 trades max
+  maxDailyTrades: 4,           // Allow more trades
 }
 
 // =============================================================================

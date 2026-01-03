@@ -667,13 +667,16 @@ async function processCandle(index: number): Promise<void> {
       state.position = null
     }
   } else {
-    // Look for entry - lowered thresholds to generate more trades
-    if (confluenceScore >= 20 && mlDir !== 'FLAT' && mlSignal.confidence > 0.40) {
+    // Look for entry - use traditional signal if ML is flat
+    const hasSignal = mlDir !== 'FLAT' || tradSignal.direction !== 'FLAT'
+    let entryDirection: 'LONG' | 'SHORT' | 'FLAT' = mlDir !== 'FLAT' ? mlDir : tradSignal.direction
+
+    if (hasSignal && entryDirection !== 'FLAT') {
       // Apply inverse mode if enabled - flip LONG <-> SHORT
-      let direction = mlDir as 'LONG' | 'SHORT'
       if (shouldInverseSignal()) {
-        direction = direction === 'LONG' ? 'SHORT' : 'LONG'
+        entryDirection = entryDirection === 'LONG' ? 'SHORT' : 'LONG'
       }
+
       const atr = calculateATR(candles1m.slice(-14))
       const stopDistance = atr * 2
       const targetDistance = atr * 3
@@ -687,19 +690,19 @@ async function processCandle(index: number): Promise<void> {
 
       // Apply slippage to entry price (slippage works against you)
       const rawEntryPrice = currentPrice
-      const entryPrice = applySlippage(currentPrice, direction, true, volatility)
+      const entryPrice = applySlippage(currentPrice, entryDirection, true, volatility)
 
       // Adjust stop/target from slipped entry price
-      const stopLoss = direction === 'LONG' ? entryPrice - stopDistance : entryPrice + stopDistance
-      const takeProfit = direction === 'LONG' ? entryPrice + targetDistance : entryPrice - targetDistance
+      const stopLoss = entryDirection === 'LONG' ? entryPrice - stopDistance : entryPrice + stopDistance
+      const takeProfit = entryDirection === 'LONG' ? entryPrice + targetDistance : entryPrice - targetDistance
 
       state.position = {
-        direction,
+        direction: entryDirection,
         rawEntryPrice,
         entryPrice,
         entryTime: currentCandle.time,
         entryLatencyMs,
-        contracts: 1,  // Conservative for backtesting
+        contracts: 1,
         stopLoss,
         takeProfit,
         confluenceScore,

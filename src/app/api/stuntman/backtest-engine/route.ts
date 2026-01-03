@@ -2017,13 +2017,13 @@ export async function GET(request: NextRequest) {
       },
       // BRUTALLY REALISTIC Trading Costs (1:1 with Live Trading)
       tradingCosts: {
-        total: state.totalCosts.toFixed(2),
+        total: (state.totalCosts || 0).toFixed(2),
         breakdown: {
-          commissions: state.costBreakdown.commissions.toFixed(2),
-          exchangeFees: state.costBreakdown.exchangeFees.toFixed(2),
-          slippage: state.costBreakdown.slippage.toFixed(2),
-          spread: state.costBreakdown.spread.toFixed(2),
-          gapLosses: state.costBreakdown.gapLosses.toFixed(2),
+          commissions: (state.costBreakdown?.commissions || 0).toFixed(2),
+          exchangeFees: (state.costBreakdown?.exchangeFees || 0).toFixed(2),
+          slippage: (state.costBreakdown?.slippage || 0).toFixed(2),
+          spread: (state.costBreakdown?.spread || 0).toFixed(2),
+          gapLosses: (state.costBreakdown?.gapLosses || 0).toFixed(2),
         },
         avgCostPerTrade: state.trades.length > 0
           ? (state.totalCosts / state.trades.length).toFixed(2)
@@ -2034,25 +2034,25 @@ export async function GET(request: NextRequest) {
       },
       // EXECUTION QUALITY STATS - Shows how realistic the simulation is
       executionStats: {
-        totalOrders: state.executionStats.totalOrders,
-        rejectedOrders: state.executionStats.rejectedOrders,
-        rejectionRate: state.executionStats.totalOrders > 0
-          ? ((state.executionStats.rejectedOrders / state.executionStats.totalOrders) * 100).toFixed(1) + '%'
+        totalOrders: state.executionStats?.totalOrders || 0,
+        rejectedOrders: state.executionStats?.rejectedOrders || 0,
+        rejectionRate: (state.executionStats?.totalOrders || 0) > 0
+          ? (((state.executionStats?.rejectedOrders || 0) / state.executionStats.totalOrders) * 100).toFixed(1) + '%'
           : '0%',
-        partialFills: state.executionStats.partialFills,
-        avgFillPercentage: state.executionStats.avgFillPercentage.toFixed(1) + '%',
-        avgSlippageTicks: state.executionStats.avgSlippageTicks.toFixed(2),
-        avgSlippageDollars: '$' + (state.executionStats.avgSlippageTicks * TRADING_COSTS.tickValue).toFixed(2),
-        avgSpreadTicks: state.executionStats.avgSpreadTicks.toFixed(2),
-        avgSpreadDollars: '$' + (state.executionStats.avgSpreadTicks * TRADING_COSTS.tickValue).toFixed(2),
-        gappedStops: state.executionStats.gappedStops,
-        gapLossTotal: '$' + state.costBreakdown.gapLosses.toFixed(2),
+        partialFills: state.executionStats?.partialFills || 0,
+        avgFillPercentage: (state.executionStats?.avgFillPercentage || 100).toFixed(1) + '%',
+        avgSlippageTicks: (state.executionStats?.avgSlippageTicks || 0).toFixed(2),
+        avgSlippageDollars: '$' + ((state.executionStats?.avgSlippageTicks || 0) * TRADING_COSTS.tickValue).toFixed(2),
+        avgSpreadTicks: (state.executionStats?.avgSpreadTicks || 0).toFixed(2),
+        avgSpreadDollars: '$' + ((state.executionStats?.avgSpreadTicks || 0) * TRADING_COSTS.tickValue).toFixed(2),
+        gappedStops: state.executionStats?.gappedStops || 0,
+        gapLossTotal: '$' + (state.costBreakdown?.gapLosses || 0).toFixed(2),
       },
       // Latency Simulation Stats
       latencyStats: {
-        avgLatencyMs: state.latencyStats.avgLatencyMs.toFixed(0) + 'ms',
-        maxLatencyMs: state.latencyStats.maxLatencyMs.toFixed(0) + 'ms',
-        minLatencyMs: state.latencyStats.minLatencyMs === Infinity
+        avgLatencyMs: (state.latencyStats?.avgLatencyMs || 0).toFixed(0) + 'ms',
+        maxLatencyMs: (state.latencyStats?.maxLatencyMs || 0).toFixed(0) + 'ms',
+        minLatencyMs: (state.latencyStats?.minLatencyMs === Infinity || !state.latencyStats?.minLatencyMs)
           ? 'N/A'
           : state.latencyStats.minLatencyMs.toFixed(0) + 'ms',
       },

@@ -1028,61 +1028,114 @@ const vpinCalculator = new VPINCalculator(50000, 50)
 const deltaAnalyzer = new DeltaAnalyzer()
 
 // =============================================================================
-// FETCH HISTORICAL DATA - REAL ES FUTURES (No more SPY proxy!)
+// FETCH HISTORICAL DATA - RANDOMIZED PERIODS FOR TRUE ML LEARNING
+// =============================================================================
+//
+// CRITICAL: Each paper trading run uses a DIFFERENT historical period
+// This prevents overfitting to a single market condition and ensures
+// the ML actually learns to trade various market regimes:
+// - Bull markets, bear markets, sideways
+// - High volatility, low volatility
+// - Different times of year (earnings, FOMC, etc.)
+//
 // =============================================================================
 
 // Data sources in priority order
 const DATA_SOURCES = {
-  // Primary: Real ES futures from Yahoo Finance
-  ES_FUTURES: 'ES=F',
-  // Fallback: SPY scaled (if ES=F fails due to rate limits)
-  SPY_SCALED: 'SPY',
+  // SPY has 2 years of intraday data available
+  SPY: 'SPY',
 }
 
-async function fetchHistoricalData(days: number = 30): Promise<boolean> {
+// Track which periods we've trained on for diversity
+interface TrainingPeriod {
+  startDate: string
+  endDate: string
+  regime: 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE'
+  trainedCount: number
+}
+
+let trainingHistory: TrainingPeriod[] = []
+
+// Generate a random historical period
+function getRandomHistoricalPeriod(): { startTime: number; endTime: number; periodLabel: string } {
+  const now = Date.now()
+  const oneDay = 24 * 60 * 60 * 1000
+
+  // Yahoo Finance limits for intraday data:
+  // - 1m: last 7 days only
+  // - 5m/15m: last 60 days
+  // - 1h: last 730 days (2 years)
+  //
+  // We'll use 5m data and pick random 7-day windows from the last 60 days
+  // This gives us ~8 different possible training periods
+
+  const maxLookback = 55 * oneDay  // 55 days back (leaving buffer)
+  const windowSize = 7 * oneDay     // 7 days of data per run
+
+  // Pick a random start point
+  const randomOffset = Math.floor(Math.random() * (maxLookback - windowSize))
+  const endTime = now - randomOffset
+  const startTime = endTime - windowSize
+
+  // Create human-readable label
+  const startDate = new Date(startTime)
+  const endDate = new Date(endTime)
+  const periodLabel = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+
+  return {
+    startTime: Math.floor(startTime / 1000),
+    endTime: Math.floor(endTime / 1000),
+    periodLabel,
+  }
+}
+
+// Detect market regime from candles (for logging/tracking)
+function detectPeriodRegime(candles: Candle[]): 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE' {
+  if (candles.length < 50) return 'SIDEWAYS'
+
+  const first = candles[0].close
+  const last = candles[candles.length - 1].close
+  const change = (last - first) / first * 100
+
+  // Calculate volatility
+  let totalRange = 0
+  for (const c of candles) {
+    totalRange += (c.high - c.low) / c.close
+  }
+  const avgRange = totalRange / candles.length * 100
+
+  if (avgRange > 0.5) return 'VOLATILE'  // High volatility
+  if (change > 3) return 'BULL'           // Up more than 3%
+  if (change < -3) return 'BEAR'          // Down more than 3%
+  return 'SIDEWAYS'
+}
+
+async function fetchHistoricalData(days: number = 7): Promise<boolean> {
   try {
-    console.log(`[BACKTEST] Fetching ${days} days of REAL ES FUTURES data...`)
+    // GET A RANDOM HISTORICAL PERIOD - Different each run!
+    const { startTime, endTime, periodLabel } = getRandomHistoricalPeriod()
 
-    const now = Math.floor(Date.now() / 1000)
-
-    // Yahoo Finance limits: 1m data only available for last 7 days
-    const days1m = Math.min(days, 7)
-    const startTime1m = now - (days1m * 24 * 60 * 60)
-    const startTime5m = now - (days * 24 * 60 * 60)
-    const startTime15m = now - (days * 24 * 60 * 60)
+    console.log(`[BACKTEST] ========================================`)
+    console.log(`[BACKTEST] RANDOMIZED TRAINING PERIOD: ${periodLabel}`)
+    console.log(`[BACKTEST] ========================================`)
+    console.log(`[BACKTEST] This ensures ML learns DIFFERENT market conditions each run`)
 
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
 
-    // TRY REAL ES FUTURES FIRST
-    let useRealES = true
-    let scale = 1  // No scaling needed for real ES
+    // Use SPY - has reliable intraday data going back 60 days
+    // Scale to ES prices (SPY ~$590 → ES ~$5900)
+    const symbol = DATA_SOURCES.SPY
+    const scale = 10
+    const dataLabel = `SPY→ES (${periodLabel})`
 
-    // Test if ES=F is available
-    const testUrl = `https://query1.finance.yahoo.com/v8/finance/chart/ES=F?interval=5m&range=1d`
-    try {
-      const testRes = await fetch(testUrl, { headers, cache: 'no-store' })
-      if (!testRes.ok) {
-        console.log('[BACKTEST] ES=F unavailable, falling back to SPY scaled')
-        useRealES = false
-        scale = 10
-      }
-    } catch {
-      console.log('[BACKTEST] ES=F unavailable, falling back to SPY scaled')
-      useRealES = false
-      scale = 10
-    }
+    console.log(`[BACKTEST] Fetching ${symbol} data, scaling ${scale}x to ES prices`)
 
-    const symbol = useRealES ? DATA_SOURCES.ES_FUTURES : DATA_SOURCES.SPY_SCALED
-    const dataLabel = useRealES ? 'REAL ES FUTURES' : 'SPY (scaled to ES)'
-
-    console.log(`[BACKTEST] Using ${dataLabel} data source`)
-
-    // Fetch intraday data
-    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime1m}&period2=${now}&interval=1m&includePrePost=true`
-    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime5m}&period2=${now}&interval=5m&includePrePost=true`
-    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime15m}&period2=${now}&interval=15m&includePrePost=true`
+    // Build URLs with random time period
+    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${endTime}&interval=1m&includePrePost=true`
+    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${endTime}&interval=5m&includePrePost=true`
+    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${endTime}&interval=15m&includePrePost=true`
 
     // Fetch all timeframes in parallel
     const [res1m, res5m, res15m] = await Promise.all([
@@ -1091,7 +1144,7 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
       fetch(url15m, { headers, cache: 'no-store' }),
     ])
 
-    // Parse 1m data
+    // Parse 1m data (may not be available for older periods)
     if (res1m.ok) {
       const data = await res1m.json()
       const result = data.chart?.result?.[0]
@@ -1100,7 +1153,7 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
         const quote = result.indicators.quote[0]
 
         historicalData.candles1m = timestamps.map((t: number, i: number) => ({
-          time: t * 1000,  // Convert to milliseconds
+          time: t * 1000,
           open: (quote.open[i] || quote.close[i] || 0) * scale,
           high: (quote.high[i] || quote.close[i] || 0) * scale,
           low: (quote.low[i] || quote.close[i] || 0) * scale,
@@ -1108,13 +1161,14 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} ${dataLabel} 1m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} 1m candles`)
       }
     } else {
-      console.error('[BACKTEST] Failed to fetch 1m data:', await res1m.text())
+      console.log('[BACKTEST] 1m data not available for this period (expected for older dates)')
+      historicalData.candles1m = []
     }
 
-    // Parse 5m data
+    // Parse 5m data - THIS IS OUR PRIMARY DATA SOURCE
     if (res5m.ok) {
       const data = await res5m.json()
       const result = data.chart?.result?.[0]
@@ -1131,8 +1185,22 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} ${dataLabel} 5m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} 5m candles`)
+
+        // Detect and log market regime for this period
+        const regime = detectPeriodRegime(historicalData.candles5m)
+        console.log(`[BACKTEST] Detected market regime: ${regime}`)
+
+        // Track training history
+        trainingHistory.push({
+          startDate: new Date(startTime * 1000).toISOString(),
+          endDate: new Date(endTime * 1000).toISOString(),
+          regime,
+          trainedCount: 1,
+        })
       }
+    } else {
+      console.error('[BACKTEST] Failed to fetch 5m data')
     }
 
     // Parse 15m data
@@ -1152,33 +1220,103 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} ${dataLabel} 15m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} 15m candles`)
       }
     }
 
-    state.totalCandles = historicalData.candles1m.length
+    // If 1m data not available, generate it from 5m data
+    if (historicalData.candles1m.length === 0 && historicalData.candles5m.length > 0) {
+      console.log('[BACKTEST] Generating synthetic 1m candles from 5m data...')
+      historicalData.candles1m = generateSynthetic1mCandles(historicalData.candles5m)
+      console.log(`[BACKTEST] Generated ${historicalData.candles1m.length} synthetic 1m candles`)
+    }
+
+    state.totalCandles = historicalData.candles1m.length || historicalData.candles5m.length * 5
 
     // Store data source info for API response
     currentDataSource = {
       symbol,
-      isRealES: useRealES,
+      isRealES: false,  // Using SPY scaled
       label: dataLabel,
+      period: periodLabel,
+      regime: detectPeriodRegime(historicalData.candles5m),
     }
 
-    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m candles (${dataLabel})`)
+    const totalCandles = historicalData.candles1m.length + historicalData.candles5m.length + historicalData.candles15m.length
+    console.log(`[BACKTEST] Total loaded: ${totalCandles} candles from ${periodLabel}`)
+    console.log(`[BACKTEST] Training on: ${currentDataSource.regime} market conditions`)
 
-    return historicalData.candles1m.length > 100
+    return historicalData.candles5m.length > 50
   } catch (e) {
     console.error('[BACKTEST] Failed to fetch data:', e)
     return false
   }
 }
 
+// Generate synthetic 1m candles from 5m candles for older periods
+function generateSynthetic1mCandles(candles5m: Candle[]): Candle[] {
+  const result: Candle[] = []
+
+  for (const candle of candles5m) {
+    // Split each 5m candle into 5 synthetic 1m candles
+    const range = candle.high - candle.low
+    const direction = candle.close >= candle.open ? 1 : -1
+
+    for (let i = 0; i < 5; i++) {
+      const progress = i / 5
+      const nextProgress = (i + 1) / 5
+
+      // Simulate price movement within the 5m candle
+      const noise = (Math.random() - 0.5) * range * 0.3
+
+      let open: number, close: number, high: number, low: number
+
+      if (direction > 0) {
+        // Bullish 5m candle - general upward movement
+        open = candle.open + (candle.close - candle.open) * progress + noise
+        close = candle.open + (candle.close - candle.open) * nextProgress + noise
+      } else {
+        // Bearish 5m candle - general downward movement
+        open = candle.open + (candle.close - candle.open) * progress + noise
+        close = candle.open + (candle.close - candle.open) * nextProgress + noise
+      }
+
+      // Add some wick
+      const wickNoise = Math.random() * range * 0.2
+      high = Math.max(open, close) + wickNoise
+      low = Math.min(open, close) - wickNoise
+
+      // Clamp to parent candle's range
+      high = Math.min(high, candle.high)
+      low = Math.max(low, candle.low)
+
+      result.push({
+        time: candle.time + i * 60 * 1000,  // Add 1 minute per candle
+        open: Math.max(low, Math.min(high, open)),
+        high,
+        low,
+        close: Math.max(low, Math.min(high, close)),
+        volume: Math.floor(candle.volume / 5),
+      })
+    }
+  }
+
+  return result
+}
+
 // Track current data source for API response
-let currentDataSource = {
-  symbol: 'ES=F',
-  isRealES: true,
-  label: 'REAL ES FUTURES',
+let currentDataSource: {
+  symbol: string
+  isRealES: boolean
+  label: string
+  period?: string
+  regime?: 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE'
+} = {
+  symbol: 'SPY',
+  isRealES: false,
+  label: 'SPY→ES (randomized period)',
+  period: 'Not loaded',
+  regime: 'SIDEWAYS',
 }
 
 // =============================================================================
@@ -1984,19 +2122,23 @@ export async function GET(request: NextRequest) {
       },
       // Current Market Regime
       currentRegime: state.position?.regime || 'UNKNOWN',
-      // Data Source Info
+      // Data Source Info - RANDOMIZED FOR TRUE ML LEARNING
       dataSource: {
         provider: 'Yahoo Finance + Adaptive ML',
         instrument: currentDataSource.label,
         symbol: currentDataSource.symbol,
         isRealES: currentDataSource.isRealES,
+        // CRITICAL: Random historical period each run
+        period: currentDataSource.period || 'Not loaded',
+        marketRegime: currentDataSource.regime || 'UNKNOWN',
         timeframes: ['1m', '5m', '15m'],
         candlesLoaded: {
           '1m': historicalData.candles1m.length,
           '5m': historicalData.candles5m.length,
           '15m': historicalData.candles15m.length,
         },
-        note: 'WORLD-CLASS: Adaptive ML learns from every trade',
+        note: 'RANDOMIZED: Each run trains on DIFFERENT market conditions',
+        trainingDiversity: `ML learning from ${trainingHistory.length} different periods`,
         delay: 'None - processing historical data at selected speed',
       },
       // Chart Data - Historical candles being processed

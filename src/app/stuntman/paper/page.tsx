@@ -156,67 +156,7 @@ interface BacktestData {
 }
 
 // =============================================================================
-// TRADINGVIEW CHART COMPONENT (Live Market Reference)
-// =============================================================================
-
-function TradingViewChart({ symbol }: { symbol: string }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    containerRef.current.innerHTML = ''
-
-    const script = document.createElement('script')
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
-    script.type = 'text/javascript'
-    script.async = true
-    script.innerHTML = JSON.stringify({
-      autosize: true,
-      symbol: symbol,
-      interval: '5',
-      timezone: 'America/New_York',
-      theme: 'dark',
-      style: '1',
-      locale: 'en',
-      backgroundColor: 'rgba(0, 0, 0, 1)',
-      gridColor: 'rgba(255, 255, 255, 0.03)',
-      hide_top_toolbar: false,
-      hide_legend: false,
-      allow_symbol_change: false,
-      save_image: false,
-      calendar: false,
-      hide_volume: false,
-      studies: ['MAExp@tv-basicstudies', 'RSI@tv-basicstudies', 'MACD@tv-basicstudies'],
-      support_host: 'https://www.tradingview.com',
-    })
-
-    const widgetContainer = document.createElement('div')
-    widgetContainer.className = 'tradingview-widget-container__widget'
-    widgetContainer.style.height = '100%'
-    widgetContainer.style.width = '100%'
-
-    containerRef.current.appendChild(widgetContainer)
-    containerRef.current.appendChild(script)
-
-    return () => {
-      if (containerRef.current) {
-        containerRef.current.innerHTML = ''
-      }
-    }
-  }, [symbol])
-
-  return (
-    <div
-      ref={containerRef}
-      className="tradingview-widget-container"
-      style={{ height: '100%', width: '100%' }}
-    />
-  )
-}
-
-// =============================================================================
-// HISTORICAL SIMULATION CHART (lightweight-charts)
+// SIMULATION CHART (lightweight-charts v5 API)
 // =============================================================================
 
 interface ChartData {
@@ -256,15 +196,17 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
   const takeProfitLineRef = useRef<any>(null)
   const entryLineRef = useRef<any>(null)
 
-  // Initialize chart
+  // Initialize chart with lightweight-charts v5 API
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Dynamically import lightweight-charts
-    import('lightweight-charts').then(({ createChart, CrosshairMode }) => {
+    // Dynamically import lightweight-charts v5
+    import('lightweight-charts').then((LightweightCharts) => {
       if (!containerRef.current || chartRef.current) return
 
-      const containerHeight = containerRef.current.clientHeight || 350
+      const { createChart, CandlestickSeries, HistogramSeries, CrosshairMode } = LightweightCharts
+
+      const containerHeight = containerRef.current.clientHeight || 500
       const chart = createChart(containerRef.current, {
         width: containerRef.current.clientWidth,
         height: containerHeight,
@@ -273,8 +215,8 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
           textColor: '#999999',
         },
         grid: {
-          vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
-          horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+          vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
         },
         crosshair: {
           mode: CrosshairMode.Normal,
@@ -289,8 +231,8 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
         },
       })
 
-      // Add candlestick series
-      const candleSeries = chart.addCandlestickSeries({
+      // v5 API: use addSeries with series type
+      const candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#22c55e',
         downColor: '#ef4444',
         borderDownColor: '#ef4444',
@@ -299,13 +241,13 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
         wickUpColor: '#22c55e',
       })
 
-      // Add volume series
-      const volumeSeries = chart.addHistogramSeries({
+      // Volume series
+      const volumeSeries = chart.addSeries(HistogramSeries, {
         color: '#26a69a',
         priceFormat: { type: 'volume' },
-        priceScaleId: '',
+        priceScaleId: 'volume',
       })
-      volumeSeries.priceScale().applyOptions({
+      chart.priceScale('volume').applyOptions({
         scaleMargins: { top: 0.85, bottom: 0 },
       })
 
@@ -325,6 +267,8 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
         window.removeEventListener('resize', handleResize)
         chart.remove()
       }
+    }).catch(err => {
+      console.error('Failed to load chart:', err)
     })
 
     return () => {
@@ -526,9 +470,6 @@ export default function PaperTradingPage() {
   const [speed, setSpeed] = useState<1 | 5 | 10 | 50 | 100 | 'MAX'>(1)
   const [inverseMode, setInverseMode] = useState(false)
   const [autoInverse, setAutoInverse] = useState(false)
-
-  // TradingView symbols - SPY tracks ES, QQQ tracks NQ
-  const tvSymbol = instrument === 'ES' ? 'SPY' : 'QQQ'
 
   // ===========================================================================
   // FETCH DATA
@@ -889,37 +830,29 @@ export default function PaperTradingPage() {
         {/* =================================================================== */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* ================================================================= */}
-          {/* CHARTS (3 cols) */}
+          {/* SIMULATION CHART (3 cols) - PAPER MODE ONLY */}
           {/* ================================================================= */}
           <div className="lg:col-span-3 space-y-4">
-            {/* Dual Chart Layout */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {/* TradingView - Live Market Reference */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs font-medium text-white/70">LIVE MARKET</span>
-                  </div>
-                  <span className="text-[10px] text-white/40">{instrument} Futures</span>
+            {/* Full Width Simulation Chart */}
+            <div className="bg-white/[0.02] border border-amber-500/30 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-amber-500/20 flex items-center justify-between bg-amber-500/5">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
+                  <span className="text-sm font-bold text-amber-400">PAPER TRADING SIMULATION</span>
+                  <span className="text-xs text-white/40">|</span>
+                  <span className="text-xs text-white/50">Historical SPY Data → ES Prices</span>
                 </div>
-                <div className="h-[350px]">
-                  <TradingViewChart symbol={tvSymbol} />
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-white/40">
+                    Candle {data?.chartData?.currentIndex?.toLocaleString() || 0} / {data?.status?.totalCandles?.toLocaleString() || 0}
+                  </span>
+                  <span className={`text-xs font-medium ${isRunning ? 'text-amber-400' : 'text-white/40'}`}>
+                    {isRunning ? 'RUNNING' : 'STOPPED'}
+                  </span>
                 </div>
               </div>
-
-              {/* Historical Simulation Chart - Backtest in Progress */}
-              <div className="bg-white/[0.02] border border-amber-500/20 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 border-b border-amber-500/20 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
-                    <span className="text-xs font-medium text-amber-400">PAPER SIMULATION</span>
-                  </div>
-                  <span className="text-[10px] text-white/40">Historical Data Replay</span>
-                </div>
-                <div className="h-[350px]">
-                  <HistoricalChart chartData={data?.chartData} isRunning={isRunning} />
-                </div>
+              <div className="h-[500px]">
+                <HistoricalChart chartData={data?.chartData} isRunning={isRunning} />
               </div>
             </div>
 

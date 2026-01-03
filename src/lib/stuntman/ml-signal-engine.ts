@@ -40,7 +40,7 @@ interface PatternMatch {
   timeframe: string;
 }
 
-interface MLSignal {
+export interface MLSignal {
   direction: 'LONG' | 'SHORT' | 'NEUTRAL';
   confidence: number;
   features: FeatureVector;
@@ -48,6 +48,15 @@ interface MLSignal {
   ensembleScore: number;
   riskAdjustedScore: number;
   timestamp: number;
+  // Extended fields for trading
+  entry?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  regime?: MarketRegime;
+  ensemble?: {
+    consensus: string;
+    agreementLevel: number;
+  };
 }
 
 export interface MarketRegime {
@@ -847,6 +856,22 @@ export function generateMLSignal(
 
   const riskAdjustedScore = ensembleScore * riskMultiplier;
 
+  // Calculate entry, stop, and target based on current price and ATR
+  const currentPrice = candles[candles.length - 1]?.close || 0;
+  const atr = calculateATR(candles, 14);
+
+  let entry = currentPrice;
+  let stopLoss = currentPrice;
+  let takeProfit = currentPrice;
+
+  if (direction === 'LONG') {
+    stopLoss = currentPrice - atr * 2;
+    takeProfit = currentPrice + atr * 3;
+  } else if (direction === 'SHORT') {
+    stopLoss = currentPrice + atr * 2;
+    takeProfit = currentPrice - atr * 3;
+  }
+
   return {
     direction,
     confidence: Math.min(confidence, 1),
@@ -855,7 +880,35 @@ export function generateMLSignal(
     ensembleScore,
     riskAdjustedScore,
     timestamp: Date.now(),
+    // Extended trading fields
+    entry,
+    stopLoss,
+    takeProfit,
+    regime,
+    ensemble: {
+      consensus: direction,
+      agreementLevel: Math.abs(ensembleScore) * 100,
+    },
   };
+}
+
+// Calculate ATR for stop/target calculation
+function calculateATR(candles: Candle[], period: number = 14): number {
+  if (candles.length < period + 1) return 0;
+
+  let atr = 0;
+  for (let i = candles.length - period; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1]?.close || candles[i].close;
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    atr += tr;
+  }
+  return atr / period;
 }
 
 // ============================================================================
@@ -1120,22 +1173,6 @@ function calculateMomentum(closes: number[], period: number): number {
   const momentum = closes[closes.length - 1] - closes[closes.length - 1 - period];
   const range = Math.max(...closes.slice(-period)) - Math.min(...closes.slice(-period));
   return range > 0 ? normalize(momentum, -range, range) : 0.5;
-}
-
-function calculateATR(candles: Candle[], period: number): number {
-  if (candles.length < period + 1) return 0;
-
-  let atr = 0;
-  for (let i = candles.length - period; i < candles.length; i++) {
-    const tr = Math.max(
-      candles[i].high - candles[i].low,
-      Math.abs(candles[i].high - candles[i - 1].close),
-      Math.abs(candles[i].low - candles[i - 1].close)
-    );
-    atr += tr;
-  }
-
-  return atr / period;
 }
 
 function calculateBollingerWidth(closes: number[], period: number): number {

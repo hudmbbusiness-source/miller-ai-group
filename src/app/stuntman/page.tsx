@@ -159,7 +159,7 @@ function TradingViewChart({ symbol }: { symbol: string }) {
 export default function StuntManDashboard() {
   // Core State
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'auto' | 'manual'>('auto')
+  const [activeTab, setActiveTab] = useState<'auto' | 'manual' | 'paper'>('auto')
   const [instrument, setInstrument] = useState<'ES' | 'NQ'>('ES')
   const [showMenu, setShowMenu] = useState(false)
 
@@ -179,6 +179,11 @@ export default function StuntManDashboard() {
   // Manual Trading State
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
+
+  // Paper Trading / Backtest State
+  const [backtestData, setBacktestData] = useState<any>(null)
+  const [backtestRunning, setBacktestRunning] = useState(false)
+  const [backtestLoading, setBacktestLoading] = useState(false)
 
   // TradingView Symbol
   const tvSymbol = instrument === 'ES' ? 'CME_MINI:ES1!' : 'CME_MINI:NQ1!'
@@ -216,6 +221,26 @@ export default function StuntManDashboard() {
     const poll = setInterval(fetchData, 3000)
     return () => clearInterval(poll)
   }, [fetchData])
+
+  // Fetch backtest data
+  const fetchBacktest = useCallback(async () => {
+    try {
+      const res = await fetch('/api/stuntman/backtest-engine')
+      const data = await res.json()
+      if (data.success) {
+        setBacktestData(data)
+        setBacktestRunning(data.status?.running || false)
+      }
+    } catch (e) {
+      console.error('Backtest fetch error:', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchBacktest()
+    const poll = setInterval(fetchBacktest, 2000)  // Poll every 2 seconds for backtest
+    return () => clearInterval(poll)
+  }, [fetchBacktest])
 
   // ==========================================================================
   // ACTIONS
@@ -257,6 +282,38 @@ export default function StuntManDashboard() {
       body: JSON.stringify({ action: 'FLAT', instrument }),
     })
     await fetchData()
+  }
+
+  // Backtest Controls
+  const toggleBacktest = async () => {
+    setBacktestLoading(true)
+    try {
+      const action = backtestRunning ? 'stop' : 'start'
+      await fetch('/api/stuntman/backtest-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, days: 7 }),
+      })
+      await fetchBacktest()
+    } catch (e) {
+      console.error('Backtest toggle error:', e)
+    }
+    setBacktestLoading(false)
+  }
+
+  const resetBacktest = async () => {
+    setBacktestLoading(true)
+    try {
+      await fetch('/api/stuntman/backtest-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' }),
+      })
+      await fetchBacktest()
+    } catch (e) {
+      console.error('Backtest reset error:', e)
+    }
+    setBacktestLoading(false)
   }
 
   // ==========================================================================
@@ -505,6 +562,14 @@ export default function StuntManDashboard() {
               >
                 <Zap className="w-4 h-4 inline mr-1" /> Manual
               </button>
+              <button
+                onClick={() => setActiveTab('paper')}
+                className={`flex-1 py-2 rounded text-sm font-medium ${
+                  activeTab === 'paper' ? 'bg-amber-500/20 text-amber-400' : 'text-white/50'
+                }`}
+              >
+                <Activity className="w-4 h-4 inline mr-1" /> Paper
+              </button>
             </div>
 
             {/* ========================================================== */}
@@ -651,6 +716,146 @@ export default function StuntManDashboard() {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* ========================================================== */}
+            {/* PAPER TRADING PANEL */}
+            {/* ========================================================== */}
+            {activeTab === 'paper' && (
+              <div className="bg-white/[0.02] border border-amber-500/20 rounded-xl p-4 space-y-4">
+                {/* Header with controls */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${backtestRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
+                    <span className="text-sm font-medium text-amber-400">Paper Trading</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={resetBacktest}
+                      disabled={backtestLoading}
+                      className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-white/50 hover:text-white"
+                      title="Reset"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${backtestLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
+                      onClick={toggleBacktest}
+                      disabled={backtestLoading}
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition ${
+                        backtestRunning
+                          ? 'bg-amber-500 text-black'
+                          : 'bg-white/10 hover:bg-white/20'
+                      }`}
+                    >
+                      {backtestRunning ? 'STOP' : 'START'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Bar */}
+                <div className="text-xs text-white/40 flex items-center justify-between">
+                  <span>{backtestData?.status?.progress || '0%'}</span>
+                  <span>{backtestData?.status?.processingSpeed || '0 candles/sec'}</span>
+                </div>
+
+                {/* Performance Stats */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-3 rounded-lg bg-black/30">
+                    <div className="text-[10px] text-white/40 mb-0.5">Net P&L</div>
+                    <div className={`text-lg font-bold ${
+                      (backtestData?.performance?.netPnL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {(backtestData?.performance?.netPnL || 0) >= 0 ? '+' : ''}{fmt(backtestData?.performance?.netPnL || 0)}
+                    </div>
+                    <div className="text-[9px] text-white/30">
+                      Gross: {fmt(backtestData?.performance?.grossPnL || 0)}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-black/30">
+                    <div className="text-[10px] text-white/40 mb-0.5">Win Rate</div>
+                    <div className="text-lg font-bold">{backtestData?.performance?.winRate || '0%'}</div>
+                    <div className="text-[9px] text-white/30">
+                      {backtestData?.performance?.wins || 0}W / {backtestData?.performance?.losses || 0}L
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trading Costs (Realistic) */}
+                <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-white/40">Trading Costs (Realistic)</span>
+                    <span className="text-xs font-medium text-red-400">-${backtestData?.tradingCosts?.total || '0.00'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[9px]">
+                    <div>
+                      <span className="text-white/30">Comm: </span>
+                      <span className="text-white/60">${backtestData?.tradingCosts?.breakdown?.commissions || '0'}</span>
+                    </div>
+                    <div>
+                      <span className="text-white/30">Fees: </span>
+                      <span className="text-white/60">${backtestData?.tradingCosts?.breakdown?.exchangeFees || '0'}</span>
+                    </div>
+                    <div>
+                      <span className="text-white/30">Slip: </span>
+                      <span className="text-white/60">${backtestData?.tradingCosts?.breakdown?.slippage || '0'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ML Accuracy */}
+                <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-white/40">ML Accuracy</span>
+                    <span className="text-xs font-medium text-blue-400">{backtestData?.mlAccuracy?.overall || '0%'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[9px]">
+                    <div>
+                      <span className="text-white/30">High: </span>
+                      <span className="text-emerald-400">{backtestData?.mlAccuracy?.byConfidence?.high || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-white/30">Med: </span>
+                      <span className="text-amber-400">{backtestData?.mlAccuracy?.byConfidence?.medium || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-white/30">Low: </span>
+                      <span className="text-red-400">{backtestData?.mlAccuracy?.byConfidence?.low || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Latency Simulation */}
+                <div className="flex items-center justify-between text-[10px] text-white/30 px-1">
+                  <span>Avg Latency: {backtestData?.latencyStats?.avgLatencyMs || 'N/A'}</span>
+                  <span>Max: {backtestData?.latencyStats?.maxLatencyMs || 'N/A'}</span>
+                </div>
+
+                {/* Top Strategies */}
+                {backtestData?.strategies?.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-white/40 mb-2">Top Strategies</div>
+                    <div className="space-y-1">
+                      {backtestData.strategies.slice(0, 3).map((s: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-[10px] py-1 px-2 rounded bg-black/30">
+                          <span className="text-white/60">{s.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className={s.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                              {s.pnl >= 0 ? '+' : ''}{fmt(s.pnl)}
+                            </span>
+                            <span className="text-white/30">{s.winRate?.toFixed(0)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Info */}
+                <div className="text-[9px] text-white/20 text-center pt-2 border-t border-white/5">
+                  Runs 24/7 on historical data with realistic costs<br/>
+                  Matches live trading 1:1 (fees, slippage, latency)
+                </div>
               </div>
             )}
 

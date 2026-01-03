@@ -93,6 +93,7 @@ interface Trade {
 
 interface AutoTraderState {
   enabled: boolean
+  paperMode: boolean  // Paper trading - simulate without real execution
   instrument: 'ES' | 'NQ'
   position: Position | null
   // Signal data
@@ -135,6 +136,7 @@ interface AutoTraderState {
 
 let state: AutoTraderState = {
   enabled: false,
+  paperMode: true,  // Default to paper trading for safety
   instrument: 'ES',
   position: null,
   lastSignal: null,
@@ -428,6 +430,8 @@ async function runAutoTrader(): Promise<void> {
   // ==========================================================================
   console.log('[STEP 1] Checking risk status...')
 
+  // 4 DAYS REMAINING TO HIT $9000 PROFIT TARGET
+  const DAYS_REMAINING = 4
   const riskStatus = checkApexRiskStatus(
     state.startBalance,
     state.currentBalance,
@@ -435,7 +439,7 @@ async function runAutoTrader(): Promise<void> {
     state.highWaterMark,
     state.tradingDays,
     DEFAULT_APEX_SAFETY,
-    6
+    DAYS_REMAINING
   )
   state.lastRiskStatus = riskStatus
 
@@ -716,12 +720,6 @@ async function executeEntryAdvanced(
   tradSignal: Signal,
   conditions: MarketConditions
 ): Promise<boolean> {
-  const pmt = getClient()
-  if (!pmt || !pmt.isEnabled) {
-    console.log('[EXEC] PickMyTrade not available')
-    return false
-  }
-
   const riskStatus = state.lastRiskStatus
   if (!riskStatus || !riskStatus.canTrade) {
     console.log('[EXEC] Risk status blocking trade')
@@ -780,7 +778,30 @@ async function executeEntryAdvanced(
   console.log(`[EXEC] Contracts: ${contracts} | Stop$: ${dollarStop.toFixed(0)} | Target$: ${dollarTarget.toFixed(0)}`)
   console.log(`[EXEC] Est. Slippage: ${(executionPlan.estimatedSlippage * 100).toFixed(3)}% | Est. Cost: $${executionPlan.estimatedCost.toFixed(2)}`)
 
-  // Execute via PickMyTrade
+  // PAPER MODE: Simulate trade without real execution
+  if (state.paperMode) {
+    console.log(`[PAPER] SIMULATED ${direction} ${contracts}x ${symbol} @ ${entry.toFixed(2)}`)
+    state.position = {
+      instrument: state.instrument,
+      direction,
+      entryPrice: entry,
+      contracts,
+      stopLoss,
+      takeProfit,
+      entryTime: Date.now(),
+      signal: tradSignal,
+      executionPlan,
+    }
+    return true
+  }
+
+  // LIVE MODE: Execute via PickMyTrade
+  const pmt = getClient()
+  if (!pmt || !pmt.isEnabled) {
+    console.log('[EXEC] PickMyTrade not available - enable live trading first')
+    return false
+  }
+
   const result = await pmt.executeSignal({
     action: direction === 'LONG' ? 'BUY' : 'SELL',
     symbol,
@@ -822,57 +843,72 @@ async function executeExitAdvanced(
 ): Promise<boolean> {
   if (!state.position) return false
 
+  const symbol = getCurrentContractSymbol(state.position.instrument)
+  const pointValue = state.position.instrument === 'ES' ? ES_POINT_VALUE : NQ_POINT_VALUE
+  const priceDiff = state.position.direction === 'LONG'
+    ? exitPrice - state.position.entryPrice
+    : state.position.entryPrice - exitPrice
+  const pnl = priceDiff * pointValue * state.position.contracts
+
+  // Estimate slippage
+  const slippage = conditions.spreadPercent * exitPrice * state.position.contracts
+
+  // PAPER MODE: Simulate exit
+  if (state.paperMode) {
+    console.log(`[PAPER] SIMULATED EXIT @ ${exitPrice.toFixed(2)} | P&L: $${pnl.toFixed(2)}`)
+    recordTradeResult(exitPrice, pnl, slippage, reason)
+    return true
+  }
+
+  // LIVE MODE: Close via PickMyTrade
   const pmt = getClient()
   if (!pmt) return false
 
-  const symbol = getCurrentContractSymbol(state.position.instrument)
   const result = await pmt.closePosition(symbol)
 
   if (result.success) {
-    const pointValue = state.position.instrument === 'ES' ? ES_POINT_VALUE : NQ_POINT_VALUE
-    const priceDiff = state.position.direction === 'LONG'
-      ? exitPrice - state.position.entryPrice
-      : state.position.entryPrice - exitPrice
-    const pnl = priceDiff * pointValue * state.position.contracts
-
-    // Estimate slippage
-    const slippage = conditions.spreadPercent * exitPrice * state.position.contracts
-
-    const trade: Trade = {
-      id: `T${Date.now()}`,
-      instrument: state.position.instrument,
-      direction: state.position.direction,
-      entryPrice: state.position.entryPrice,
-      exitPrice,
-      contracts: state.position.contracts,
-      pnl,
-      entryTime: state.position.entryTime,
-      exitTime: Date.now(),
-      reason,
-      slippage,
-      executionAlgo: state.executionAlgorithm,
-      confluenceScore: state.signalConfluence,
-    }
-
-    state.todayTrades.push(trade)
-    state.todayPnL += pnl
-    state.totalTrades++
-    if (pnl > 0) {
-      state.wins++
-      if (state.currentBalance + pnl > state.highWaterMark) {
-        state.highWaterMark = state.currentBalance + pnl
-      }
-    } else {
-      state.losses++
-    }
-    state.currentBalance += pnl
-    state.position = null
-
-    console.log(`[EXIT] ${reason} | P&L: $${pnl.toFixed(2)} | Slippage: $${slippage.toFixed(2)}`)
+    recordTradeResult(exitPrice, pnl, slippage, reason)
     return true
   }
 
   return false
+}
+
+// Record trade result (shared by paper and live)
+function recordTradeResult(exitPrice: number, pnl: number, slippage: number, reason: string) {
+  if (!state.position) return
+
+  const trade: Trade = {
+    id: `T${Date.now()}`,
+    instrument: state.position.instrument,
+    direction: state.position.direction,
+    entryPrice: state.position.entryPrice,
+    exitPrice,
+    contracts: state.position.contracts,
+    pnl,
+    entryTime: state.position.entryTime,
+    exitTime: Date.now(),
+    reason,
+    slippage,
+    executionAlgo: state.executionAlgorithm,
+    confluenceScore: state.signalConfluence,
+  }
+
+  state.todayTrades.push(trade)
+  state.todayPnL += pnl
+  state.totalTrades++
+  if (pnl > 0) {
+    state.wins++
+    if (state.currentBalance + pnl > state.highWaterMark) {
+      state.highWaterMark = state.currentBalance + pnl
+    }
+  } else {
+    state.losses++
+  }
+  state.currentBalance += pnl
+  state.position = null
+
+  console.log(`[EXIT] ${reason} | P&L: $${pnl.toFixed(2)} | Slippage: $${slippage.toFixed(2)}`)
 }
 
 // =============================================================================
@@ -902,11 +938,13 @@ export async function GET(request: NextRequest) {
       // Status
       status: {
         enabled: state.enabled,
+        paperMode: state.paperMode,  // Paper trading = no real execution
         instrument: state.instrument,
         session: getCurrentSession(),
         hasPosition: !!state.position,
         position: state.position,
         lastCheck: state.lastCheck,
+        daysRemaining: 4,  // Days to hit $9000 target
       },
       // ML Signal
       mlSignal: state.lastMLSignal ? {
@@ -1024,10 +1062,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     if (body.action === 'start') {
-      if (!process.env.PICKMYTRADE_TOKEN) {
+      // Set paper mode (default true for safety)
+      state.paperMode = body.paperMode !== false
+
+      // For live trading, require PickMyTrade token
+      if (!state.paperMode && !process.env.PICKMYTRADE_TOKEN) {
         return NextResponse.json({
           error: 'PickMyTrade not configured',
-          message: 'Add PICKMYTRADE_TOKEN to enable auto-trading',
+          message: 'Add PICKMYTRADE_TOKEN for live trading, or use paperMode: true',
         }, { status: 503 })
       }
 
@@ -1037,9 +1079,14 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Auto-trading started with FULL integration',
+        message: state.paperMode
+          ? 'PAPER TRADING started - signals will simulate, no real orders'
+          : 'LIVE TRADING started with FULL integration',
+        paperMode: state.paperMode,
         modules: ['ML Signal Engine', 'Order Flow Analysis', 'Risk Analytics', 'Smart Execution'],
         instrument: state.instrument,
+        daysRemaining: 4,
+        profitTarget: 9000,
       })
     }
 
@@ -1088,7 +1135,82 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    // TEST MODE: Run full analysis once without starting auto-trader
+    if (body.action === 'test') {
+      state.paperMode = true  // Always paper for tests
+      state.instrument = body.instrument || 'ES'
+
+      // Run the full analysis pipeline
+      await runAutoTrader()
+
+      return NextResponse.json({
+        success: true,
+        mode: 'TEST (paper)',
+        daysRemaining: 4,
+        profitTarget: 9000,
+        // All the analysis results
+        mlSignal: state.lastMLSignal ? {
+          direction: state.lastMLSignal.direction,
+          confidence: (state.lastMLSignal.confidence * 100).toFixed(1) + '%',
+          entry: state.lastMLSignal.entry?.toFixed(2),
+          stopLoss: state.lastMLSignal.stopLoss?.toFixed(2),
+          takeProfit: state.lastMLSignal.takeProfit?.toFixed(2),
+          patterns: state.lastMLSignal.patterns.map(p => p.pattern),
+        } : null,
+        traditionalSignal: state.lastSignal ? {
+          direction: state.lastSignal.direction,
+          confidence: state.lastSignal.confidence.toFixed(1) + '%',
+          strategy: state.lastSignal.strategy,
+        } : null,
+        orderFlow: {
+          vpin: state.vpin ? {
+            value: (state.vpin.vpin * 100).toFixed(1) + '%',
+            toxicity: state.vpin.toxicity,
+            signal: state.vpin.signal,
+          } : null,
+          delta: state.delta ? {
+            imbalance: (state.delta.imbalanceRatio * 100).toFixed(1) + '%',
+            divergence: state.delta.deltaDivergence,
+            exhaustion: state.delta.exhaustion,
+          } : null,
+          largeOrders: {
+            detected: state.largeOrderDetected,
+            side: state.largeOrderSide,
+          },
+        },
+        regime: state.marketRegime ? {
+          type: state.marketRegime.type,
+          strength: (state.marketRegime.strength * 100).toFixed(1) + '%',
+        } : null,
+        marketConditions: state.marketConditions ? {
+          spread: (state.marketConditions.spreadPercent * 100).toFixed(4) + '%',
+          volatility: (state.marketConditions.volatility * 100).toFixed(2) + '%',
+          toxicity: (state.marketConditions.toxicity * 100).toFixed(1) + '%',
+          imbalance: (state.marketConditions.imbalance * 100).toFixed(1) + '%',
+        } : null,
+        riskStatus: state.lastRiskStatus ? {
+          status: state.lastRiskStatus.riskStatus,
+          canTrade: state.lastRiskStatus.canTrade,
+          safetyBuffer: '$' + state.lastRiskStatus.safetyBuffer?.toFixed(0),
+          maxLossToday: '$' + state.lastRiskStatus.maxAllowedLossToday?.toFixed(0),
+          recommendedSize: state.lastRiskStatus.recommendedPositionSize?.toFixed(2),
+          warnings: state.lastRiskStatus.warnings,
+        } : null,
+        confluence: {
+          score: state.signalConfluence,
+          level: state.signalConfluence >= 65 ? 'STRONG' :
+                 state.signalConfluence >= 50 ? 'MODERATE' :
+                 state.signalConfluence >= 35 ? 'WEAK' : 'NONE',
+          factors: state.confluenceFactors,
+          requiresScore: 50,
+          wouldTrade: state.signalConfluence >= 50,
+        },
+        executionAlgorithm: state.executionAlgorithm,
+        position: state.position,
+      })
+    }
+
+    return NextResponse.json({ error: 'Invalid action. Use: start, stop, check, test, reset' }, { status: 400 })
   } catch (e) {
     console.error('Auto-trade error:', e)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })

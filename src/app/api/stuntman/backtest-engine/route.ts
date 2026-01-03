@@ -45,6 +45,36 @@ import {
   PatternFeatures,
   TradeOutcome,
 } from '@/lib/stuntman/adaptive-ml'
+import {
+  checkApexRiskStatus,
+  DEFAULT_APEX_SAFETY,
+  ApexRiskStatus,
+} from '@/lib/stuntman/risk-analytics'
+
+// =============================================================================
+// APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
+// =============================================================================
+
+const APEX_150K_CONFIG = {
+  accountSize: 150000,           // $150,000 account
+  maxTrailingDrawdown: 6000,     // $6,000 max trailing drawdown (LOSE THIS = LOSE ACCOUNT)
+  profitTarget: 9000,            // $9,000 profit target to pass
+  minTradingDays: 7,             // Minimum 7 trading days required
+
+  // SAFETY BUFFERS - Stop BEFORE hitting limits
+  safetyBuffer: 0.80,            // Stop at 80% of max drawdown ($4,800)
+  criticalBuffer: 0.90,          // EMERGENCY STOP at 90% ($5,400)
+  dailyLossLimit: 0.25,          // Max 25% of remaining drawdown per day
+
+  // Position sizing based on drawdown
+  positionSizing: {
+    safe: 1.0,       // 0-40% drawdown: full size
+    caution: 0.75,   // 40-60% drawdown: 75% size
+    warning: 0.50,   // 60-80% drawdown: 50% size
+    danger: 0.25,    // 80-90% drawdown: 25% size
+    stop: 0,         // 90%+ drawdown: NO TRADING
+  }
+}
 
 // =============================================================================
 // REALISTIC TRADING COSTS (Match Apex/Rithmic 1:1)
@@ -491,6 +521,73 @@ let state: BacktestState = {
   processingSpeed: 0,
 }
 
+// =============================================================================
+// APEX RISK STATUS - CRITICAL SAFETY TRACKING
+// =============================================================================
+
+interface ApexRiskState {
+  trailingDrawdown: number       // Current drawdown from high water mark
+  drawdownPercent: number        // % of max drawdown used
+  riskLevel: 'SAFE' | 'CAUTION' | 'WARNING' | 'DANGER' | 'STOPPED' | 'VIOLATED'
+  positionSizeMultiplier: number // How much to reduce position size
+  canTrade: boolean              // Are we allowed to trade?
+  dailyPnL: number               // P&L for current trading day
+  tradingDayStart: number        // Timestamp of current day start
+  stopReason: string | null      // Why trading was stopped
+}
+
+let apexRisk: ApexRiskState = {
+  trailingDrawdown: 0,
+  drawdownPercent: 0,
+  riskLevel: 'SAFE',
+  positionSizeMultiplier: 1.0,
+  canTrade: true,
+  dailyPnL: 0,
+  tradingDayStart: 0,
+  stopReason: null,
+}
+
+function updateApexRiskStatus(): void {
+  const config = APEX_150K_CONFIG
+
+  // Calculate trailing drawdown (from peak to current)
+  apexRisk.trailingDrawdown = Math.max(0, state.peakBalance - state.currentBalance)
+  apexRisk.drawdownPercent = (apexRisk.trailingDrawdown / config.maxTrailingDrawdown) * 100
+
+  // Determine risk level and whether we can trade
+  if (apexRisk.trailingDrawdown >= config.maxTrailingDrawdown) {
+    apexRisk.riskLevel = 'VIOLATED'
+    apexRisk.canTrade = false
+    apexRisk.positionSizeMultiplier = 0
+    apexRisk.stopReason = `🚫 ACCOUNT VIOLATED! Drawdown $${apexRisk.trailingDrawdown.toFixed(2)} >= $${config.maxTrailingDrawdown} limit`
+  } else if (apexRisk.drawdownPercent >= config.criticalBuffer * 100) {
+    apexRisk.riskLevel = 'STOPPED'
+    apexRisk.canTrade = false
+    apexRisk.positionSizeMultiplier = 0
+    apexRisk.stopReason = `🛑 EMERGENCY STOP! ${apexRisk.drawdownPercent.toFixed(1)}% of max drawdown used. Only $${(config.maxTrailingDrawdown - apexRisk.trailingDrawdown).toFixed(2)} left!`
+  } else if (apexRisk.drawdownPercent >= config.safetyBuffer * 100) {
+    apexRisk.riskLevel = 'DANGER'
+    apexRisk.canTrade = false  // Stop trading to protect account
+    apexRisk.positionSizeMultiplier = config.positionSizing.danger
+    apexRisk.stopReason = `⚠️ DANGER ZONE! ${apexRisk.drawdownPercent.toFixed(1)}% of max drawdown. Trading paused for safety.`
+  } else if (apexRisk.drawdownPercent >= 60) {
+    apexRisk.riskLevel = 'WARNING'
+    apexRisk.canTrade = true
+    apexRisk.positionSizeMultiplier = config.positionSizing.warning
+    apexRisk.stopReason = null
+  } else if (apexRisk.drawdownPercent >= 40) {
+    apexRisk.riskLevel = 'CAUTION'
+    apexRisk.canTrade = true
+    apexRisk.positionSizeMultiplier = config.positionSizing.caution
+    apexRisk.stopReason = null
+  } else {
+    apexRisk.riskLevel = 'SAFE'
+    apexRisk.canTrade = true
+    apexRisk.positionSizeMultiplier = config.positionSizing.safe
+    apexRisk.stopReason = null
+  }
+}
+
 // Track inverse effectiveness
 let inverseStats = {
   normalWins: 0,
@@ -885,6 +982,14 @@ async function processCandle(index: number): Promise<void> {
       state.totalPnL += netPnL
       state.currentBalance += netPnL
 
+      // Update peak balance (high water mark) for trailing drawdown
+      if (state.currentBalance > state.peakBalance) {
+        state.peakBalance = state.currentBalance
+      }
+
+      // Update Apex risk status after trade
+      updateApexRiskStatus()
+
       // Update cost breakdown
       state.costBreakdown.commissions += costs.commission
       state.costBreakdown.exchangeFees += costs.exchangeFees
@@ -937,6 +1042,18 @@ async function processCandle(index: number): Promise<void> {
       state.position = null
     }
   } else {
+    // =========================================================================
+    // APEX SAFETY CHECK - MUST CHECK BEFORE ANY ENTRY
+    // =========================================================================
+    updateApexRiskStatus()
+
+    if (!apexRisk.canTrade) {
+      // STOP TRADING - Risk too high
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
+    }
+
     // ADAPTIVE ENTRY: Use learned optimal parameters
     let entryDirection = adaptiveSignal.direction
 
@@ -1000,8 +1117,11 @@ async function processCandle(index: number): Promise<void> {
       // Trailing stop distance (1.5x ATR after first target hit)
       const trailingDistance = atr * 1.5
 
-      // Position size based on edge strength (adaptive)
-      const contracts = Math.max(1, Math.floor(adaptiveSignal.positionSizeMultiplier))
+      // Position size based on edge strength (adaptive) AND Apex risk level
+      // CRITICAL: Reduce size when approaching max drawdown
+      const baseContracts = adaptiveSignal.positionSizeMultiplier
+      const riskAdjustedContracts = baseContracts * apexRisk.positionSizeMultiplier
+      const contracts = Math.max(1, Math.floor(riskAdjustedContracts))
 
       state.position = {
         direction: entryDirection,
@@ -1198,6 +1318,25 @@ export async function GET(request: NextRequest) {
         minLatencyMs: state.latencyStats.minLatencyMs === Infinity
           ? 'N/A'
           : state.latencyStats.minLatencyMs.toFixed(0) + 'ms',
+      },
+      // APEX 150K ACCOUNT SAFETY STATUS - CRITICAL FOR NOT LOSING THE ACCOUNT
+      apexRisk: {
+        riskLevel: apexRisk.riskLevel,
+        canTrade: apexRisk.canTrade,
+        trailingDrawdown: apexRisk.trailingDrawdown.toFixed(2),
+        maxAllowed: APEX_150K_CONFIG.maxTrailingDrawdown,
+        remaining: (APEX_150K_CONFIG.maxTrailingDrawdown - apexRisk.trailingDrawdown).toFixed(2),
+        drawdownPercent: apexRisk.drawdownPercent.toFixed(1) + '%',
+        positionSizeMultiplier: apexRisk.positionSizeMultiplier,
+        stopReason: apexRisk.stopReason,
+        peakBalance: state.peakBalance.toFixed(2),
+        accountConfig: {
+          accountSize: APEX_150K_CONFIG.accountSize,
+          maxTrailingDrawdown: APEX_150K_CONFIG.maxTrailingDrawdown,
+          profitTarget: APEX_150K_CONFIG.profitTarget,
+          safetyBuffer: (APEX_150K_CONFIG.safetyBuffer * 100) + '%',
+          criticalBuffer: (APEX_150K_CONFIG.criticalBuffer * 100) + '%',
+        },
       },
       // ML Accuracy
       mlAccuracy: {

@@ -223,6 +223,44 @@ interface BacktestState {
 }
 
 // =============================================================================
+// SPEED & MODE CONFIGURATION
+// =============================================================================
+
+interface EngineConfig {
+  speed: 1 | 5 | 10 | 50 | 100 | 'MAX'  // Speed multiplier
+  inverseMode: boolean                    // Flip signals when losing
+  inverseThreshold: number                // Win rate % below which to inverse (default 45%)
+  autoInverse: boolean                    // Auto-detect and inverse bad strategies
+}
+
+let config: EngineConfig = {
+  speed: 1,
+  inverseMode: false,
+  inverseThreshold: 45,
+  autoInverse: false,
+}
+
+// Speed to batch size mapping
+const SPEED_BATCH_SIZE: Record<string, number> = {
+  '1': 10,      // Normal: 10 candles per batch
+  '5': 50,      // 5x: 50 candles
+  '10': 100,    // 10x: 100 candles
+  '50': 500,    // 50x: 500 candles
+  '100': 1000,  // 100x: 1000 candles
+  'MAX': 5000,  // MAX: Process as fast as possible
+}
+
+// Speed to delay mapping (ms between batches)
+const SPEED_DELAY: Record<string, number> = {
+  '1': 100,     // Normal: 100ms delay
+  '5': 50,      // 5x: 50ms
+  '10': 20,     // 10x: 20ms
+  '50': 5,      // 50x: 5ms
+  '100': 1,     // 100x: 1ms
+  'MAX': 0,     // MAX: No delay
+}
+
+// =============================================================================
 // STATE
 // =============================================================================
 
@@ -265,6 +303,15 @@ let state: BacktestState = {
   candlesProcessed: 0,
   lastProcessedTime: 0,
   processingSpeed: 0,
+}
+
+// Track inverse effectiveness
+let inverseStats = {
+  normalWins: 0,
+  normalLosses: 0,
+  inverseWins: 0,
+  inverseLosses: 0,
+  currentlyInversed: false,
 }
 
 // Historical data cache
@@ -598,7 +645,11 @@ async function processCandle(index: number): Promise<void> {
   } else {
     // Look for entry
     if (confluenceScore >= 50 && mlDir !== 'FLAT' && mlSignal.confidence > 0.55) {
-      const direction = mlDir as 'LONG' | 'SHORT'
+      // Apply inverse mode if enabled - flip LONG <-> SHORT
+      let direction = mlDir as 'LONG' | 'SHORT'
+      if (shouldInverseSignal()) {
+        direction = direction === 'LONG' ? 'SHORT' : 'LONG'
+      }
       const atr = calculateATR(candles1m.slice(-14))
       const stopDistance = atr * 2
       const targetDistance = atr * 3
@@ -660,15 +711,35 @@ function calculateATR(candles: Candle[]): number {
 }
 
 // =============================================================================
-// RUN BACKTEST LOOP
+// RUN BACKTEST LOOP (with speed control)
 // =============================================================================
 
 async function runBacktestLoop(): Promise<void> {
   if (!state.running) return
 
   const startTime = Date.now()
-  const batchSize = 50  // Process 50 candles per iteration
 
+  // Get batch size based on speed setting
+  const speedKey = String(config.speed)
+  const batchSize = SPEED_BATCH_SIZE[speedKey] || 50
+  const delay = SPEED_DELAY[speedKey] || 10
+
+  // Auto-inverse check: if win rate drops below threshold, flip signals
+  if (config.autoInverse && state.trades.length >= 20) {
+    const recentTrades = state.trades.slice(-20)
+    const recentWins = recentTrades.filter(t => t.netPnL > 0).length
+    const recentWinRate = (recentWins / 20) * 100
+
+    if (recentWinRate < config.inverseThreshold && !inverseStats.currentlyInversed) {
+      inverseStats.currentlyInversed = true
+      console.log(`[BACKTEST] Auto-inverse ACTIVATED: Recent win rate ${recentWinRate.toFixed(1)}% < ${config.inverseThreshold}%`)
+    } else if (recentWinRate >= 55 && inverseStats.currentlyInversed) {
+      inverseStats.currentlyInversed = false
+      console.log(`[BACKTEST] Auto-inverse DEACTIVATED: Win rate recovered to ${recentWinRate.toFixed(1)}%`)
+    }
+  }
+
+  // Process candles in batch
   for (let i = 0; i < batchSize && state.running; i++) {
     if (state.currentIndex >= state.totalCandles - 1) {
       // Reset to beginning for continuous testing
@@ -681,14 +752,23 @@ async function runBacktestLoop(): Promise<void> {
   }
 
   const elapsed = Date.now() - startTime
-  state.processingSpeed = (batchSize / elapsed) * 1000
+  state.processingSpeed = elapsed > 0 ? (batchSize / elapsed) * 1000 : batchSize * 100
   state.lastProcessedTime = Date.now()
 
   // Continue loop if still running
   if (state.running) {
-    // Use setImmediate-like behavior with setTimeout(0)
-    setTimeout(runBacktestLoop, 10)  // Small delay to prevent blocking
+    if (delay === 0) {
+      // MAX speed: use setImmediate-like behavior
+      setImmediate ? setImmediate(runBacktestLoop) : setTimeout(runBacktestLoop, 0)
+    } else {
+      setTimeout(runBacktestLoop, delay)
+    }
   }
+}
+
+// Helper to determine if we should inverse the signal
+function shouldInverseSignal(): boolean {
+  return config.inverseMode || inverseStats.currentlyInversed
 }
 
 // =============================================================================
@@ -799,6 +879,35 @@ export async function GET(request: NextRequest) {
       recentTrades: state.trades.slice(-20).reverse(),
       // Current position
       position: state.position,
+      // Engine Configuration
+      config: {
+        speed: config.speed,
+        inverseMode: config.inverseMode,
+        autoInverse: config.autoInverse,
+        inverseThreshold: config.inverseThreshold,
+        currentlyInversed: inverseStats.currentlyInversed,
+      },
+      // Inverse Stats
+      inverseStats: {
+        normalWins: inverseStats.normalWins,
+        normalLosses: inverseStats.normalLosses,
+        inverseWins: inverseStats.inverseWins,
+        inverseLosses: inverseStats.inverseLosses,
+        active: inverseStats.currentlyInversed,
+      },
+      // Data Source Info
+      dataSource: {
+        provider: 'Crypto.com Exchange API',
+        instrument: 'BTC_USDT (scaled to ES price range)',
+        timeframes: ['1m', '5m', '15m'],
+        candlesLoaded: {
+          '1m': historicalData.candles1m.length,
+          '5m': historicalData.candles5m.length,
+          '15m': historicalData.candles15m.length,
+        },
+        note: 'Historical data fetched on-demand, scaled to match ES futures price action',
+        delay: 'None - processing historical data at selected speed',
+      },
     })
   } catch (e) {
     console.error('Backtest GET error:', e)
@@ -915,7 +1024,61 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ error: 'Invalid action. Use: start, stop, reset' }, { status: 400 })
+    // SPEED: Set processing speed
+    if (body.action === 'speed') {
+      const validSpeeds = [1, 5, 10, 50, 100, 'MAX']
+      if (!validSpeeds.includes(body.speed)) {
+        return NextResponse.json({ error: 'Invalid speed. Use: 1, 5, 10, 50, 100, or MAX' }, { status: 400 })
+      }
+      config.speed = body.speed
+      return NextResponse.json({
+        success: true,
+        message: `Speed set to ${body.speed}x`,
+        config: {
+          speed: config.speed,
+          batchSize: SPEED_BATCH_SIZE[String(config.speed)],
+          delay: SPEED_DELAY[String(config.speed)] + 'ms',
+        },
+      })
+    }
+
+    // INVERSE: Toggle inverse mode
+    if (body.action === 'inverse') {
+      config.inverseMode = body.enabled ?? !config.inverseMode
+      return NextResponse.json({
+        success: true,
+        message: `Inverse mode ${config.inverseMode ? 'ENABLED' : 'DISABLED'}`,
+        inverseMode: config.inverseMode,
+      })
+    }
+
+    // AUTO-INVERSE: Enable auto-inverse when losing
+    if (body.action === 'auto-inverse') {
+      config.autoInverse = body.enabled ?? !config.autoInverse
+      if (body.threshold) config.inverseThreshold = body.threshold
+      return NextResponse.json({
+        success: true,
+        message: `Auto-inverse ${config.autoInverse ? 'ENABLED' : 'DISABLED'}`,
+        autoInverse: config.autoInverse,
+        threshold: config.inverseThreshold,
+      })
+    }
+
+    // CONFIGURE: Set multiple options at once
+    if (body.action === 'configure') {
+      if (body.speed) config.speed = body.speed
+      if (body.inverseMode !== undefined) config.inverseMode = body.inverseMode
+      if (body.autoInverse !== undefined) config.autoInverse = body.autoInverse
+      if (body.inverseThreshold) config.inverseThreshold = body.inverseThreshold
+
+      return NextResponse.json({
+        success: true,
+        message: 'Configuration updated',
+        config: { ...config },
+      })
+    }
+
+    return NextResponse.json({ error: 'Invalid action. Use: start, stop, reset, speed, inverse, auto-inverse, configure' }, { status: 400 })
   } catch (e) {
     console.error('Backtest POST error:', e)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })

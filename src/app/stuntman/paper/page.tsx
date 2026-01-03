@@ -256,6 +256,11 @@ export default function PaperTradingPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [instrument] = useState<'ES' | 'NQ'>('ES')
 
+  // Speed & Inverse controls
+  const [speed, setSpeed] = useState<1 | 5 | 10 | 50 | 100 | 'MAX'>(1)
+  const [inverseMode, setInverseMode] = useState(false)
+  const [autoInverse, setAutoInverse] = useState(false)
+
   const tvSymbol = instrument === 'ES' ? 'CME_MINI:ES1!' : 'CME_MINI:NQ1!'
 
   // ===========================================================================
@@ -268,6 +273,12 @@ export default function PaperTradingPage() {
       const result = await res.json()
       if (result.success) {
         setData(result)
+        // Sync config state
+        if (result.config) {
+          setSpeed(result.config.speed || 1)
+          setInverseMode(result.config.inverseMode || false)
+          setAutoInverse(result.config.autoInverse || false)
+        }
       }
     } catch (e) {
       console.error('Fetch error:', e)
@@ -299,6 +310,50 @@ export default function PaperTradingPage() {
       console.error('Action error:', e)
     }
     setActionLoading(false)
+  }
+
+  // Set speed
+  const handleSpeed = async (newSpeed: 1 | 5 | 10 | 50 | 100 | 'MAX') => {
+    setSpeed(newSpeed)
+    try {
+      await fetch('/api/stuntman/backtest-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'speed', speed: newSpeed }),
+      })
+    } catch (e) {
+      console.error('Speed error:', e)
+    }
+  }
+
+  // Toggle inverse mode
+  const handleInverse = async () => {
+    const newValue = !inverseMode
+    setInverseMode(newValue)
+    try {
+      await fetch('/api/stuntman/backtest-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'inverse', enabled: newValue }),
+      })
+    } catch (e) {
+      console.error('Inverse error:', e)
+    }
+  }
+
+  // Toggle auto-inverse
+  const handleAutoInverse = async () => {
+    const newValue = !autoInverse
+    setAutoInverse(newValue)
+    try {
+      await fetch('/api/stuntman/backtest-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auto-inverse', enabled: newValue }),
+      })
+    } catch (e) {
+      console.error('Auto-inverse error:', e)
+    }
   }
 
   // ===========================================================================
@@ -420,6 +475,75 @@ export default function PaperTradingPage() {
           </div>
         </div>
       </header>
+
+      {/* ===================================================================== */}
+      {/* CONTROL BAR - Speed & Inverse Controls */}
+      {/* ===================================================================== */}
+      <div className="border-b border-white/5 bg-black/50 backdrop-blur">
+        <div className="max-w-[1920px] mx-auto px-4 py-2 flex items-center justify-between">
+          {/* Speed Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-white/40 mr-2">SPEED:</span>
+            {([1, 5, 10, 50, 100, 'MAX'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSpeed(s)}
+                className={`px-3 py-1 rounded text-xs font-bold transition ${
+                  speed === s
+                    ? 'bg-amber-500 text-black'
+                    : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {s === 'MAX' ? '🚀 MAX' : `${s}x`}
+              </button>
+            ))}
+          </div>
+
+          {/* Inverse Controls */}
+          <div className="flex items-center gap-4">
+            {/* Manual Inverse Toggle */}
+            <button
+              onClick={handleInverse}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                inverseMode
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'
+              }`}
+            >
+              <span className="text-lg">🔄</span>
+              INVERSE {inverseMode ? 'ON' : 'OFF'}
+            </button>
+
+            {/* Auto-Inverse Toggle */}
+            <button
+              onClick={handleAutoInverse}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                autoInverse
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'
+              }`}
+            >
+              <Brain className="w-4 h-4" />
+              AUTO-INVERSE {autoInverse ? 'ON' : 'OFF'}
+            </button>
+
+            {/* Currently Inversed Indicator */}
+            {data?.config?.currentlyInversed && (
+              <div className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 text-xs font-bold animate-pulse">
+                ⚡ SIGNALS INVERSED
+              </div>
+            )}
+          </div>
+
+          {/* Data Source */}
+          <div className="flex items-center gap-2 text-xs text-white/30">
+            <span>Data:</span>
+            <span className="text-white/50">{data?.dataSource?.provider || 'Loading...'}</span>
+            <span className="text-white/20">|</span>
+            <span className="text-amber-400">{data?.dataSource?.candlesLoaded?.['1m'] || 0} candles</span>
+          </div>
+        </div>
+      </div>
 
       {/* ===================================================================== */}
       {/* MAIN CONTENT */}

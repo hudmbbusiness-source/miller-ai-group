@@ -77,13 +77,14 @@ import {
 
 const APEX_150K_CONFIG = {
   accountSize: 150000,           // $150,000 account
-  maxTrailingDrawdown: 6000,     // $6,000 max trailing drawdown (LOSE THIS = LOSE ACCOUNT)
+  maxTrailingDrawdown: 5000,     // $5,000 max trailing drawdown (CORRECT - per Apex rules)
   profitTarget: 9000,            // $9,000 profit target to pass
   minTradingDays: 7,             // Minimum 7 trading days required
+  maxContracts: 17,              // Maximum 17 contracts for 150K account
 
   // SAFETY BUFFERS - Stop BEFORE hitting limits
-  safetyBuffer: 0.80,            // Stop at 80% of max drawdown ($4,800)
-  criticalBuffer: 0.90,          // EMERGENCY STOP at 90% ($5,400)
+  safetyBuffer: 0.80,            // Stop at 80% of max drawdown ($4,000)
+  criticalBuffer: 0.90,          // EMERGENCY STOP at 90% ($4,500)
   dailyLossLimit: 0.25,          // Max 25% of remaining drawdown per day
 
   // Position sizing based on drawdown
@@ -93,7 +94,15 @@ const APEX_150K_CONFIG = {
     warning: 0.50,   // 60-80% drawdown: 50% size
     danger: 0.25,    // 80-90% drawdown: 25% size
     stop: 0,         // 90%+ drawdown: NO TRADING
-  }
+  },
+
+  // APEX TIMING RULES
+  mandatoryCloseTime: 1659,      // 4:59 PM ET - MUST close all positions
+  noNewTradesAfter: 1630,        // 4:30 PM ET - No new trades after this (29 min buffer)
+
+  // TRAILING THRESHOLD BEHAVIOR (Rithmic accounts)
+  // Once profit target ($9,000) is reached, trailing threshold STOPS trailing
+  trailingStopsAtTarget: true,
 }
 
 // =============================================================================
@@ -814,6 +823,166 @@ function getSessionInfo(timestamp: number): { session: LocalTradingSession; canT
 }
 
 // =============================================================================
+// APEX TIMING RULES - 4:59 PM ET MANDATORY CLOSE
+// =============================================================================
+
+function getETTime(timestamp: number): { hour: number; minute: number; etTime: number } {
+  const date = new Date(timestamp)
+  // Convert to ET (UTC-5, simplified - ignores DST)
+  const utcHour = date.getUTCHours()
+  const utcMinute = date.getUTCMinutes()
+  const etHour = (utcHour - 5 + 24) % 24
+  const etTime = etHour * 100 + utcMinute // HHMM format
+  return { hour: etHour, minute: utcMinute, etTime }
+}
+
+function isNearMandatoryClose(timestamp: number): boolean {
+  // Returns true if we're at or past 4:30 PM ET (no new trades)
+  const { etTime } = getETTime(timestamp)
+  return etTime >= APEX_150K_CONFIG.noNewTradesAfter
+}
+
+function mustForceClose(timestamp: number): boolean {
+  // Returns true if we're at or past 4:59 PM ET (MUST close all positions)
+  const { etTime } = getETTime(timestamp)
+  return etTime >= APEX_150K_CONFIG.mandatoryCloseTime
+}
+
+function getTimeToClose(timestamp: number): { minutes: number; urgent: boolean; message: string } {
+  const { hour, minute } = getETTime(timestamp)
+  const closeHour = 16
+  const closeMinute = 59
+
+  // Calculate minutes until 4:59 PM
+  let currentMinutes = hour * 60 + minute
+  let closeMinutes = closeHour * 60 + closeMinute
+
+  // Handle overnight (if current time is before market open)
+  if (currentMinutes < 9 * 60 + 30) {
+    // Before 9:30 AM - market not open yet
+    currentMinutes += 24 * 60
+  }
+
+  const minutesRemaining = closeMinutes - currentMinutes
+
+  let message = ''
+  let urgent = false
+
+  if (minutesRemaining <= 0) {
+    message = 'PAST CLOSE TIME - MUST BE FLAT'
+    urgent = true
+  } else if (minutesRemaining <= 5) {
+    message = `CRITICAL: ${minutesRemaining} min until close - EXIT NOW`
+    urgent = true
+  } else if (minutesRemaining <= 15) {
+    message = `WARNING: ${minutesRemaining} min until close - tighten stops`
+    urgent = true
+  } else if (minutesRemaining <= 29) {
+    message = `CAUTION: ${minutesRemaining} min until close - no new trades`
+    urgent = false
+  }
+
+  return { minutes: minutesRemaining, urgent, message }
+}
+
+// =============================================================================
+// PA (PERFORMANCE ACCOUNT) RULES - FOR FUNDED ACCOUNTS
+// =============================================================================
+// These rules apply AFTER passing the evaluation
+
+const PA_RULES = {
+  // CONTRACT SCALING RULE
+  // Only use half contracts until EOD balance exceeds trailing threshold + $100
+  halfContractsUntilSafe: true,
+  safetyNetBuffer: 100,        // Must be trailing threshold + $100 to use full size
+
+  // 30% NEGATIVE P&L RULE (MAE - Maximum Adverse Excursion)
+  // Open loss CANNOT exceed 30% of start-of-day profit
+  maxMAEPercent: 0.30,
+
+  // 5:1 RISK-REWARD RATIO RULE
+  // Must maintain 5:1 ratio in PA (NOT during eval)
+  minRiskRewardPA: 5.0,
+
+  // NO HEDGING RULE
+  // Cannot hold simultaneous long AND short positions
+  allowHedging: false,
+
+  // ONE DIRECTION RULE
+  // Cannot switch directions (long to short) in same session
+  oneDirectionPerSession: true,
+}
+
+// Track PA state
+interface PAState {
+  isPA: boolean                   // Are we in a Performance Account?
+  startOfDayBalance: number       // Balance at start of trading day
+  startOfDayProfit: number        // Profit at start of day (relative to trailing threshold)
+  maxAllowedLoss: number          // 30% of start-of-day profit
+  currentSessionDirection: 'LONG' | 'SHORT' | null  // First trade direction today
+  halfContractsActive: boolean    // Are we using half size?
+}
+
+let paState: PAState = {
+  isPA: false,
+  startOfDayBalance: 150000,
+  startOfDayProfit: 0,
+  maxAllowedLoss: 0,
+  currentSessionDirection: null,
+  halfContractsActive: false,
+}
+
+function resetPAStateForNewDay(currentBalance: number, trailingThreshold: number): void {
+  // Called at start of each trading day
+  paState.startOfDayBalance = currentBalance
+  paState.startOfDayProfit = currentBalance - trailingThreshold
+
+  // 30% MAE Rule: Max loss is 30% of start-of-day profit
+  paState.maxAllowedLoss = paState.startOfDayProfit * PA_RULES.maxMAEPercent
+
+  // Contract Scaling: Use half size until balance > threshold + $100
+  paState.halfContractsActive = currentBalance < (trailingThreshold + PA_RULES.safetyNetBuffer)
+
+  // Reset session direction
+  paState.currentSessionDirection = null
+}
+
+function checkPAViolation(
+  currentBalance: number,
+  openPnL: number,
+  proposedDirection: 'LONG' | 'SHORT' | null,
+): { violation: boolean; reason: string } {
+  if (!paState.isPA) return { violation: false, reason: '' }
+
+  // Check 30% MAE Rule
+  if (openPnL < 0 && Math.abs(openPnL) > paState.maxAllowedLoss) {
+    return {
+      violation: true,
+      reason: `30% MAE VIOLATION: Open loss $${Math.abs(openPnL).toFixed(0)} exceeds max allowed $${paState.maxAllowedLoss.toFixed(0)}`
+    }
+  }
+
+  // Check One Direction Rule
+  if (proposedDirection && paState.currentSessionDirection && proposedDirection !== paState.currentSessionDirection) {
+    return {
+      violation: true,
+      reason: `ONE DIRECTION VIOLATION: Already traded ${paState.currentSessionDirection}, cannot switch to ${proposedDirection}`
+    }
+  }
+
+  return { violation: false, reason: '' }
+}
+
+function getPAContractMultiplier(): number {
+  if (!paState.isPA) return 1.0
+
+  // Contract Scaling Rule: Use half size if below safety threshold
+  if (paState.halfContractsActive) return 0.5
+
+  return 1.0
+}
+
+// =============================================================================
 // MULTI-TIMEFRAME TREND CONFIRMATION
 // =============================================================================
 
@@ -1500,6 +1669,100 @@ async function processCandle(index: number): Promise<void> {
   // Position Management
   if (state.position) {
     const pos = state.position
+
+    // =========================================================================
+    // APEX 4:59 PM ET MANDATORY CLOSE - MUST BE FLAT BY CLOSE
+    // =========================================================================
+    if (mustForceClose(currentCandle.time)) {
+      // FORCE CLOSE - No choice, Apex requires all positions closed by 4:59 PM ET
+      const closeExecution = calculateExecutionPrice(
+        currentCandle,
+        recentCandles,
+        pos.direction,
+        false,  // isEntry
+        pos.contracts
+      )
+
+      // Even if rejected, we MUST close - try again at market
+      const exitPrice = closeExecution.executed
+        ? closeExecution.executionPrice
+        : currentCandle.close  // Emergency market close
+
+      const exitLatency = simulateLatency()
+      const grossPnL = pos.direction === 'LONG'
+        ? (exitPrice - pos.entryPrice) * pos.contracts * TRADING_COSTS.pointValue
+        : (pos.entryPrice - exitPrice) * pos.contracts * TRADING_COSTS.pointValue
+
+      const volatility = (currentCandle.high - currentCandle.low) / currentCandle.close
+      const costs = calculateTradeCosts(pos.contracts, pos.entryPrice, exitPrice, volatility)
+      const netPnL = grossPnL - costs.totalCosts
+      const totalLatency = pos.entryLatencyMs + exitLatency
+
+      // Record the force-closed trade
+      const trade: BacktestTrade = {
+        id: `trade_${state.trades.length + 1}`,
+        timestamp: currentCandle.time,
+        direction: pos.direction,
+        rawEntryPrice: pos.rawEntryPrice,
+        entryPrice: pos.entryPrice,
+        rawExitPrice: currentCandle.close,
+        exitPrice: exitPrice,
+        contracts: pos.contracts,
+        grossPnL,
+        costs,
+        netPnL,
+        pnlPercent: (netPnL / APEX_150K_CONFIG.accountSize) * 100,
+        holdingTime: (currentCandle.time - pos.entryTime) / 60000,
+        latencyMs: totalLatency,
+        entryReason: pos.strategy || 'Unknown',
+        exitReason: 'APEX 4:59 PM MANDATORY CLOSE',
+        confluenceScore: pos.confluenceScore || 0,
+        mlConfidence: pos.mlConfidence || 0,
+        vpinAtEntry: pos.vpinAtEntry || 0,
+        entryAnalytics: {
+          strategy: pos.strategy || 'Unknown',
+          rsiAtEntry: indicators.rsi,
+          ema20Distance: ((currentPrice - indicators.ema20) / indicators.ema20) * 100,
+          ema50Distance: ((currentPrice - indicators.ema50) / indicators.ema50) * 100,
+          regime: regime.type,
+          hourOfDay: new Date(currentCandle.time).getUTCHours() - 5,
+          atrAtEntry: indicators.atr,
+          trendStrength: regime.strength,
+        },
+      }
+
+      state.trades.push(trade)
+      recordEntryAnalytics(trade)
+      dailyPnL += netPnL
+
+      // Update state
+      state.grossPnL += grossPnL
+      state.totalCosts += costs.totalCosts
+      state.totalPnL += netPnL
+      state.currentBalance += netPnL
+      state.costBreakdown.commissions += costs.commission
+      state.costBreakdown.exchangeFees += costs.exchangeFees
+      state.costBreakdown.slippage += costs.slippage
+
+      if (netPnL > 0) {
+        state.wins++
+        if (state.currentBalance > state.peakBalance) {
+          state.peakBalance = state.currentBalance
+        }
+      } else {
+        state.losses++
+        const drawdown = state.peakBalance - state.currentBalance
+        if (drawdown > state.maxDrawdown) {
+          state.maxDrawdown = drawdown
+        }
+      }
+
+      state.position = null
+      state.candlesProcessed++
+      state.currentIndex = index
+      return  // Position closed, done for this candle
+    }
+
     const priceDiff = pos.direction === 'LONG'
       ? currentPrice - pos.entryPrice
       : pos.entryPrice - currentPrice
@@ -1749,6 +2012,17 @@ async function processCandle(index: number): Promise<void> {
       return
     }
 
+    // =========================================================================
+    // APEX TIMING CHECK - 4:30 PM ET NO NEW TRADES
+    // =========================================================================
+    if (isNearMandatoryClose(currentCandle.time)) {
+      // AFTER 4:30 PM ET - No new trades allowed
+      // This gives us 29 minutes buffer before mandatory 4:59 PM close
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
+    }
+
     // SESSION FILTER: Only trade during optimal market sessions
     const sessionInfo = getSessionInfo(currentCandle.time)
     if (!sessionInfo.canTrade) {
@@ -1870,6 +2144,21 @@ async function processCandle(index: number): Promise<void> {
         return
       }
 
+      // PA ONE DIRECTION RULE: Check if we're violating the one direction rule
+      // (Only applies in Performance Account mode)
+      const paViolation = checkPAViolation(state.currentBalance, 0, entryDir)
+      if (paViolation.violation) {
+        // Block trade - would violate PA rules
+        state.candlesProcessed++
+        state.currentIndex = index
+        return
+      }
+
+      // Track session direction for One Direction Rule
+      if (paState.isPA && !paState.currentSessionDirection) {
+        paState.currentSessionDirection = entryDir
+      }
+
       const atr = indicators.atr
 
       // USE STRATEGY ENGINE's CALCULATED STOPS & TARGETS
@@ -1912,7 +2201,14 @@ async function processCandle(index: number): Promise<void> {
                                    signalToUse.confidence >= 75 ? 1.0 : 0.75
       const baseContracts = useAdvanced ? confidenceMultiplier : masterSignal.positionSizeMultiplier
       const riskAdjustedContracts = baseContracts * apexRisk.positionSizeMultiplier
-      const contracts = Math.max(1, Math.floor(riskAdjustedContracts))
+
+      // APEX MAX CONTRACTS LIMIT - 17 contracts max for 150K account
+      // Also apply PA contract scaling if in Performance Account
+      const paMultiplier = getPAContractMultiplier()
+      const contracts = Math.min(
+        APEX_150K_CONFIG.maxContracts,  // Hard cap at 17
+        Math.max(1, Math.floor(riskAdjustedContracts * paMultiplier))
+      )
 
       // Calculate entry analytics
       const entryHour = new Date(currentCandle.time).getUTCHours() - 5 // EST

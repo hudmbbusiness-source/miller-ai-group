@@ -96,6 +96,9 @@ interface AutoTraderState {
   paperMode: boolean  // Paper trading - simulate without real execution
   instrument: 'ES' | 'NQ'
   position: Position | null
+  // APEX Evaluation tracking
+  evaluationStartDate: string | null  // When user started evaluation
+  targetDays: number | null           // User's personal goal (optional)
   // Signal data
   lastSignal: Signal | null
   lastMLSignal: MLSignal | null
@@ -139,6 +142,9 @@ let state: AutoTraderState = {
   paperMode: true,  // Default to paper trading for safety
   instrument: 'ES',
   position: null,
+  // APEX: No deadline by default - user can set personal goal
+  evaluationStartDate: null,
+  targetDays: null,
   lastSignal: null,
   lastMLSignal: null,
   lastOrderFlow: null,
@@ -590,8 +596,9 @@ async function runAutoTrader(): Promise<void> {
   // ==========================================================================
   console.log('[STEP 1] Checking risk status...')
 
-  // 4 DAYS REMAINING TO HIT $9000 PROFIT TARGET
-  const DAYS_REMAINING = 4
+  // APEX: No time limit - you can take as long as you need
+  // Only pass targetDays if user sets a personal goal
+  const targetDays = state.targetDays || 30 // Default: relaxed 30-day personal goal
   const riskStatus = checkApexRiskStatus(
     state.startBalance,
     state.currentBalance,
@@ -599,7 +606,7 @@ async function runAutoTrader(): Promise<void> {
     state.highWaterMark,
     state.tradingDays,
     DEFAULT_APEX_SAFETY,
-    DAYS_REMAINING
+    targetDays
   )
   state.lastRiskStatus = riskStatus
 
@@ -1129,9 +1136,12 @@ export async function GET(request: NextRequest) {
         hasPosition: !!state.position,
         position: state.position,
         lastCheck: state.lastCheck,
-        daysRemaining: 4,  // Days to hit $9000 target
+        // APEX: No deadline - these are for tracking only
+        evaluationStartDate: state.evaluationStartDate,
+        targetDays: state.targetDays,  // User's personal goal (optional)
         tradingDays: state.tradingDays,
         tradingDaysNeeded: Math.max(0, APEX_RULES.minTradingDays - state.tradingDays),
+        tradingDaysComplete: state.tradingDays >= APEX_RULES.minTradingDays,
       },
       // ML Signal
       mlSignal: state.lastMLSignal ? {
@@ -1272,8 +1282,12 @@ export async function POST(request: NextRequest) {
         paperMode: state.paperMode,
         modules: ['ML Signal Engine', 'Order Flow Analysis', 'Risk Analytics', 'Smart Execution'],
         instrument: state.instrument,
-        daysRemaining: 4,
-        profitTarget: 9000,
+        apexRules: {
+          profitTarget: APEX_RULES.profitTarget,
+          maxDrawdown: APEX_RULES.maxTrailingDrawdown,
+          minTradingDays: APEX_RULES.minTradingDays,
+          noTimeLimit: true,  // APEX has no time limit
+        },
       })
     }
 
@@ -1322,6 +1336,28 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // CONFIGURE: Set evaluation parameters
+    if (body.action === 'configure') {
+      if (body.startBalance) state.startBalance = body.startBalance
+      if (body.currentBalance) state.currentBalance = body.currentBalance
+      if (body.evaluationStartDate) state.evaluationStartDate = body.evaluationStartDate
+      if (body.targetDays) state.targetDays = body.targetDays
+      if (body.tradingDays !== undefined) state.tradingDays = body.tradingDays
+
+      return NextResponse.json({
+        success: true,
+        message: 'Configuration updated',
+        config: {
+          startBalance: state.startBalance,
+          currentBalance: state.currentBalance,
+          evaluationStartDate: state.evaluationStartDate,
+          targetDays: state.targetDays,
+          tradingDays: state.tradingDays,
+          tradingDaysNeeded: Math.max(0, APEX_RULES.minTradingDays - state.tradingDays),
+        },
+      })
+    }
+
     // TEST MODE: Run full analysis once without starting auto-trader
     if (body.action === 'test') {
       state.paperMode = true  // Always paper for tests
@@ -1330,11 +1366,40 @@ export async function POST(request: NextRequest) {
       // Run the full analysis pipeline
       await runAutoTrader()
 
+      // Get current market status
+      const testMarketStatus = isMarketOpen()
+
       return NextResponse.json({
         success: true,
         mode: 'TEST (paper)',
-        daysRemaining: 4,
-        profitTarget: 9000,
+        // APEX Rules (accurate)
+        apexRules: {
+          profitTarget: APEX_RULES.profitTarget,
+          maxDrawdown: APEX_RULES.maxTrailingDrawdown,
+          minTradingDays: APEX_RULES.minTradingDays,
+          maxContracts: APEX_RULES.maxContracts,
+          noTimeLimit: true,
+          closeTime: '4:59 PM ET',
+        },
+        // Market Status
+        market: {
+          open: testMarketStatus.open,
+          status: testMarketStatus.reason,
+          minutesUntilClose: testMarketStatus.minutesUntilClose,
+        },
+        // Progress
+        progress: {
+          startBalance: state.startBalance,
+          currentBalance: state.currentBalance,
+          profit: state.currentBalance - state.startBalance,
+          profitTarget: APEX_RULES.profitTarget,
+          profitProgress: ((state.currentBalance - state.startBalance) / APEX_RULES.profitTarget * 100).toFixed(1) + '%',
+          tradingDays: state.tradingDays,
+          tradingDaysRequired: APEX_RULES.minTradingDays,
+          tradingDaysNeeded: Math.max(0, APEX_RULES.minTradingDays - state.tradingDays),
+          drawdownUsed: state.highWaterMark - state.currentBalance,
+          drawdownRemaining: APEX_RULES.maxTrailingDrawdown - (state.highWaterMark - state.currentBalance),
+        },
         // All the analysis results
         mlSignal: state.lastMLSignal ? {
           direction: state.lastMLSignal.direction,
@@ -1397,7 +1462,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ error: 'Invalid action. Use: start, stop, check, test, reset' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid action. Use: start, stop, check, test, reset, configure' }, { status: 400 })
   } catch (e) {
     console.error('Auto-trade error:', e)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })

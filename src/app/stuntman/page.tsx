@@ -169,6 +169,13 @@ export default function StuntManDashboard() {
   const [recentTrades, setRecentTrades] = useState<Trade[]>([])
   const [configured, setConfigured] = useState(false)
 
+  // APEX State
+  const [apexRules, setApexRules] = useState<any>(null)
+  const [marketStatus, setMarketStatus] = useState<any>(null)
+  const [tradingDays, setTradingDays] = useState(0)
+  const [tradingDaysNeeded, setTradingDaysNeeded] = useState(7)
+  const [paperMode, setPaperMode] = useState(true)
+
   // Manual Trading State
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
@@ -190,6 +197,12 @@ export default function StuntManDashboard() {
         setPerformance(data.performance)
         setRecentTrades(data.recentTrades || [])
         setConfigured(data.configured)
+        // APEX data
+        setApexRules(data.apexRules)
+        setMarketStatus(data.market)
+        setTradingDays(data.status?.tradingDays || 0)
+        setTradingDaysNeeded(data.status?.tradingDaysNeeded || 7)
+        setPaperMode(data.status?.paperMode ?? true)
       }
     } catch (e) {
       console.error('Fetch error:', e)
@@ -352,6 +365,48 @@ export default function StuntManDashboard() {
       {/* ================================================================== */}
       <main className="max-w-[1800px] mx-auto p-4">
         {/* ================================================================ */}
+        {/* APEX STATUS BAR */}
+        {/* ================================================================ */}
+        <div className="mb-4 p-3 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Mode Badge */}
+            <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+              paperMode ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+            }`}>
+              {paperMode ? '📝 PAPER MODE' : '🔴 LIVE TRADING'}
+            </div>
+
+            {/* Market Status */}
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              marketStatus?.open ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+            }`}>
+              {marketStatus?.open ? '🟢 Market Open' : '🔴 Market Closed'}
+            </div>
+
+            {/* Time until close */}
+            {marketStatus?.minutesUntilClose && marketStatus.minutesUntilClose < 60 && (
+              <div className="px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
+                ⏱️ {marketStatus.minutesUntilClose}min to close
+              </div>
+            )}
+          </div>
+
+          {/* Trading Days */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-white/40">Trading Days:</span>
+            <span className={`font-bold ${tradingDays >= 7 ? 'text-emerald-400' : 'text-white'}`}>
+              {tradingDays}/7
+            </span>
+            {tradingDaysNeeded > 0 && (
+              <span className="text-white/40 text-xs">({tradingDaysNeeded} more needed)</span>
+            )}
+            {tradingDays >= 7 && (
+              <span className="text-emerald-400 text-xs">✓ Complete</span>
+            )}
+          </div>
+        </div>
+
+        {/* ================================================================ */}
         {/* STATS BAR */}
         {/* ================================================================ */}
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
@@ -361,25 +416,26 @@ export default function StuntManDashboard() {
               <Wallet className="w-3 h-3" /> Balance
             </div>
             <div className="text-xl font-bold">{fmt(performance?.currentBalance || 150000)}</div>
+            <div className="text-[10px] text-white/30">Started: $150,000</div>
           </div>
 
-          {/* Today P&L */}
+          {/* Total P&L */}
           <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
-              <DollarSign className="w-3 h-3" /> Today
+              <DollarSign className="w-3 h-3" /> Total P&L
             </div>
-            <div className={`text-xl font-bold ${(performance?.todayPnL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {(performance?.todayPnL || 0) >= 0 ? '+' : ''}{fmt(performance?.todayPnL || 0)}
+            <div className={`text-xl font-bold ${((performance?.currentBalance || 150000) - 150000) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {((performance?.currentBalance || 150000) - 150000) >= 0 ? '+' : ''}{fmt((performance?.currentBalance || 150000) - 150000)}
             </div>
           </div>
 
-          {/* Target */}
+          {/* Profit Target */}
           <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
-              <Target className="w-3 h-3" /> Target
+              <Target className="w-3 h-3" /> Target Progress
             </div>
-            <div className="text-xl font-bold">{(performance?.targetProgress || 0).toFixed(0)}%</div>
-            <div className="text-[10px] text-white/30">{fmt(performance?.todayPnL || 0)} / $9,000</div>
+            <div className="text-xl font-bold">{Math.max(0, (((performance?.currentBalance || 150000) - 150000) / 9000 * 100)).toFixed(0)}%</div>
+            <div className="text-[10px] text-white/30">{fmt(Math.max(0, (performance?.currentBalance || 150000) - 150000))} / $9,000</div>
           </div>
 
           {/* Win Rate */}
@@ -391,22 +447,26 @@ export default function StuntManDashboard() {
             <div className="text-[10px] text-white/30">{performance?.wins || 0}W / {performance?.losses || 0}L</div>
           </div>
 
-          {/* Drawdown */}
+          {/* Trailing Drawdown */}
           <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
-              <Shield className="w-3 h-3" /> Drawdown
+              <Shield className="w-3 h-3" /> Drawdown Used
             </div>
-            <div className="text-xl font-bold">{fmt(performance?.drawdownUsed || 0)}</div>
-            <div className="text-[10px] text-white/30">of $5,000</div>
+            <div className={`text-xl font-bold ${(performance?.drawdownUsed || 0) > 3000 ? 'text-red-400' : (performance?.drawdownUsed || 0) > 2000 ? 'text-amber-400' : 'text-white'}`}>
+              {fmt(performance?.drawdownUsed || 0)}
+            </div>
+            <div className="text-[10px] text-white/30">of $5,000 max</div>
           </div>
 
-          {/* Withdrawable */}
+          {/* Remaining to qualify */}
           <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
-              <ArrowUpRight className="w-3 h-3" /> Cash Out
+              <Clock className="w-3 h-3" /> To Qualify
             </div>
-            <div className="text-xl font-bold text-emerald-400">{fmt(performance?.withdrawable || 0)}</div>
-            <div className="text-[10px] text-white/30">90% payout</div>
+            <div className="text-xl font-bold text-amber-400">
+              {fmt(Math.max(0, 9000 - ((performance?.currentBalance || 150000) - 150000)))}
+            </div>
+            <div className="text-[10px] text-white/30">profit needed</div>
           </div>
         </div>
 

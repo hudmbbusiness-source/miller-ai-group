@@ -1,5 +1,5 @@
 // @ts-nocheck
-// v5 API fix - deployed 2026-01-02
+// v5 API - NO setMarkers, NO createPriceLine - rebuilt 2026-01-02T04:15
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'

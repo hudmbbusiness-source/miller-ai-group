@@ -180,8 +180,18 @@ interface BacktestState {
     entryTime: number
     entryLatencyMs: number       // Simulated entry latency
     contracts: number
+    initialContracts: number     // Original size before scaling out
     stopLoss: number
+    initialStopLoss: number      // Original stop before trailing
     takeProfit: number
+    target1: number              // First partial target (1R)
+    target2: number              // Second partial target (2R)
+    target1Hit: boolean          // Did we hit first target?
+    target2Hit: boolean          // Did we hit second target?
+    trailingActive: boolean      // Is trailing stop active?
+    trailingDistance: number     // ATR-based trailing distance
+    highestPrice: number         // Highest price since entry (for LONG)
+    lowestPrice: number          // Lowest price since entry (for SHORT)
     confluenceScore: number
     mlConfidence: number
     vpinAtEntry: number
@@ -248,6 +258,16 @@ interface EngineConfig {
   inverseMode: boolean                    // Flip signals when losing
   inverseThreshold: number                // Win rate % below which to inverse (default 45%)
   autoInverse: boolean                    // Auto-detect and inverse bad strategies
+  sessionFilter: boolean                  // Only trade during optimal sessions
+  tradeSessions: {
+    preMarket: boolean      // 4:00 AM - 9:30 AM ET
+    openingHour: boolean    // 9:30 AM - 10:30 AM ET (high volatility)
+    midDay: boolean         // 10:30 AM - 2:00 PM ET (often choppy)
+    afternoonPush: boolean  // 2:00 PM - 3:00 PM ET
+    powerHour: boolean      // 3:00 PM - 4:00 PM ET (strong moves)
+    afterHours: boolean     // 4:00 PM - 8:00 PM ET
+    overnight: boolean      // 8:00 PM - 4:00 AM ET (thin markets)
+  }
 }
 
 let config: EngineConfig = {
@@ -255,6 +275,150 @@ let config: EngineConfig = {
   inverseMode: false,
   inverseThreshold: 40,  // Flip when win rate drops below 40%
   autoInverse: true,     // AUTO-INVERSE ON BY DEFAULT - fully automatic
+  sessionFilter: true,   // ENABLED: Only trade optimal sessions
+  tradeSessions: {
+    preMarket: false,      // Skip pre-market (thin)
+    openingHour: true,     // TRADE: High volatility, good setups
+    midDay: false,         // Skip mid-day (choppy, low conviction)
+    afternoonPush: true,   // TRADE: Momentum builds
+    powerHour: true,       // TRADE: Strong directional moves
+    afterHours: false,     // Skip after-hours (news reactions)
+    overnight: false,      // Skip overnight (thin, risky)
+  }
+}
+
+// =============================================================================
+// SESSION DETECTION & FILTERING
+// =============================================================================
+
+type TradingSession = 'preMarket' | 'openingHour' | 'midDay' | 'afternoonPush' | 'powerHour' | 'afterHours' | 'overnight'
+
+function getCurrentSession(timestamp: number): TradingSession {
+  const date = new Date(timestamp)
+  // Convert to ET (UTC-5 or UTC-4 during DST)
+  // For simplicity, using UTC-5 (EST)
+  const utcHour = date.getUTCHours()
+  const utcMinute = date.getUTCMinutes()
+  const etHour = (utcHour - 5 + 24) % 24
+  const etTime = etHour * 100 + utcMinute // HHMM format
+
+  // Session times in ET (HHMM format)
+  if (etTime >= 400 && etTime < 930) return 'preMarket'
+  if (etTime >= 930 && etTime < 1030) return 'openingHour'
+  if (etTime >= 1030 && etTime < 1400) return 'midDay'
+  if (etTime >= 1400 && etTime < 1500) return 'afternoonPush'
+  if (etTime >= 1500 && etTime < 1600) return 'powerHour'
+  if (etTime >= 1600 && etTime < 2000) return 'afterHours'
+  return 'overnight' // 8 PM - 4 AM
+}
+
+function shouldTradeInSession(timestamp: number): boolean {
+  if (!config.sessionFilter) return true // Session filter disabled
+
+  const session = getCurrentSession(timestamp)
+  return config.tradeSessions[session]
+}
+
+function getSessionInfo(timestamp: number): { session: TradingSession; canTrade: boolean; reason: string } {
+  const session = getCurrentSession(timestamp)
+  const canTrade = !config.sessionFilter || config.tradeSessions[session]
+
+  const sessionNames: Record<TradingSession, string> = {
+    preMarket: 'Pre-Market (4:00-9:30 ET)',
+    openingHour: 'Opening Hour (9:30-10:30 ET)',
+    midDay: 'Mid-Day (10:30-2:00 ET)',
+    afternoonPush: 'Afternoon Push (2:00-3:00 ET)',
+    powerHour: 'Power Hour (3:00-4:00 ET)',
+    afterHours: 'After Hours (4:00-8:00 ET)',
+    overnight: 'Overnight (8:00 PM-4:00 AM ET)',
+  }
+
+  const reason = canTrade
+    ? `Trading allowed: ${sessionNames[session]}`
+    : `Skipping: ${sessionNames[session]} (filtered)`
+
+  return { session, canTrade, reason }
+}
+
+// =============================================================================
+// MULTI-TIMEFRAME TREND CONFIRMATION
+// =============================================================================
+
+interface MTFTrend {
+  tf5m: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+  tf15m: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+  aligned: boolean           // Are both timeframes aligned?
+  bias: 'LONG' | 'SHORT' | 'NONE'
+  strength: number           // 0-100 confluence strength
+}
+
+function calculateEMA(prices: number[], period: number): number {
+  if (prices.length < period) return prices[prices.length - 1] || 0
+  const multiplier = 2 / (period + 1)
+  let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period
+  for (let i = period; i < prices.length; i++) {
+    ema = (prices[i] - ema) * multiplier + ema
+  }
+  return ema
+}
+
+function getTimeframeTrend(candles: Candle[]): 'BULLISH' | 'BEARISH' | 'NEUTRAL' {
+  if (candles.length < 21) return 'NEUTRAL'
+
+  const closes = candles.map(c => c.close)
+  const ema9 = calculateEMA(closes, 9)
+  const ema21 = calculateEMA(closes, 21)
+  const currentPrice = closes[closes.length - 1]
+
+  // Strong trend: price > EMA9 > EMA21 (bullish) or price < EMA9 < EMA21 (bearish)
+  if (currentPrice > ema9 && ema9 > ema21) {
+    return 'BULLISH'
+  } else if (currentPrice < ema9 && ema9 < ema21) {
+    return 'BEARISH'
+  }
+
+  return 'NEUTRAL'
+}
+
+function getMTFConfirmation(candles5m: Candle[], candles15m: Candle[]): MTFTrend {
+  const tf5m = getTimeframeTrend(candles5m)
+  const tf15m = getTimeframeTrend(candles15m)
+
+  // Check alignment
+  const aligned = (tf5m === 'BULLISH' && tf15m === 'BULLISH') ||
+                  (tf5m === 'BEARISH' && tf15m === 'BEARISH')
+
+  // Determine bias
+  let bias: 'LONG' | 'SHORT' | 'NONE' = 'NONE'
+  let strength = 0
+
+  if (aligned) {
+    if (tf5m === 'BULLISH') {
+      bias = 'LONG'
+      strength = 80  // Strong confluence
+    } else {
+      bias = 'SHORT'
+      strength = 80
+    }
+  } else if (tf15m !== 'NEUTRAL') {
+    // 15m trend takes precedence
+    bias = tf15m === 'BULLISH' ? 'LONG' : 'SHORT'
+    strength = 50  // Moderate confluence
+  } else if (tf5m !== 'NEUTRAL') {
+    // Only 5m has trend
+    bias = tf5m === 'BULLISH' ? 'LONG' : 'SHORT'
+    strength = 30  // Weak confluence
+  }
+
+  return { tf5m, tf15m, aligned, bias, strength }
+}
+
+function signalAlignedWithMTF(direction: 'LONG' | 'SHORT', mtf: MTFTrend): boolean {
+  // If no clear MTF bias, allow any signal
+  if (mtf.bias === 'NONE') return true
+
+  // Otherwise, signal must match MTF bias
+  return direction === mtf.bias
 }
 
 // Speed to batch size mapping
@@ -550,19 +714,83 @@ async function processCandle(index: number): Promise<void> {
       ? currentPrice - pos.entryPrice
       : pos.entryPrice - currentPrice
 
+    // =========================================================================
+    // TRAILING STOP & PARTIAL PROFIT SYSTEM
+    // =========================================================================
+
+    // Update highest/lowest price tracking
+    if (pos.direction === 'LONG') {
+      pos.highestPrice = Math.max(pos.highestPrice, currentPrice)
+    } else {
+      pos.lowestPrice = Math.min(pos.lowestPrice, currentPrice)
+    }
+
+    // Check Target 1 (1R) - Take 50% profit and activate trailing stop
+    if (!pos.target1Hit) {
+      const hitTarget1 = pos.direction === 'LONG'
+        ? currentPrice >= pos.target1
+        : currentPrice <= pos.target1
+
+      if (hitTarget1) {
+        pos.target1Hit = true
+        pos.trailingActive = true
+        // Move stop to breakeven
+        pos.stopLoss = pos.entryPrice
+        // Scale out 50% (reduce contracts)
+        const scaleOutContracts = Math.floor(pos.contracts * 0.5)
+        if (scaleOutContracts > 0) {
+          // Record partial exit (we'll count this in the final trade)
+          pos.contracts = pos.contracts - scaleOutContracts
+        }
+      }
+    }
+
+    // Check Target 2 (2R) - Take another 25% profit
+    if (pos.target1Hit && !pos.target2Hit) {
+      const hitTarget2 = pos.direction === 'LONG'
+        ? currentPrice >= pos.target2
+        : currentPrice <= pos.target2
+
+      if (hitTarget2) {
+        pos.target2Hit = true
+        // Scale out another 25% of original (half of remaining)
+        const scaleOutContracts = Math.floor(pos.contracts * 0.5)
+        if (scaleOutContracts > 0 && pos.contracts > 1) {
+          pos.contracts = pos.contracts - scaleOutContracts
+        }
+      }
+    }
+
+    // Update trailing stop if active
+    if (pos.trailingActive) {
+      if (pos.direction === 'LONG') {
+        // Trail stop below highest price
+        const newTrailingStop = pos.highestPrice - pos.trailingDistance
+        if (newTrailingStop > pos.stopLoss) {
+          pos.stopLoss = newTrailingStop
+        }
+      } else {
+        // Trail stop above lowest price
+        const newTrailingStop = pos.lowestPrice + pos.trailingDistance
+        if (newTrailingStop < pos.stopLoss) {
+          pos.stopLoss = newTrailingStop
+        }
+      }
+    }
+
     let shouldExit = false
     let exitReason = ''
 
-    // Stop loss
+    // Stop loss (includes trailing stop)
     if (pos.direction === 'LONG' && currentPrice <= pos.stopLoss) {
       shouldExit = true
-      exitReason = 'Stop Loss'
+      exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
     } else if (pos.direction === 'SHORT' && currentPrice >= pos.stopLoss) {
       shouldExit = true
-      exitReason = 'Stop Loss'
+      exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
     }
 
-    // Take profit
+    // Take profit (final target)
     if (pos.direction === 'LONG' && currentPrice >= pos.takeProfit) {
       shouldExit = true
       exitReason = 'Take Profit'
@@ -699,11 +927,31 @@ async function processCandle(index: number): Promise<void> {
     // ADAPTIVE ENTRY: Use learned optimal parameters
     let entryDirection = adaptiveSignal.direction
 
+    // SESSION FILTER: Only trade during optimal market sessions
+    const sessionInfo = getSessionInfo(currentCandle.time)
+    if (!sessionInfo.canTrade) {
+      // Skip entry - not in optimal trading session
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
+    }
+
+    // MULTI-TIMEFRAME CONFIRMATION: Check higher timeframe trend alignment
+    const mtfTrend = getMTFConfirmation(candles5m.slice(-50), candles15m.slice(-30))
+
     // Only enter if adaptive signal is not FLAT and has sufficient strength
     if (entryDirection !== 'FLAT' && adaptiveSignal.strength !== 'NONE') {
       // Apply inverse mode if enabled - flip LONG <-> SHORT
       if (shouldInverseSignal()) {
         entryDirection = entryDirection === 'LONG' ? 'SHORT' : 'LONG'
+      }
+
+      // MTF FILTER: Only trade in direction of higher timeframe trend
+      if (!signalAlignedWithMTF(entryDirection, mtfTrend)) {
+        // Signal against higher timeframe trend - skip entry
+        state.candlesProcessed++
+        state.currentIndex = index
+        return
       }
 
       const atr = calculateATR(candles1m.slice(-14))
@@ -727,6 +975,18 @@ async function processCandle(index: number): Promise<void> {
       const stopLoss = entryDirection === 'LONG' ? entryPrice - stopDistance : entryPrice + stopDistance
       const takeProfit = entryDirection === 'LONG' ? entryPrice + targetDistance : entryPrice - targetDistance
 
+      // Calculate partial profit targets (1R and 2R)
+      const riskAmount = stopDistance // 1R = distance to stop
+      const target1 = entryDirection === 'LONG'
+        ? entryPrice + riskAmount      // 1R profit
+        : entryPrice - riskAmount
+      const target2 = entryDirection === 'LONG'
+        ? entryPrice + (riskAmount * 2) // 2R profit
+        : entryPrice - (riskAmount * 2)
+
+      // Trailing stop distance (1.5x ATR after first target hit)
+      const trailingDistance = atr * 1.5
+
       // Position size based on edge strength (adaptive)
       const contracts = Math.max(1, Math.floor(adaptiveSignal.positionSizeMultiplier))
 
@@ -737,8 +997,18 @@ async function processCandle(index: number): Promise<void> {
         entryTime: currentCandle.time,
         entryLatencyMs,
         contracts,
+        initialContracts: contracts,
         stopLoss,
+        initialStopLoss: stopLoss,
         takeProfit,
+        target1,
+        target2,
+        target1Hit: false,
+        target2Hit: false,
+        trailingActive: false,
+        trailingDistance,
+        highestPrice: entryPrice,
+        lowestPrice: entryPrice,
         confluenceScore: adaptiveSignal.confidence,
         mlConfidence: mlSignal.confidence,
         vpinAtEntry: vpin.vpin,

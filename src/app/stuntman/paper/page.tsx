@@ -1,4 +1,5 @@
 // @ts-nocheck
+// v5 API fix - deployed 2026-01-02
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'

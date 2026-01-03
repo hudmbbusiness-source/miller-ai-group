@@ -192,9 +192,6 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
   const chartRef = useRef<any>(null)
   const candleSeriesRef = useRef<any>(null)
   const volumeSeriesRef = useRef<any>(null)
-  const stopLossLineRef = useRef<any>(null)
-  const takeProfitLineRef = useRef<any>(null)
-  const entryLineRef = useRef<any>(null)
 
   // Initialize chart with lightweight-charts v5 API
   useEffect(() => {
@@ -306,71 +303,8 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
       volumeSeriesRef.current.setData(volumeData)
     }
 
-    // Add trade markers
-    if (chartData.trades?.length > 0) {
-      const markers = chartData.trades.map(t => ({
-        time: t.time as any,
-        position: t.position as any,
-        color: t.color,
-        shape: t.shape as any,
-        text: t.text,
-      }))
-      candleSeriesRef.current.setMarkers(markers)
-    }
-
-    // Draw position lines
-    if (chartData.currentPosition && chartRef.current) {
-      const pos = chartData.currentPosition
-
-      // Remove old lines
-      if (entryLineRef.current) candleSeriesRef.current.removePriceLine(entryLineRef.current)
-      if (stopLossLineRef.current) candleSeriesRef.current.removePriceLine(stopLossLineRef.current)
-      if (takeProfitLineRef.current) candleSeriesRef.current.removePriceLine(takeProfitLineRef.current)
-
-      // Entry line
-      entryLineRef.current = candleSeriesRef.current.createPriceLine({
-        price: pos.entryPrice,
-        color: pos.direction === 'LONG' ? '#22c55e' : '#ef4444',
-        lineWidth: 2,
-        lineStyle: 0,
-        axisLabelVisible: true,
-        title: `${pos.direction} Entry`,
-      })
-
-      // Stop loss line
-      stopLossLineRef.current = candleSeriesRef.current.createPriceLine({
-        price: pos.stopLoss,
-        color: '#ef4444',
-        lineWidth: 1,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: 'Stop Loss',
-      })
-
-      // Take profit line
-      takeProfitLineRef.current = candleSeriesRef.current.createPriceLine({
-        price: pos.takeProfit,
-        color: '#22c55e',
-        lineWidth: 1,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: 'Take Profit',
-      })
-    } else {
-      // Remove lines if no position
-      if (entryLineRef.current) {
-        try { candleSeriesRef.current?.removePriceLine(entryLineRef.current) } catch {}
-        entryLineRef.current = null
-      }
-      if (stopLossLineRef.current) {
-        try { candleSeriesRef.current?.removePriceLine(stopLossLineRef.current) } catch {}
-        stopLossLineRef.current = null
-      }
-      if (takeProfitLineRef.current) {
-        try { candleSeriesRef.current?.removePriceLine(takeProfitLineRef.current) } catch {}
-        takeProfitLineRef.current = null
-      }
-    }
+    // Note: Markers and price lines removed due to v5 API incompatibility
+    // Trades are shown in the trade history panel instead
 
     // Auto-scroll to latest candle if running
     if (isRunning && chartRef.current) {

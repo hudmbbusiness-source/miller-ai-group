@@ -710,15 +710,55 @@ let config: EngineConfig = {
   autoInverse: true,     // AUTO-INVERSE ON BY DEFAULT - fully automatic
   sessionFilter: true,   // ENABLED: Only trade optimal sessions
   tradeSessions: {
-    preMarket: false,      // Skip pre-market (thin)
-    openingHour: true,     // TRADE: High volatility, good setups
-    midDay: true,          // TRADE: Enable to get more trades for learning
-    afternoonPush: true,   // TRADE: Momentum builds
-    powerHour: true,       // TRADE: Strong directional moves
-    afterHours: false,     // Skip after-hours (news reactions)
-    overnight: false,      // Skip overnight (thin, risky)
+    preMarket: false,      // ❌ Skip - thin liquidity, unpredictable gaps
+    openingHour: true,     // ✅ 9:30-10:30 - High volatility, clear trends
+    midDay: false,         // ❌ Skip - LUNCH HOUR CHOP kills profits
+    afternoonPush: true,   // ✅ 2:00-3:00 - Momentum builds, institutions active
+    powerHour: true,       // ✅ 3:00-4:00 - Strong directional moves, best setups
+    afterHours: false,     // ❌ Skip - news reactions, wide spreads
+    overnight: false,      // ❌ Skip - thin markets, no edge
   }
 }
+
+// =============================================================================
+// PRODUCTION-READY PROFIT MAXIMIZATION CONFIG
+// =============================================================================
+
+const PROFIT_CONFIG = {
+  // DAILY LOSS LIMIT - Protect the account at all costs
+  dailyMaxLoss: 1000,          // Stop trading if down $1,000 in a day
+  dailyMaxLossPercent: 0.67,   // Or 0.67% of account
+
+  // ENTRY REQUIREMENTS - Only take the BEST setups
+  minConfluenceScore: 60,      // Need 60+ confluence (was 25 - way too low)
+  minConfidence: 75,           // Need 75%+ confidence (was 70)
+  minRiskReward: 2.0,          // Need 2:1 R:R minimum (was 1.5)
+
+  // MTF ALIGNMENT - Trade with the trend ONLY
+  requireMTFAlignment: true,   // Higher timeframes must agree
+
+  // TRADE FREQUENCY - Quality over quantity
+  maxTradesPerDay: 8,          // Maximum 8 trades per day
+  minTimeBetweenTrades: 15,    // Wait 15 minutes between trades (in candles)
+
+  // MOMENTUM REQUIREMENTS
+  requireMomentumConfirm: true,  // RSI and MACD must confirm
+  rsiOversoldThreshold: 35,      // Only long when RSI > 35 (not oversold trap)
+  rsiOverboughtThreshold: 65,    // Only short when RSI < 65 (not overbought trap)
+
+  // VOLATILITY FILTER
+  minATRMultiple: 0.5,          // Skip if ATR too low (no movement)
+  maxATRMultiple: 3.0,          // Skip if ATR too high (too risky)
+
+  // TREND STRENGTH
+  minTrendStrength: 0.6,        // EMA alignment must be 60%+
+}
+
+// Daily P&L tracking
+let dailyPnL = 0
+let dailyTradeCount = 0
+let lastTradeIndex = 0
+let currentTradingDay = ''
 
 // =============================================================================
 // SESSION DETECTION & FILTERING (Local version for config compatibility)
@@ -1634,6 +1674,9 @@ async function processCandle(index: number): Promise<void> {
       state.totalPnL += netPnL
       state.currentBalance += netPnL
 
+      // PROFIT TRACKING: Update daily P&L for daily loss limit enforcement
+      dailyPnL += netPnL
+
       // Update peak balance (high water mark) for trailing drawdown
       if (state.currentBalance > state.peakBalance) {
         state.peakBalance = state.currentBalance
@@ -1719,38 +1762,93 @@ async function processCandle(index: number): Promise<void> {
     const mtfTrend = getMTFConfirmation(candles5m.slice(-50), candles15m.slice(-30))
 
     // ==========================================================================
-    // INSTITUTIONAL ENTRY LOGIC
-    // Uses ADVANCED signal (Order Flow, Volume Profile, Smart Money, Z-Score)
-    // Falls back to basic strategy engine if no advanced signal
+    // PRODUCTION-READY ENTRY LOGIC - PROFIT MAXIMIZATION
+    // Only take the ABSOLUTE BEST setups - quality over quantity
     // ==========================================================================
+
+    // CHECK 1: Daily loss limit - PROTECT THE ACCOUNT
+    const tradingDay = new Date(currentCandle.time).toDateString()
+    if (tradingDay !== currentTradingDay) {
+      // New trading day - reset counters
+      currentTradingDay = tradingDay
+      dailyPnL = 0
+      dailyTradeCount = 0
+    }
+
+    if (dailyPnL <= -PROFIT_CONFIG.dailyMaxLoss) {
+      // STOP TRADING - Hit daily loss limit
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
+    }
+
+    // CHECK 2: Max trades per day
+    if (dailyTradeCount >= PROFIT_CONFIG.maxTradesPerDay) {
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
+    }
+
+    // CHECK 3: Minimum time between trades (avoid overtrading)
+    if (index - lastTradeIndex < PROFIT_CONFIG.minTimeBetweenTrades) {
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
+    }
+
+    // CHECK 4: Momentum confirmation
+    const currentRSI = indicators.rsi
+    const macdHistogram = indicators.macdHistogram
 
     // Determine which signal to use - prefer advanced institutional signals
     let useAdvanced = false
     let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number } | null = null
 
-    // Advanced signal takes priority if it exists and has high confidence
-    if (advancedSignal && advancedSignal.direction !== 'FLAT' && advancedSignal.confidence >= 70) {
-      useAdvanced = true
-      signalToUse = {
-        direction: advancedSignal.direction as 'LONG' | 'SHORT',
-        confidence: advancedSignal.confidence,
-        strategy: advancedSignal.strategy,
-        stopLoss: advancedSignal.stopLoss,
-        takeProfit: advancedSignal.takeProfit,
-        riskRewardRatio: advancedSignal.riskRewardRatio,
+    // Advanced signal takes priority if it exists and meets STRICT requirements
+    if (advancedSignal &&
+        advancedSignal.direction !== 'FLAT' &&
+        advancedSignal.confidence >= PROFIT_CONFIG.minConfidence &&
+        advancedSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+
+      // CHECK 5: Momentum must confirm direction
+      const momentumConfirms = advancedSignal.direction === 'LONG'
+        ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
+        : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+
+      if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+        useAdvanced = true
+        signalToUse = {
+          direction: advancedSignal.direction as 'LONG' | 'SHORT',
+          confidence: advancedSignal.confidence,
+          strategy: advancedSignal.strategy,
+          stopLoss: advancedSignal.stopLoss,
+          takeProfit: advancedSignal.takeProfit,
+          riskRewardRatio: advancedSignal.riskRewardRatio,
+        }
       }
     }
-    // Fall back to master signal if no advanced signal
-    else if (masterSignal.direction !== 'FLAT' &&
-             masterSignal.confluenceScore >= 25 &&
-             masterSignal.riskRewardRatio >= 1.5) {
-      signalToUse = {
-        direction: masterSignal.direction as 'LONG' | 'SHORT',
-        confidence: masterSignal.confidence,
-        strategy: masterSignal.primaryStrategy,
-        stopLoss: masterSignal.stopLoss,
-        takeProfit: masterSignal.takeProfit,
-        riskRewardRatio: masterSignal.riskRewardRatio,
+
+    // Fall back to master signal ONLY if it meets STRICT requirements
+    if (!signalToUse &&
+        masterSignal.direction !== 'FLAT' &&
+        masterSignal.confluenceScore >= PROFIT_CONFIG.minConfluenceScore &&
+        masterSignal.confidence >= PROFIT_CONFIG.minConfidence &&
+        masterSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+
+      // Momentum must confirm
+      const momentumConfirms = masterSignal.direction === 'LONG'
+        ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
+        : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+
+      if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+        signalToUse = {
+          direction: masterSignal.direction as 'LONG' | 'SHORT',
+          confidence: masterSignal.confidence,
+          strategy: masterSignal.primaryStrategy,
+          stopLoss: masterSignal.stopLoss,
+          takeProfit: masterSignal.takeProfit,
+          riskRewardRatio: masterSignal.riskRewardRatio,
+        }
       }
     }
 
@@ -1865,6 +1963,10 @@ async function processCandle(index: number): Promise<void> {
           trendStrength,
         },
       }
+
+      // PROFIT TRACKING: Update trade frequency counters
+      dailyTradeCount++
+      lastTradeIndex = index
     }
   }
 
@@ -2277,7 +2379,13 @@ export async function POST(request: NextRequest) {
       state.maxDrawdown = 0
       state.peakBalance = 150000
       state.currentBalance = 150000
-      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0 }
+      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0, spread: 0, gapLosses: 0 }
+
+      // Reset daily profit tracking
+      dailyPnL = 0
+      dailyTradeCount = 0
+      lastTradeIndex = 0
+      currentTradingDay = ''
       state.latencyStats = { totalLatencyMs: 0, avgLatencyMs: 0, maxLatencyMs: 0, minLatencyMs: Infinity }
       state.candlesProcessed = 0
       state.strategyPerformance = {}

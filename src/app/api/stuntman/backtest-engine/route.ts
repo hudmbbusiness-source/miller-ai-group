@@ -569,8 +569,8 @@ async function processCandle(index: number): Promise<void> {
       exitReason = 'Take Profit'
     }
 
-    // Reversal signal
-    if (confluenceScore >= 60 && mlDir !== 'FLAT' && mlDir !== pos.direction) {
+    // Reversal signal - use adaptive signal for exit
+    if (adaptiveSignal.confidence >= 60 && adaptiveSignal.direction !== 'FLAT' && adaptiveSignal.direction !== pos.direction) {
       shouldExit = true
       exitReason = 'Reversal Signal'
     }

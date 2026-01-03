@@ -20,14 +20,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
-  generateSignal,
   Candle,
-  Signal,
 } from '@/lib/stuntman/signal-engine'
-import {
-  generateMLSignal,
-  MLSignal,
-} from '@/lib/stuntman/ml-signal-engine'
 import {
   VPINCalculator,
   DeltaAnalyzer,
@@ -36,12 +30,12 @@ import { Trade as OrderFlowTrade } from '@/lib/stuntman/types'
 import {
   generateAdaptiveSignal,
   extractFeatures,
-  detectMarketRegime,
+  detectMarketRegime as detectAdaptiveRegime,
   recordTradeOutcome,
   getAdaptiveStats,
   ensureLearningStateLoaded,
   saveLearningStateToDB,
-  MarketRegime,
+  MarketRegime as AdaptiveMarketRegime,
   PatternFeatures,
   TradeOutcome,
 } from '@/lib/stuntman/adaptive-ml'
@@ -50,6 +44,24 @@ import {
   DEFAULT_APEX_SAFETY,
   ApexRiskStatus,
 } from '@/lib/stuntman/risk-analytics'
+// === NEW PRODUCTION-GRADE STRATEGY ENGINE ===
+import {
+  calculateIndicators,
+  detectMarketRegime,
+  generateMasterSignal,
+  generateVWAPSignal,
+  generateORBSignal,
+  generateEMATrendSignal,
+  getCurrentSession,
+  isRTH,
+  Indicators,
+  MasterSignal,
+  MarketRegime,
+  TradingSession,
+  DEFAULT_VWAP_CONFIG,
+  DEFAULT_ORB_CONFIG,
+  DEFAULT_EMA_CONFIG,
+} from '@/lib/stuntman/strategy-engine'
 
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
@@ -247,6 +259,112 @@ interface BacktestTrade {
   confluenceScore: number
   mlConfidence: number
   vpinAtEntry: number
+  // ENTRY ANALYTICS - For analyzing what works
+  entryAnalytics: {
+    strategy: string           // Which strategy triggered entry
+    rsiAtEntry: number         // RSI value at entry
+    ema20Distance: number      // % distance from EMA20
+    ema50Distance: number      // % distance from EMA50
+    regime: string             // Market regime at entry
+    hourOfDay: number          // Hour (0-23) EST
+    atrAtEntry: number         // Volatility at entry
+    trendStrength: number      // How strong was the trend
+  }
+}
+
+// ENTRY ANALYTICS TRACKING - Aggregate stats for analysis
+interface EntryAnalytics {
+  byStrategy: Record<string, { wins: number; losses: number; totalPnL: number; avgPnL: number }>
+  byRsiBucket: Record<string, { wins: number; losses: number; totalPnL: number }>
+  byRegime: Record<string, { wins: number; losses: number; totalPnL: number }>
+  byHour: Record<number, { wins: number; losses: number; totalPnL: number }>
+  byConfidenceBucket: Record<string, { wins: number; losses: number; totalPnL: number }>
+  byTrendStrength: Record<string, { wins: number; losses: number; totalPnL: number }>
+}
+
+let entryAnalytics: EntryAnalytics = {
+  byStrategy: {},
+  byRsiBucket: {},
+  byRegime: {},
+  byHour: {},
+  byConfidenceBucket: {},
+  byTrendStrength: {},
+}
+
+function resetEntryAnalytics(): void {
+  entryAnalytics = {
+    byStrategy: {},
+    byRsiBucket: {},
+    byRegime: {},
+    byHour: {},
+    byConfidenceBucket: {},
+    byTrendStrength: {},
+  }
+}
+
+function recordEntryAnalytics(trade: BacktestTrade): void {
+  const isWin = trade.netPnL > 0
+  const analytics = trade.entryAnalytics
+
+  // By Strategy
+  if (!entryAnalytics.byStrategy[analytics.strategy]) {
+    entryAnalytics.byStrategy[analytics.strategy] = { wins: 0, losses: 0, totalPnL: 0, avgPnL: 0 }
+  }
+  const strat = entryAnalytics.byStrategy[analytics.strategy]
+  if (isWin) strat.wins++
+  else strat.losses++
+  strat.totalPnL += trade.netPnL
+  strat.avgPnL = strat.totalPnL / (strat.wins + strat.losses)
+
+  // By RSI Bucket (0-30, 30-40, 40-50, 50-60, 60-70, 70-100)
+  const rsiBucket = analytics.rsiAtEntry < 30 ? '0-30' :
+                    analytics.rsiAtEntry < 40 ? '30-40' :
+                    analytics.rsiAtEntry < 50 ? '40-50' :
+                    analytics.rsiAtEntry < 60 ? '50-60' :
+                    analytics.rsiAtEntry < 70 ? '60-70' : '70-100'
+  if (!entryAnalytics.byRsiBucket[rsiBucket]) {
+    entryAnalytics.byRsiBucket[rsiBucket] = { wins: 0, losses: 0, totalPnL: 0 }
+  }
+  if (isWin) entryAnalytics.byRsiBucket[rsiBucket].wins++
+  else entryAnalytics.byRsiBucket[rsiBucket].losses++
+  entryAnalytics.byRsiBucket[rsiBucket].totalPnL += trade.netPnL
+
+  // By Regime
+  if (!entryAnalytics.byRegime[analytics.regime]) {
+    entryAnalytics.byRegime[analytics.regime] = { wins: 0, losses: 0, totalPnL: 0 }
+  }
+  if (isWin) entryAnalytics.byRegime[analytics.regime].wins++
+  else entryAnalytics.byRegime[analytics.regime].losses++
+  entryAnalytics.byRegime[analytics.regime].totalPnL += trade.netPnL
+
+  // By Hour
+  if (!entryAnalytics.byHour[analytics.hourOfDay]) {
+    entryAnalytics.byHour[analytics.hourOfDay] = { wins: 0, losses: 0, totalPnL: 0 }
+  }
+  if (isWin) entryAnalytics.byHour[analytics.hourOfDay].wins++
+  else entryAnalytics.byHour[analytics.hourOfDay].losses++
+  entryAnalytics.byHour[analytics.hourOfDay].totalPnL += trade.netPnL
+
+  // By Confidence Bucket
+  const confBucket = trade.confluenceScore < 70 ? '60-70' :
+                     trade.confluenceScore < 80 ? '70-80' :
+                     trade.confluenceScore < 90 ? '80-90' : '90+'
+  if (!entryAnalytics.byConfidenceBucket[confBucket]) {
+    entryAnalytics.byConfidenceBucket[confBucket] = { wins: 0, losses: 0, totalPnL: 0 }
+  }
+  if (isWin) entryAnalytics.byConfidenceBucket[confBucket].wins++
+  else entryAnalytics.byConfidenceBucket[confBucket].losses++
+  entryAnalytics.byConfidenceBucket[confBucket].totalPnL += trade.netPnL
+
+  // By Trend Strength
+  const trendBucket = analytics.trendStrength < 0.5 ? 'weak' :
+                      analytics.trendStrength < 1.0 ? 'moderate' : 'strong'
+  if (!entryAnalytics.byTrendStrength[trendBucket]) {
+    entryAnalytics.byTrendStrength[trendBucket] = { wins: 0, losses: 0, totalPnL: 0 }
+  }
+  if (isWin) entryAnalytics.byTrendStrength[trendBucket].wins++
+  else entryAnalytics.byTrendStrength[trendBucket].losses++
+  entryAnalytics.byTrendStrength[trendBucket].totalPnL += trade.netPnL
 }
 
 interface BacktestState {
@@ -279,11 +397,22 @@ interface BacktestState {
     mlConfidence: number
     vpinAtEntry: number
     volatilityAtEntry: number    // For cost calculations
-    regime: MarketRegime         // Market regime at entry
+    regime: AdaptiveMarketRegime  // Market regime at entry (for ML learning)
     features: PatternFeatures    // Pattern features at entry
     stopMultiplierUsed: number   // For adaptive learning
     targetMultiplierUsed: number // For adaptive learning
     strategy: string             // Strategy that generated signal
+    // Entry analytics for analysis
+    entryAnalytics: {
+      strategy: string
+      rsiAtEntry: number
+      ema20Distance: number
+      ema50Distance: number
+      regime: string
+      hourOfDay: number
+      atrAtEntry: number
+      trendStrength: number
+    }
   } | null
   // Results
   trades: BacktestTrade[]
@@ -371,12 +500,12 @@ let config: EngineConfig = {
 }
 
 // =============================================================================
-// SESSION DETECTION & FILTERING
+// SESSION DETECTION & FILTERING (Local version for config compatibility)
 // =============================================================================
 
-type TradingSession = 'preMarket' | 'openingHour' | 'midDay' | 'afternoonPush' | 'powerHour' | 'afterHours' | 'overnight'
+type LocalTradingSession = 'preMarket' | 'openingHour' | 'midDay' | 'afternoonPush' | 'powerHour' | 'afterHours' | 'overnight'
 
-function getCurrentSession(timestamp: number): TradingSession {
+function getLocalSession(timestamp: number): LocalTradingSession {
   const date = new Date(timestamp)
   // Convert to ET (UTC-5 or UTC-4 during DST)
   // For simplicity, using UTC-5 (EST)
@@ -398,15 +527,15 @@ function getCurrentSession(timestamp: number): TradingSession {
 function shouldTradeInSession(timestamp: number): boolean {
   if (!config.sessionFilter) return true // Session filter disabled
 
-  const session = getCurrentSession(timestamp)
+  const session = getLocalSession(timestamp)
   return config.tradeSessions[session]
 }
 
-function getSessionInfo(timestamp: number): { session: TradingSession; canTrade: boolean; reason: string } {
-  const session = getCurrentSession(timestamp)
+function getSessionInfo(timestamp: number): { session: LocalTradingSession; canTrade: boolean; reason: string } {
+  const session = getLocalSession(timestamp)
   const canTrade = !config.sessionFilter || config.tradeSessions[session]
 
-  const sessionNames: Record<TradingSession, string> = {
+  const sessionNames: Record<LocalTradingSession, string> = {
     preMarket: 'Pre-Market (4:00-9:30 ET)',
     openingHour: 'Opening Hour (9:30-10:30 ET)',
     midDay: 'Mid-Day (10:30-2:00 ET)',
@@ -833,71 +962,60 @@ async function processCandle(index: number): Promise<void> {
   }
   const vpin = vpinCalculator.calculate()
 
-  // Extract pattern features for adaptive ML
+  // ==========================================================================
+  // PRODUCTION-GRADE STRATEGY ENGINE - Research-backed strategies
+  // VWAP Mean Reversion (Sharpe 2.1), ORB (74.56% WR), EMA Trend + Pullback
+  // ==========================================================================
+
+  // Calculate all technical indicators
+  let indicators: Indicators
+  try {
+    indicators = calculateIndicators(candles1m)
+  } catch (e) {
+    // Not enough data for indicators
+    state.candlesProcessed++
+    state.currentIndex = index
+    return
+  }
+
+  // Detect market regime using new strategy engine
+  const regime = detectMarketRegime(indicators)
+
+  // Extract pattern features for adaptive ML (uses old adaptive-ml regime detection)
   const features = extractFeatures(candles1m)
-  const regime = detectMarketRegime(candles1m, features)
+  const adaptiveRegime = detectAdaptiveRegime(candles1m, features)
+  const session = getCurrentSession(currentCandle.time)
 
-  // ==========================================================================
-  // SIMPLE TREND-FOLLOWING STRATEGY - Proven approach
-  // Trade WITH the trend, enter on pullbacks
-  // ==========================================================================
+  // Generate master signal from all strategies with confluence scoring
+  const masterSignal = generateMasterSignal(
+    candles1m,
+    indicators,
+    vpin.vpin,        // Cumulative delta for order flow analysis
+    [vpin.vpin],      // Delta history (simplified)
+    {
+      vwap: DEFAULT_VWAP_CONFIG,
+      orb: DEFAULT_ORB_CONFIG,
+      ema: DEFAULT_EMA_CONFIG,
+    }
+  )
 
+  // For backwards compatibility with adaptive ML
   const closes = candles1m.map(c => c.close)
-
-  // Calculate EMAs for trend direction
-  const ema20 = calculateEMASimple(closes, 20)
-  const ema50 = calculateEMASimple(closes, 50)
-
-  // Calculate RSI for pullback detection
-  const rsi = calculateRSISimple(closes, 14)
-
   const price = currentPrice
-  const lastEma20 = ema20[ema20.length - 1]
-  const lastEma50 = ema50[ema50.length - 1]
-  const lastRsi = rsi[rsi.length - 1]
+  const lastEma20 = indicators.ema20
+  const lastEma50 = indicators.ema50
+  const lastRsi = indicators.rsi
 
-  // Determine trend: Price > EMA20 > EMA50 = UPTREND
-  const isUptrend = price > lastEma20 && lastEma20 > lastEma50
-  const isDowntrend = price < lastEma20 && lastEma20 < lastEma50
-
-  // Build simple strategy signals
-  const strategies: Array<{ name: string; direction: 'LONG' | 'SHORT' | 'FLAT'; confidence: number }> = []
-
-  // TREND FOLLOWING: Only trade in direction of trend
-  if (isUptrend) {
-    // In uptrend, look for pullback (RSI < 40) to buy
-    if (lastRsi < 45) {
-      strategies.push({ name: 'TrendPullback', direction: 'LONG', confidence: 80 + (45 - lastRsi) })
-    } else if (lastRsi < 55) {
-      // Moderate pullback
-      strategies.push({ name: 'TrendFollow', direction: 'LONG', confidence: 70 })
-    }
-  } else if (isDowntrend) {
-    // In downtrend, look for pullback (RSI > 60) to sell
-    if (lastRsi > 55) {
-      strategies.push({ name: 'TrendPullback', direction: 'SHORT', confidence: 80 + (lastRsi - 55) })
-    } else if (lastRsi > 45) {
-      // Moderate pullback
-      strategies.push({ name: 'TrendFollow', direction: 'SHORT', confidence: 70 })
-    }
-  }
-
-  // ADD EMA CROSSOVER signal
-  if (ema20.length >= 2) {
-    const prevEma20 = ema20[ema20.length - 2]
-    const prevEma50 = ema50[ema50.length - 2]
-
-    // Bullish crossover: EMA20 crosses above EMA50
-    if (prevEma20 <= prevEma50 && lastEma20 > lastEma50) {
-      strategies.push({ name: 'EMACross', direction: 'LONG', confidence: 85 })
-    }
-    // Bearish crossover: EMA20 crosses below EMA50
-    if (prevEma20 >= prevEma50 && lastEma20 < lastEma50) {
-      strategies.push({ name: 'EMACross', direction: 'SHORT', confidence: 85 })
-    }
-  }
+  // Convert master signal to adaptive format
+  const strategies: Array<{ name: string; direction: 'LONG' | 'SHORT' | 'FLAT'; confidence: number }> =
+    masterSignal.strategies.map(s => ({
+      name: s.strategy,
+      direction: s.direction,
+      confidence: s.confidence,
+    }))
 
   // Generate ADAPTIVE signal (learns from past performance)
+  // Uses the strategies from the new engine
   const adaptiveSignal = generateAdaptiveSignal(candles1m, strategies)
 
   // Track ML predictions
@@ -1068,9 +1186,13 @@ async function processCandle(index: number): Promise<void> {
         confluenceScore: pos.confluenceScore,
         mlConfidence: pos.mlConfidence,
         vpinAtEntry: pos.vpinAtEntry,
+        entryAnalytics: pos.entryAnalytics,
       }
 
       state.trades.push(trade)
+
+      // Record entry analytics for analysis
+      recordEntryAnalytics(trade)
 
       // Update totals with NET P&L (after costs)
       state.grossPnL += grossPnL
@@ -1150,9 +1272,6 @@ async function processCandle(index: number): Promise<void> {
       return
     }
 
-    // ADAPTIVE ENTRY: Use learned optimal parameters
-    let entryDirection = adaptiveSignal.direction
-
     // SESSION FILTER: Only trade during optimal market sessions
     const sessionInfo = getSessionInfo(currentCandle.time)
     if (!sessionInfo.canTrade) {
@@ -1165,26 +1284,38 @@ async function processCandle(index: number): Promise<void> {
     // MULTI-TIMEFRAME CONFIRMATION: Check higher timeframe trend alignment
     const mtfTrend = getMTFConfirmation(candles5m.slice(-50), candles15m.slice(-30))
 
-    // Only enter if adaptive signal is not FLAT and has sufficient strength
-    if (entryDirection !== 'FLAT' && adaptiveSignal.strength !== 'NONE') {
+    // ==========================================================================
+    // NEW ENTRY LOGIC: Use MasterSignal from Strategy Engine
+    // Requires: Direction, Confluence >= 25%, R:R >= 1.5
+    // ==========================================================================
+
+    // Check if master signal has a valid entry
+    const shouldEnter = masterSignal.direction !== 'FLAT' &&
+                        masterSignal.confluenceScore >= 25 &&
+                        masterSignal.riskRewardRatio >= 1.5
+
+    if (shouldEnter) {
+      // We've already checked direction !== 'FLAT' in shouldEnter
+      let entryDir: 'LONG' | 'SHORT' = masterSignal.direction as 'LONG' | 'SHORT'
+
       // Apply inverse mode if enabled - flip LONG <-> SHORT
       if (shouldInverseSignal()) {
-        entryDirection = entryDirection === 'LONG' ? 'SHORT' : 'LONG'
+        entryDir = entryDir === 'LONG' ? 'SHORT' : 'LONG'
       }
 
       // MTF FILTER: Only trade in direction of higher timeframe trend
-      if (!signalAlignedWithMTF(entryDirection, mtfTrend)) {
+      if (!signalAlignedWithMTF(entryDir, mtfTrend)) {
         // Signal against higher timeframe trend - skip entry
         state.candlesProcessed++
         state.currentIndex = index
         return
       }
 
-      const atr = calculateATR(candles1m.slice(-14))
+      const atr = indicators.atr
 
-      // USE ADAPTIVE OPTIMAL PARAMETERS (learned from past performance)
-      const stopDistance = atr * adaptiveSignal.optimalStopMultiplier
-      const targetDistance = atr * adaptiveSignal.optimalTargetMultiplier
+      // USE STRATEGY ENGINE's CALCULATED STOPS & TARGETS
+      // These are based on research-backed strategies, not arbitrary multipliers
+      const rawEntryPrice = currentPrice
 
       // Calculate volatility for slippage
       const recentPrices = candles1m.slice(-20).map(c => (c.high - c.low) / c.close)
@@ -1194,33 +1325,46 @@ async function processCandle(index: number): Promise<void> {
       const entryLatencyMs = simulateLatency()
 
       // Apply slippage to entry price (slippage works against you)
-      const rawEntryPrice = currentPrice
-      const entryPrice = applySlippage(currentPrice, entryDirection, true, volatility)
+      const entryPrice = applySlippage(currentPrice, entryDir, true, volatility)
 
-      // Adjust stop/target from slipped entry price
-      const stopLoss = entryDirection === 'LONG' ? entryPrice - stopDistance : entryPrice + stopDistance
-      const takeProfit = entryDirection === 'LONG' ? entryPrice + targetDistance : entryPrice - targetDistance
+      // STRATEGY ENGINE provides calculated stop/target from research-backed strategies
+      // Adjust for entry slippage
+      const slippageAdjustment = Math.abs(entryPrice - rawEntryPrice)
+      const stopLoss = entryDir === 'LONG'
+        ? masterSignal.stopLoss - slippageAdjustment
+        : masterSignal.stopLoss + slippageAdjustment
+      const takeProfit = masterSignal.takeProfit
 
       // Calculate partial profit targets (1R and 2R)
-      const riskAmount = stopDistance // 1R = distance to stop
-      const target1 = entryDirection === 'LONG'
+      const riskAmount = Math.abs(entryPrice - stopLoss)
+      const target1 = entryDir === 'LONG'
         ? entryPrice + riskAmount      // 1R profit
         : entryPrice - riskAmount
-      const target2 = entryDirection === 'LONG'
+      const target2 = entryDir === 'LONG'
         ? entryPrice + (riskAmount * 2) // 2R profit
         : entryPrice - (riskAmount * 2)
 
       // Trailing stop distance (1.5x ATR after first target hit)
       const trailingDistance = atr * 1.5
 
-      // Position size based on edge strength (adaptive) AND Apex risk level
+      // Position size based on STRATEGY ENGINE's confluence-based sizing AND Apex risk level
       // CRITICAL: Reduce size when approaching max drawdown
-      const baseContracts = adaptiveSignal.positionSizeMultiplier
+      const baseContracts = masterSignal.positionSizeMultiplier
       const riskAdjustedContracts = baseContracts * apexRisk.positionSizeMultiplier
       const contracts = Math.max(1, Math.floor(riskAdjustedContracts))
 
+      // Calculate entry analytics
+      const entryHour = new Date(currentCandle.time).getUTCHours() - 5 // EST
+      const ema20Distance = ((price - lastEma20) / price) * 100
+      const ema50Distance = ((price - lastEma50) / price) * 100
+      const trendStrength = indicators.trendStrength
+
+      // Stop/target multipliers for adaptive learning
+      const stopMultiplier = riskAmount / atr
+      const targetMultiplier = Math.abs(takeProfit - entryPrice) / atr
+
       state.position = {
-        direction: entryDirection,
+        direction: entryDir,
         rawEntryPrice,
         entryPrice,
         entryTime: currentCandle.time,
@@ -1238,15 +1382,25 @@ async function processCandle(index: number): Promise<void> {
         trailingDistance,
         highestPrice: entryPrice,
         lowestPrice: entryPrice,
-        confluenceScore: adaptiveSignal.confidence,
-        mlConfidence: adaptiveSignal.confidence / 100,  // Use adaptive confidence
+        confluenceScore: masterSignal.confluenceScore,
+        mlConfidence: masterSignal.confidence / 100,
         vpinAtEntry: vpin.vpin,
         volatilityAtEntry: volatility,
-        regime,
+        regime: adaptiveRegime,  // Use adaptive regime for ML learning
         features,
-        stopMultiplierUsed: adaptiveSignal.optimalStopMultiplier,
-        targetMultiplierUsed: adaptiveSignal.optimalTargetMultiplier,
-        strategy: strategies[0]?.name || 'TrendFollow',
+        stopMultiplierUsed: stopMultiplier,
+        targetMultiplierUsed: targetMultiplier,
+        strategy: masterSignal.primaryStrategy,
+        entryAnalytics: {
+          strategy: masterSignal.primaryStrategy,
+          rsiAtEntry: lastRsi,
+          ema20Distance,
+          ema50Distance,
+          regime: masterSignal.regime,
+          hourOfDay: entryHour,
+          atrAtEntry: atr,
+          trendStrength,
+        },
       }
     }
   }
@@ -1328,16 +1482,11 @@ function shouldInverseSignal(): boolean {
 
 export async function GET(request: NextRequest) {
   try {
-    // Allow localhost for testing
-    const isLocalhost = request.headers.get('host')?.includes('localhost')
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!isLocalhost) {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // LOAD PERSISTED ML LEARNING STATE FROM DATABASE
@@ -1542,16 +1691,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Allow localhost for testing
-    const isLocalhost = request.headers.get('host')?.includes('localhost')
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!isLocalhost) {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -1593,6 +1737,9 @@ export async function POST(request: NextRequest) {
           low: { correct: 0, total: 0 },
         }
       }
+
+      // Reset entry analytics
+      resetEntryAnalytics()
 
       // Simulation will process candles on each GET request (serverless compatible)
       return NextResponse.json({

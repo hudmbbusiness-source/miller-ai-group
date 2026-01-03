@@ -1028,16 +1028,21 @@ const vpinCalculator = new VPINCalculator(50000, 50)
 const deltaAnalyzer = new DeltaAnalyzer()
 
 // =============================================================================
-// FETCH HISTORICAL DATA - SPY (S&P 500 ETF) scaled to ES prices
+// FETCH HISTORICAL DATA - REAL ES FUTURES (No more SPY proxy!)
 // =============================================================================
+
+// Data sources in priority order
+const DATA_SOURCES = {
+  // Primary: Real ES futures from Yahoo Finance
+  ES_FUTURES: 'ES=F',
+  // Fallback: SPY scaled (if ES=F fails due to rate limits)
+  SPY_SCALED: 'SPY',
+}
 
 async function fetchHistoricalData(days: number = 30): Promise<boolean> {
   try {
-    console.log(`[BACKTEST] Fetching ${days} days of SPY data (scaled to ES prices)...`)
+    console.log(`[BACKTEST] Fetching ${days} days of REAL ES FUTURES data...`)
 
-    // Use SPY (S&P 500 ETF) - tracks ES perfectly, has intraday data
-    // SPY price * 10 ≈ ES price (e.g., SPY $590 → ES $5900)
-    const symbol = 'SPY'
     const now = Math.floor(Date.now() / 1000)
 
     // Yahoo Finance limits: 1m data only available for last 7 days
@@ -1046,14 +1051,38 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
     const startTime5m = now - (days * 24 * 60 * 60)
     const startTime15m = now - (days * 24 * 60 * 60)
 
-    // Fetch intraday data from Yahoo Finance
-    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime1m}&period2=${now}&interval=1m&includePrePost=true`
-    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime5m}&period2=${now}&interval=5m&includePrePost=true`
-    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime15m}&period2=${now}&interval=15m&includePrePost=true`
-
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
+
+    // TRY REAL ES FUTURES FIRST
+    let useRealES = true
+    let scale = 1  // No scaling needed for real ES
+
+    // Test if ES=F is available
+    const testUrl = `https://query1.finance.yahoo.com/v8/finance/chart/ES=F?interval=5m&range=1d`
+    try {
+      const testRes = await fetch(testUrl, { headers, cache: 'no-store' })
+      if (!testRes.ok) {
+        console.log('[BACKTEST] ES=F unavailable, falling back to SPY scaled')
+        useRealES = false
+        scale = 10
+      }
+    } catch {
+      console.log('[BACKTEST] ES=F unavailable, falling back to SPY scaled')
+      useRealES = false
+      scale = 10
+    }
+
+    const symbol = useRealES ? DATA_SOURCES.ES_FUTURES : DATA_SOURCES.SPY_SCALED
+    const dataLabel = useRealES ? 'REAL ES FUTURES' : 'SPY (scaled to ES)'
+
+    console.log(`[BACKTEST] Using ${dataLabel} data source`)
+
+    // Fetch intraday data
+    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime1m}&period2=${now}&interval=1m&includePrePost=true`
+    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime5m}&period2=${now}&interval=5m&includePrePost=true`
+    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime15m}&period2=${now}&interval=15m&includePrePost=true`
 
     // Fetch all timeframes in parallel
     const [res1m, res5m, res15m] = await Promise.all([
@@ -1061,9 +1090,6 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
       fetch(url5m, { headers, cache: 'no-store' }),
       fetch(url15m, { headers, cache: 'no-store' }),
     ])
-
-    // Scale factor: SPY to ES (ES ≈ SPY * 10)
-    const SCALE = 10
 
     // Parse 1m data
     if (res1m.ok) {
@@ -1075,14 +1101,14 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
 
         historicalData.candles1m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,  // Convert to milliseconds
-          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
-          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
-          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
-          close: (quote.close[i] || 0) * SCALE,
+          open: (quote.open[i] || quote.close[i] || 0) * scale,
+          high: (quote.high[i] || quote.close[i] || 0) * scale,
+          low: (quote.low[i] || quote.close[i] || 0) * scale,
+          close: (quote.close[i] || 0) * scale,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} SPY->ES 1m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} ${dataLabel} 1m candles`)
       }
     } else {
       console.error('[BACKTEST] Failed to fetch 1m data:', await res1m.text())
@@ -1098,14 +1124,14 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
 
         historicalData.candles5m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,
-          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
-          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
-          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
-          close: (quote.close[i] || 0) * SCALE,
+          open: (quote.open[i] || quote.close[i] || 0) * scale,
+          high: (quote.high[i] || quote.close[i] || 0) * scale,
+          low: (quote.low[i] || quote.close[i] || 0) * scale,
+          close: (quote.close[i] || 0) * scale,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} SPY->ES 5m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} ${dataLabel} 5m candles`)
       }
     }
 
@@ -1119,26 +1145,40 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
 
         historicalData.candles15m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,
-          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
-          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
-          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
-          close: (quote.close[i] || 0) * SCALE,
+          open: (quote.open[i] || quote.close[i] || 0) * scale,
+          high: (quote.high[i] || quote.close[i] || 0) * scale,
+          low: (quote.low[i] || quote.close[i] || 0) * scale,
+          close: (quote.close[i] || 0) * scale,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} SPY->ES 15m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} ${dataLabel} 15m candles`)
       }
     }
 
     state.totalCandles = historicalData.candles1m.length
 
-    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m candles (SPY scaled to ES)`)
+    // Store data source info for API response
+    currentDataSource = {
+      symbol,
+      isRealES: useRealES,
+      label: dataLabel,
+    }
+
+    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m candles (${dataLabel})`)
 
     return historicalData.candles1m.length > 100
   } catch (e) {
     console.error('[BACKTEST] Failed to fetch data:', e)
     return false
   }
+}
+
+// Track current data source for API response
+let currentDataSource = {
+  symbol: 'ES=F',
+  isRealES: true,
+  label: 'REAL ES FUTURES',
 }
 
 // =============================================================================
@@ -1947,7 +1987,9 @@ export async function GET(request: NextRequest) {
       // Data Source Info
       dataSource: {
         provider: 'Yahoo Finance + Adaptive ML',
-        instrument: 'SPY (S&P 500 ETF) scaled to ES prices',
+        instrument: currentDataSource.label,
+        symbol: currentDataSource.symbol,
+        isRealES: currentDataSource.isRealES,
         timeframes: ['1m', '5m', '15m'],
         candlesLoaded: {
           '1m': historicalData.candles1m.length,

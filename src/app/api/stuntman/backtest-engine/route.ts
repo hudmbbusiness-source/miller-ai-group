@@ -279,7 +279,7 @@ let config: EngineConfig = {
   tradeSessions: {
     preMarket: false,      // Skip pre-market (thin)
     openingHour: true,     // TRADE: High volatility, good setups
-    midDay: false,         // Skip mid-day (choppy, low conviction)
+    midDay: true,          // TRADE: Enable to get more trades for learning
     afternoonPush: true,   // TRADE: Momentum builds
     powerHour: true,       // TRADE: Strong directional moves
     afterHours: false,     // Skip after-hours (news reactions)
@@ -414,11 +414,16 @@ function getMTFConfirmation(candles5m: Candle[], candles15m: Candle[]): MTFTrend
 }
 
 function signalAlignedWithMTF(direction: 'LONG' | 'SHORT', mtf: MTFTrend): boolean {
-  // If no clear MTF bias, allow any signal
-  if (mtf.bias === 'NONE') return true
+  // If no clear MTF bias or weak confluence, allow any signal
+  if (mtf.bias === 'NONE' || mtf.strength < 50) return true
 
-  // Otherwise, signal must match MTF bias
-  return direction === mtf.bias
+  // Only block if STRONG conflicting bias (both TFs aligned against us)
+  if (mtf.aligned && direction !== mtf.bias) {
+    return false // Block counter-trend trades when MTF strongly aligned
+  }
+
+  // Otherwise allow the trade
+  return true
 }
 
 // Speed to batch size mapping
@@ -799,8 +804,16 @@ async function processCandle(index: number): Promise<void> {
       exitReason = 'Take Profit'
     }
 
-    // Reversal signal - use adaptive signal for exit
-    if (adaptiveSignal.confidence >= 60 && adaptiveSignal.direction !== 'FLAT' && adaptiveSignal.direction !== pos.direction) {
+    // Reversal signal - ONLY exit if VERY high confidence AND we're already in profit
+    // This prevents cutting winners short on weak reversal signals
+    const isInProfit = pos.direction === 'LONG'
+      ? currentPrice > pos.entryPrice
+      : currentPrice < pos.entryPrice
+
+    if (adaptiveSignal.confidence >= 85 &&
+        adaptiveSignal.direction !== 'FLAT' &&
+        adaptiveSignal.direction !== pos.direction &&
+        isInProfit) {
       shouldExit = true
       exitReason = 'Reversal Signal'
     }

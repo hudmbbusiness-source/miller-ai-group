@@ -57,6 +57,13 @@ import {
   NQ_POINT_VALUE,
 } from '@/lib/stuntman/pickmytrade-client'
 import { Trade as OrderFlowTrade, OrderBookData } from '@/lib/stuntman/types'
+import {
+  generateAdaptiveSignal,
+  extractFeatures,
+  ensureLearningStateLoaded,
+  getAdaptiveStats,
+  AdaptiveSignal,
+} from '@/lib/stuntman/adaptive-ml'
 
 // =============================================================================
 // TYPES
@@ -1094,6 +1101,10 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // LOAD PERSISTED ML LEARNING STATE FROM DATABASE
+    // Uses learned patterns from paper trading for live decisions
+    await ensureLearningStateLoaded()
 
     const winRate = state.totalTrades > 0 ? (state.wins / state.totalTrades) * 100 : 0
     const profitFactor = state.losses > 0 && state.wins > 0

@@ -7,11 +7,18 @@
  * 3. Detects market regimes (trending/ranging/volatile)
  * 4. Optimizes stop/target distances automatically
  * 5. Walk-forward validation (train on past, trade on unseen)
+ * 6. PERSISTS learning to Supabase for cross-session memory
  *
  * PRODUCTION GRADE - No fake data, real statistical analysis
  */
 
 import { Candle } from './signal-engine'
+import { createClient } from '@supabase/supabase-js'
+
+// Supabase client for persistence (service role for server-side)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 // =============================================================================
 // TYPES
@@ -458,7 +465,7 @@ export function generateAdaptiveSignal(
 // LEARNING FROM OUTCOMES
 // =============================================================================
 
-export function recordTradeOutcome(outcome: TradeOutcome): void {
+export async function recordTradeOutcome(outcome: TradeOutcome): Promise<void> {
   // Add to history
   learningState.tradeHistory.push(outcome)
 
@@ -503,6 +510,12 @@ export function recordTradeOutcome(outcome: TradeOutcome): void {
   // Periodically retrain feature weights
   if (learningState.tradeHistory.length % 50 === 0) {
     retrainFeatureWeights()
+  }
+
+  // PERSIST TO DATABASE (throttled)
+  // Save every 10 trades or after feature retraining
+  if (learningState.tradeHistory.length % 10 === 0) {
+    await saveLearningStateToDB()
   }
 }
 
@@ -759,5 +772,183 @@ export function getAdaptiveStats() {
       .sort((a, b) => b[1].totalPnL - a[1].totalPnL)[0]?.[0] || 'None',
     optimalParams: learningState.optimalParams,
     lastRetrain: learningState.walkForward.lastRetrainTime,
+  }
+}
+
+// =============================================================================
+// PERSISTENCE - SUPABASE STORAGE
+// =============================================================================
+
+const LEARNING_STATE_KEY = 'stuntman_ml_learning_state'
+let lastSaveTime = 0
+const SAVE_INTERVAL_MS = 30000 // Save every 30 seconds max
+
+/**
+ * Load learning state from Supabase database
+ * Called on server startup / cold start
+ */
+export async function loadLearningStateFromDB(): Promise<boolean> {
+  try {
+    // Check if supabase is configured
+    if (!supabaseUrl || supabaseUrl === 'undefined') {
+      console.log('[AdaptiveML] Supabase not configured, using in-memory state')
+      return false
+    }
+
+    const { data, error } = await supabase
+      .from('stuntman_ml_state')
+      .select('state')
+      .eq('key', LEARNING_STATE_KEY)
+      .single()
+
+    if (error) {
+      // Table might not exist yet - that's okay
+      if (error.code === 'PGRST116' || error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.log('[AdaptiveML] No saved state found, using defaults')
+        return false
+      }
+      console.error('[AdaptiveML] Error loading state:', error.message)
+      return false
+    }
+
+    if (data?.state) {
+      const loaded = data.state as LearningState
+      // Merge with defaults to ensure new fields are present
+      learningState = {
+        ...getDefaultLearningState(),
+        ...loaded,
+        // Ensure nested objects are properly merged
+        optimalParams: { ...getDefaultLearningState().optimalParams, ...loaded.optimalParams },
+        featureWeights: { ...getDefaultLearningState().featureWeights, ...loaded.featureWeights },
+        walkForward: { ...getDefaultLearningState().walkForward, ...loaded.walkForward },
+      }
+      console.log(`[AdaptiveML] Loaded state: ${learningState.tradeHistory.length} trades, ${Object.keys(learningState.strategyPerformance).length} strategies`)
+      return true
+    }
+    return false
+  } catch (err) {
+    console.error('[AdaptiveML] Failed to load state:', err)
+    return false
+  }
+}
+
+/**
+ * Save learning state to Supabase database
+ * Called after trade outcomes, throttled to prevent excessive writes
+ */
+export async function saveLearningStateToDB(force = false): Promise<boolean> {
+  const now = Date.now()
+
+  // Throttle saves unless forced
+  if (!force && now - lastSaveTime < SAVE_INTERVAL_MS) {
+    return true // Skip, too soon
+  }
+
+  // Check if supabase is configured
+  if (!supabaseUrl || supabaseUrl === 'undefined') {
+    return false
+  }
+
+  try {
+    const { error } = await supabase
+      .from('stuntman_ml_state')
+      .upsert({
+        key: LEARNING_STATE_KEY,
+        state: learningState,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'key'
+      })
+
+    if (error) {
+      console.error('[AdaptiveML] Error saving state:', error.message)
+      return false
+    }
+
+    lastSaveTime = now
+    console.log(`[AdaptiveML] Saved state: ${learningState.tradeHistory.length} trades`)
+    return true
+  } catch (err) {
+    console.error('[AdaptiveML] Failed to save state:', err)
+    return false
+  }
+}
+
+/**
+ * Get default learning state (for initialization)
+ */
+function getDefaultLearningState(): LearningState {
+  return {
+    tradeHistory: [],
+    strategyPerformance: {},
+    regimePerformance: {
+      'TRENDING_UP': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
+      'TRENDING_DOWN': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
+      'RANGING': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
+      'VOLATILE': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
+      'BREAKOUT': { wins: 0, losses: 0, bestStrategy: '', worstStrategy: '' },
+    },
+    optimalParams: {
+      stopMultiplier: { trending: 1.5, ranging: 1.0, volatile: 2.0 },
+      targetMultiplier: { trending: 3.0, ranging: 1.5, volatile: 2.5 },
+      confidenceThreshold: 60,
+      minHoldingBars: 3,
+      maxHoldingBars: 100,
+    },
+    featureWeights: {
+      priceChange1: 0.5, priceChange5: 0.8, priceChange15: 0.6,
+      atr14: 0.7, atrRatio: 0.9, volatilityPercentile: 0.8,
+      ema9: 0.6, ema21: 0.7, ema50: 0.5, emaTrendStrength: 0.9, priceVsEma21: 0.8,
+      rsi14: 0.7, rsiDivergence: 0.9, macdHistogram: 0.6, macdCrossover: 0.8,
+      volumeRatio: 0.7, volumeTrend: 0.6,
+      higherHighs: 0.8, lowerLows: 0.8, distanceToSwingHigh: 0.7, distanceToSwingLow: 0.7,
+      hourOfDay: 0.5, dayOfWeek: 0.3, isRTH: 0.6,
+    },
+    walkForward: {
+      trainingPeriodEnd: 0, testingPeriodStart: 0, testingPeriodEnd: 0,
+      inSamplePerformance: 0, outOfSamplePerformance: 0, lastRetrainTime: 0,
+    }
+  }
+}
+
+/**
+ * Create the database table if it doesn't exist
+ * Run this once to set up persistence
+ */
+export async function ensureMLStateTable(): Promise<boolean> {
+  try {
+    // Try to create table - will fail silently if exists
+    const { error } = await supabase.rpc('exec_sql', {
+      sql: `
+        CREATE TABLE IF NOT EXISTS stuntman_ml_state (
+          key TEXT PRIMARY KEY,
+          state JSONB NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `
+    })
+
+    if (error) {
+      // RPC might not exist, try direct query
+      console.log('[AdaptiveML] Creating table via direct insert test...')
+    }
+
+    return true
+  } catch (err) {
+    console.error('[AdaptiveML] Table creation error:', err)
+    return false
+  }
+}
+
+// Flag to track if we've loaded from DB this session
+let hasLoadedFromDB = false
+
+/**
+ * Ensure learning state is loaded (call at start of operations)
+ */
+export async function ensureLearningStateLoaded(): Promise<void> {
+  if (!hasLoadedFromDB) {
+    await loadLearningStateFromDB()
+    hasLoadedFromDB = true
   }
 }

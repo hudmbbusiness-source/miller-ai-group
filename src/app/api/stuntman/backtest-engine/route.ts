@@ -39,6 +39,8 @@ import {
   detectMarketRegime,
   recordTradeOutcome,
   getAdaptiveStats,
+  ensureLearningStateLoaded,
+  saveLearningStateToDB,
   MarketRegime,
   PatternFeatures,
   TradeOutcome,
@@ -689,7 +691,7 @@ async function processCandle(index: number): Promise<void> {
         targetMultiplierUsed: pos.targetMultiplierUsed,
         strategy: pos.strategy,
       }
-      recordTradeOutcome(tradeOutcome)
+      await recordTradeOutcome(tradeOutcome)
 
       state.position = null
     }
@@ -833,6 +835,10 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // LOAD PERSISTED ML LEARNING STATE FROM DATABASE
+    // This ensures learning from paper mode is applied to live mode
+    await ensureLearningStateLoaded()
 
     // CRITICAL: Process candles on every poll (serverless compatible)
     // This makes the simulation progress with each API request

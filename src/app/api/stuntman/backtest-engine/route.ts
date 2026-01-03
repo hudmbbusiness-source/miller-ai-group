@@ -727,18 +727,17 @@ function calculateATR(candles: Candle[]): number {
 }
 
 // =============================================================================
-// RUN BACKTEST LOOP (with speed control)
+// PROCESS BATCH - Called on each API request (serverless compatible)
 // =============================================================================
 
-async function runBacktestLoop(): Promise<void> {
-  if (!state.running) return
+async function processBatch(): Promise<void> {
+  if (!state.running || historicalData.candles1m.length === 0) return
 
   const startTime = Date.now()
 
   // Get batch size based on speed setting
   const speedKey = String(config.speed)
   const batchSize = SPEED_BATCH_SIZE[speedKey] || 50
-  const delay = SPEED_DELAY[speedKey] || 10
 
   // Auto-inverse check: if win rate drops below threshold, flip signals
   if (config.autoInverse && state.trades.length >= 20) {
@@ -748,10 +747,8 @@ async function runBacktestLoop(): Promise<void> {
 
     if (recentWinRate < config.inverseThreshold && !inverseStats.currentlyInversed) {
       inverseStats.currentlyInversed = true
-      console.log(`[BACKTEST] Auto-inverse ACTIVATED: Recent win rate ${recentWinRate.toFixed(1)}% < ${config.inverseThreshold}%`)
     } else if (recentWinRate >= 55 && inverseStats.currentlyInversed) {
       inverseStats.currentlyInversed = false
-      console.log(`[BACKTEST] Auto-inverse DEACTIVATED: Win rate recovered to ${recentWinRate.toFixed(1)}%`)
     }
   }
 
@@ -760,7 +757,6 @@ async function runBacktestLoop(): Promise<void> {
     if (state.currentIndex >= state.totalCandles - 1) {
       // Reset to beginning for continuous testing
       state.currentIndex = 50
-      console.log('[BACKTEST] Completed full pass, restarting...')
     }
 
     await processCandle(state.currentIndex)
@@ -770,16 +766,6 @@ async function runBacktestLoop(): Promise<void> {
   const elapsed = Date.now() - startTime
   state.processingSpeed = elapsed > 0 ? (batchSize / elapsed) * 1000 : batchSize * 100
   state.lastProcessedTime = Date.now()
-
-  // Continue loop if still running
-  if (state.running) {
-    if (delay === 0) {
-      // MAX speed: use setImmediate-like behavior
-      setImmediate ? setImmediate(runBacktestLoop) : setTimeout(runBacktestLoop, 0)
-    } else {
-      setTimeout(runBacktestLoop, delay)
-    }
-  }
 }
 
 // Helper to determine if we should inverse the signal
@@ -799,6 +785,10 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // CRITICAL: Process candles on every poll (serverless compatible)
+    // This makes the simulation progress with each API request
+    await processBatch()
 
     const winRate = state.wins + state.losses > 0
       ? (state.wins / (state.wins + state.losses)) * 100
@@ -1014,14 +1004,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Start the loop
-      runBacktestLoop()
-
+      // Simulation will process candles on each GET request (serverless compatible)
       return NextResponse.json({
         success: true,
-        message: 'Backtesting started',
+        message: 'Backtesting started - candles will process on each poll',
         totalCandles: state.totalCandles,
-        estimatedTime: `${Math.ceil(state.totalCandles / 500)} seconds for first pass`,
+        batchSize: SPEED_BATCH_SIZE[String(config.speed)],
       })
     }
 

@@ -330,22 +330,28 @@ const vpinCalculator = new VPINCalculator(50000, 50)
 const deltaAnalyzer = new DeltaAnalyzer()
 
 // =============================================================================
-// FETCH HISTORICAL DATA - REAL ES FUTURES
+// FETCH HISTORICAL DATA - SPY (S&P 500 ETF) scaled to ES prices
 // =============================================================================
 
 async function fetchHistoricalData(days: number = 30): Promise<boolean> {
   try {
-    console.log(`[BACKTEST] Fetching ${days} days of REAL ES futures data...`)
+    console.log(`[BACKTEST] Fetching ${days} days of SPY data (scaled to ES prices)...`)
 
-    // Use Yahoo Finance for REAL ES futures data
-    const symbol = 'ES=F'  // E-mini S&P 500 Futures
+    // Use SPY (S&P 500 ETF) - tracks ES perfectly, has intraday data
+    // SPY price * 10 ≈ ES price (e.g., SPY $590 → ES $5900)
+    const symbol = 'SPY'
     const now = Math.floor(Date.now() / 1000)
-    const startTime = now - (days * 24 * 60 * 60)
 
-    // Fetch 1-minute data from Yahoo Finance
-    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${now}&interval=1m&includePrePost=true`
-    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${now}&interval=5m&includePrePost=true`
-    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${now}&interval=15m&includePrePost=true`
+    // Yahoo Finance limits: 1m data only available for last 7 days
+    const days1m = Math.min(days, 7)
+    const startTime1m = now - (days1m * 24 * 60 * 60)
+    const startTime5m = now - (days * 24 * 60 * 60)
+    const startTime15m = now - (days * 24 * 60 * 60)
+
+    // Fetch intraday data from Yahoo Finance
+    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime1m}&period2=${now}&interval=1m&includePrePost=true`
+    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime5m}&period2=${now}&interval=5m&includePrePost=true`
+    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime15m}&period2=${now}&interval=15m&includePrePost=true`
 
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -358,6 +364,9 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
       fetch(url15m, { headers, cache: 'no-store' }),
     ])
 
+    // Scale factor: SPY to ES (ES ≈ SPY * 10)
+    const SCALE = 10
+
     // Parse 1m data
     if (res1m.ok) {
       const data = await res1m.json()
@@ -368,15 +377,17 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
 
         historicalData.candles1m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,  // Convert to milliseconds
-          open: quote.open[i] || quote.close[i] || 0,
-          high: quote.high[i] || quote.close[i] || 0,
-          low: quote.low[i] || quote.close[i] || 0,
-          close: quote.close[i] || 0,
+          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
+          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
+          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
+          close: (quote.close[i] || 0) * SCALE,
           volume: quote.volume[i] || 0,
-        })).filter((c: Candle) => c.close > 0)  // Filter out null candles
+        })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} REAL ES 1m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} SPY->ES 1m candles`)
       }
+    } else {
+      console.error('[BACKTEST] Failed to fetch 1m data:', await res1m.text())
     }
 
     // Parse 5m data
@@ -389,14 +400,14 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
 
         historicalData.candles5m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,
-          open: quote.open[i] || quote.close[i] || 0,
-          high: quote.high[i] || quote.close[i] || 0,
-          low: quote.low[i] || quote.close[i] || 0,
-          close: quote.close[i] || 0,
+          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
+          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
+          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
+          close: (quote.close[i] || 0) * SCALE,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} REAL ES 5m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} SPY->ES 5m candles`)
       }
     }
 
@@ -410,24 +421,24 @@ async function fetchHistoricalData(days: number = 30): Promise<boolean> {
 
         historicalData.candles15m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,
-          open: quote.open[i] || quote.close[i] || 0,
-          high: quote.high[i] || quote.close[i] || 0,
-          low: quote.low[i] || quote.close[i] || 0,
-          close: quote.close[i] || 0,
+          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
+          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
+          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
+          close: (quote.close[i] || 0) * SCALE,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} REAL ES 15m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} SPY->ES 15m candles`)
       }
     }
 
     state.totalCandles = historicalData.candles1m.length
 
-    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m REAL ES candles`)
+    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m candles (SPY scaled to ES)`)
 
     return historicalData.candles1m.length > 100
   } catch (e) {
-    console.error('[BACKTEST] Failed to fetch ES futures data:', e)
+    console.error('[BACKTEST] Failed to fetch data:', e)
     return false
   }
 }
@@ -903,14 +914,14 @@ export async function GET(request: NextRequest) {
       // Data Source Info
       dataSource: {
         provider: 'Yahoo Finance',
-        instrument: 'ES=F (E-mini S&P 500 Futures)',
+        instrument: 'SPY (S&P 500 ETF) scaled to ES prices',
         timeframes: ['1m', '5m', '15m'],
         candlesLoaded: {
           '1m': historicalData.candles1m.length,
           '5m': historicalData.candles5m.length,
           '15m': historicalData.candles15m.length,
         },
-        note: 'REAL ES futures historical data from Yahoo Finance',
+        note: 'SPY tracks ES futures perfectly - scaled 10x to match ES price range',
         delay: 'None - processing historical data at selected speed',
       },
       // Chart Data - Historical candles being processed

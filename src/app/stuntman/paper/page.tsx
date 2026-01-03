@@ -527,8 +527,8 @@ export default function PaperTradingPage() {
   const [inverseMode, setInverseMode] = useState(false)
   const [autoInverse, setAutoInverse] = useState(false)
 
-  // Correct TradingView symbols for futures
-  const tvSymbol = instrument === 'ES' ? 'ES1!' : 'NQ1!'
+  // TradingView symbols - SPY tracks ES, QQQ tracks NQ
+  const tvSymbol = instrument === 'ES' ? 'SPY' : 'QQQ'
 
   // ===========================================================================
   // FETCH DATA

@@ -180,8 +180,8 @@ export default function StuntManDashboard() {
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
 
-  // Correct TradingView symbols for futures
-  const tvSymbol = instrument === 'ES' ? 'ES1!' : 'NQ1!'
+  // TradingView symbols - SPY tracks ES, QQQ tracks NQ
+  const tvSymbol = instrument === 'ES' ? 'SPY' : 'QQQ'
 
   // ==========================================================================
   // DATA FETCHING

@@ -71,6 +71,19 @@ import {
   AdvancedSignal,
 } from '@/lib/stuntman/advanced-strategies'
 
+// === WORLD-CLASS REGIME-AWARE STRATEGIES ===
+import {
+  classifyMarketRegime as classifyWorldClassRegime,
+  generateMasterSignal as generateWorldClassSignal,
+  calculateTradeQuality,
+  calculatePropFirmRisk,
+  StrategySignal,
+  TradeQualityScore,
+  PropFirmRiskState,
+  MarketRegimeType,
+  RegimeAnalysis,
+} from '@/lib/stuntman/world-class-strategies'
+
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
 // =============================================================================
@@ -1211,6 +1224,118 @@ let apexRisk: ApexRiskState = {
   stopReason: null,
 }
 
+// =============================================================================
+// SESSION HIGH/LOW TRACKING - For world-class strategies
+// =============================================================================
+
+interface SessionLevels {
+  high: number
+  low: number
+  formed: boolean
+}
+
+interface TradingDayData {
+  date: string
+  asia: SessionLevels
+  london: SessionLevels
+  ny: SessionLevels
+  orb: SessionLevels  // Opening Range (first 30 min)
+  vwap: number
+  vwapStdDev: number
+  cumulativeVolume: number
+  cumulativeVWAP: number
+}
+
+let currentDayData: TradingDayData = {
+  date: '',
+  asia: { high: 0, low: Infinity, formed: false },
+  london: { high: 0, low: Infinity, formed: false },
+  ny: { high: 0, low: Infinity, formed: false },
+  orb: { high: 0, low: Infinity, formed: false },
+  vwap: 0,
+  vwapStdDev: 0,
+  cumulativeVolume: 0,
+  cumulativeVWAP: 0,
+}
+
+function resetDayData(dateString: string): void {
+  currentDayData = {
+    date: dateString,
+    asia: { high: 0, low: Infinity, formed: false },
+    london: { high: 0, low: Infinity, formed: false },
+    ny: { high: 0, low: Infinity, formed: false },
+    orb: { high: 0, low: Infinity, formed: false },
+    vwap: 0,
+    vwapStdDev: 0,
+    cumulativeVolume: 0,
+    cumulativeVWAP: 0,
+  }
+}
+
+function getSessionFromTimestamp(timestamp: number): 'ASIA' | 'LONDON' | 'NY_PREOPEN' | 'NY_ORB' | 'NY_MAIN' | 'AFTER_HOURS' {
+  const date = new Date(timestamp)
+  const utcHour = date.getUTCHours()
+  const utcMinute = date.getUTCMinutes()
+  const etHour = (utcHour - 5 + 24) % 24
+  const etTime = etHour * 100 + utcMinute
+
+  // Session times in ET
+  if (etTime >= 0 && etTime < 200) return 'ASIA'      // 12am-2am ET (Asia session end)
+  if (etTime >= 1900 && etTime <= 2359) return 'ASIA' // 7pm-11:59pm ET (Asia session start)
+  if (etTime >= 200 && etTime < 800) return 'LONDON'  // 2am-8am ET
+  if (etTime >= 800 && etTime < 930) return 'NY_PREOPEN' // 8am-9:30am ET
+  if (etTime >= 930 && etTime < 1000) return 'NY_ORB'    // 9:30-10:00am ET (Opening Range)
+  if (etTime >= 1000 && etTime < 1600) return 'NY_MAIN'  // 10am-4pm ET
+  return 'AFTER_HOURS'
+}
+
+function updateSessionLevels(candle: Candle): void {
+  const dateString = new Date(candle.time).toDateString()
+
+  // Reset on new day
+  if (dateString !== currentDayData.date) {
+    resetDayData(dateString)
+  }
+
+  const session = getSessionFromTimestamp(candle.time)
+
+  // Update session highs/lows
+  switch (session) {
+    case 'ASIA':
+      currentDayData.asia.high = Math.max(currentDayData.asia.high, candle.high)
+      currentDayData.asia.low = Math.min(currentDayData.asia.low, candle.low)
+      break
+    case 'LONDON':
+      currentDayData.asia.formed = true // Asia is done when London starts
+      currentDayData.london.high = Math.max(currentDayData.london.high, candle.high)
+      currentDayData.london.low = Math.min(currentDayData.london.low, candle.low)
+      break
+    case 'NY_PREOPEN':
+      currentDayData.london.formed = true
+      break
+    case 'NY_ORB':
+      currentDayData.orb.high = Math.max(currentDayData.orb.high, candle.high)
+      currentDayData.orb.low = Math.min(currentDayData.orb.low, candle.low)
+      break
+    case 'NY_MAIN':
+      currentDayData.orb.formed = true // ORB is done at 10:00 AM
+      currentDayData.ny.high = Math.max(currentDayData.ny.high, candle.high)
+      currentDayData.ny.low = Math.min(currentDayData.ny.low, candle.low)
+      break
+    default:
+      break
+  }
+
+  // Update VWAP
+  const typicalPrice = (candle.high + candle.low + candle.close) / 3
+  currentDayData.cumulativeVolume += candle.volume
+  currentDayData.cumulativeVWAP += typicalPrice * candle.volume
+
+  if (currentDayData.cumulativeVolume > 0) {
+    currentDayData.vwap = currentDayData.cumulativeVWAP / currentDayData.cumulativeVolume
+  }
+}
+
 function updateApexRiskStatus(): void {
   const config = APEX_150K_CONFIG
 
@@ -1614,6 +1739,11 @@ async function processCandle(index: number): Promise<void> {
   const currentCandle = candles1m[candles1m.length - 1]
   const currentPrice = currentCandle.close
 
+  // =========================================================================
+  // TRACK SESSION HIGH/LOWS FOR WORLD-CLASS STRATEGIES
+  // =========================================================================
+  updateSessionLevels(currentCandle)
+
   // Generate order flow data for VPIN
   const recentCandles = candles1m.slice(-10)
   for (const c of recentCandles) {
@@ -1638,7 +1768,7 @@ async function processCandle(index: number): Promise<void> {
     return
   }
 
-  // Detect market regime using new strategy engine
+  // Detect market regime using new strategy engine (kept for backwards compat)
   const regime = detectMarketRegime(indicators)
 
   // Extract pattern features for adaptive ML (uses old adaptive-ml regime detection)
@@ -1646,7 +1776,47 @@ async function processCandle(index: number): Promise<void> {
   const adaptiveRegime = detectAdaptiveRegime(candles1m, features)
   const session = getCurrentSession(currentCandle.time)
 
-  // Generate master signal from all strategies with confluence scoring
+  // =========================================================================
+  // WORLD-CLASS REGIME-AWARE STRATEGY SYSTEM
+  // 11 distinct strategies, each with explicit WORKS IN / FAILS IN conditions
+  // =========================================================================
+
+  // Calculate prop firm risk state
+  const propFirmRisk = calculatePropFirmRisk(
+    state.currentBalance,
+    APEX_150K_CONFIG.accountSize,
+    APEX_150K_CONFIG.maxTrailingDrawdown,
+    dailyPnL,
+    consecutiveLosses,
+    dailyTradeCount
+  )
+
+  // Calculate VWAP standard deviation for mean reversion
+  const vwapPrices = candles1m.slice(-50).map(c => c.close)
+  const vwapStdDev = Math.sqrt(
+    vwapPrices.reduce((sum, p) => sum + Math.pow(p - currentDayData.vwap, 2), 0) / vwapPrices.length
+  ) || indicators.atr
+
+  // Generate world-class signal with all 11 strategies
+  const worldClassResult = generateWorldClassSignal(
+    candles1m,
+    candles5m.slice(-50),
+    candles15m.slice(-30),
+    {
+      high: currentDayData.orb.high,
+      low: currentDayData.orb.low === Infinity ? currentPrice - indicators.atr : currentDayData.orb.low,
+      formed: currentDayData.orb.formed
+    },
+    {
+      asia: { high: currentDayData.asia.high || currentPrice, low: currentDayData.asia.low === Infinity ? currentPrice : currentDayData.asia.low },
+      london: { high: currentDayData.london.high || currentPrice, low: currentDayData.london.low === Infinity ? currentPrice : currentDayData.london.low },
+      ny: { high: currentDayData.ny.high || currentPrice, low: currentDayData.ny.low === Infinity ? currentPrice : currentDayData.ny.low },
+    },
+    { vwap: currentDayData.vwap || currentPrice, stdDev: vwapStdDev },
+    propFirmRisk
+  )
+
+  // Also generate old signals for backwards compatibility and comparison
   const masterSignal = generateMasterSignal(
     candles1m,
     indicators,
@@ -1764,10 +1934,10 @@ async function processCandle(index: number): Promise<void> {
           rsiAtEntry: indicators.rsi,
           ema20Distance: ((currentPrice - indicators.ema20) / indicators.ema20) * 100,
           ema50Distance: ((currentPrice - indicators.ema50) / indicators.ema50) * 100,
-          regime: regime.type,
+          regime: regime, // MarketRegime is a string type
           hourOfDay: new Date(currentCandle.time).getUTCHours() - 5,
           atrAtEntry: indicators.atr,
-          trendStrength: regime.strength,
+          trendStrength: indicators.trendStrength || 50, // Use indicator's trend strength
         },
       }
 
@@ -2115,120 +2285,149 @@ async function processCandle(index: number): Promise<void> {
     const macdHistogram = indicators.macdHistogram
 
     // Determine which signal to use
-    let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number } | null = null
+    let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number; qualityScore?: number } | null = null
 
     // ==========================================================================
-    // FOCUSED MODE: Only use ORB signals (74.56% documented win rate)
+    // WORLD-CLASS SIGNAL (PRIMARY) - Regime-aware, quality-scored strategies
+    // Uses 11 institutional strategies with explicit WORKS IN / FAILS IN conditions
     // ==========================================================================
-    if (FOCUSED_MODE.enabled) {
-      // Check if we're in the ORB trade window (10:00 AM - 1:00 PM ET)
-      const { etTime } = getETTime(currentCandle.time)
-      if (etTime < FOCUSED_MODE.orbTradeWindowStart || etTime > FOCUSED_MODE.orbTradeWindowEnd) {
-        // Outside ORB window - skip
-        state.candlesProcessed++
-        state.currentIndex = index
-        return
+    if (worldClassResult.signal && worldClassResult.quality) {
+      const wcSignal = worldClassResult.signal
+      const wcQuality = worldClassResult.quality
+
+      // Only take trades that meet quality threshold
+      // FULL_SIZE = 80+, HALF_SIZE = 60-79, QUARTER_SIZE = 40-59, NO_TRADE = <40
+      if (wcQuality.recommendation !== 'NO_TRADE') {
+        // Extract stop and target from signal
+        const wcStopLoss = wcSignal.stopLoss.price
+        const wcTakeProfit = wcSignal.targets.length > 0 ? wcSignal.targets[wcSignal.targets.length - 1].price : currentPrice
+
+        signalToUse = {
+          direction: wcSignal.direction,
+          confidence: wcSignal.confidence,
+          strategy: wcSignal.type,
+          stopLoss: wcStopLoss,
+          takeProfit: wcTakeProfit,
+          riskRewardRatio: wcSignal.metadata.riskRewardRatio,
+          qualityScore: wcQuality.overall,
+        }
       }
+    }
 
-      // Check daily trade limit for focused mode
-      if (dailyTradeCount >= FOCUSED_MODE.maxDailyTrades) {
-        state.candlesProcessed++
-        state.currentIndex = index
-        return
-      }
-
-      // Find the ORB signal specifically from masterSignal.strategies
-      const orbSignal = masterSignal.strategies.find(s => s.strategy === 'ORB_BREAKOUT')
-
-      if (orbSignal && orbSignal.direction !== 'FLAT') {
-        // Validate ORB range is within acceptable bounds
-        const orbHigh = indicators.openingRangeHigh
-        const orbLow = indicators.openingRangeLow
-        const orbRange = orbHigh - orbLow
-
-        // Skip if range too small or too large
-        if (orbRange < FOCUSED_MODE.minORBRangePoints || orbRange > FOCUSED_MODE.maxORBRangePoints) {
+    // ==========================================================================
+    // FALLBACK: Old signals (if world-class didn't fire)
+    // ==========================================================================
+    if (!signalToUse) {
+      // FOCUSED MODE: Only use ORB signals (74.56% documented win rate)
+      if (FOCUSED_MODE.enabled) {
+        // Check if we're in the ORB trade window (10:00 AM - 1:00 PM ET)
+        const { etTime } = getETTime(currentCandle.time)
+        if (etTime < FOCUSED_MODE.orbTradeWindowStart || etTime > FOCUSED_MODE.orbTradeWindowEnd) {
+          // Outside ORB window - skip
           state.candlesProcessed++
           state.currentIndex = index
           return
         }
 
-        // Validate volume on breakout
-        if (indicators.relativeVolume < FOCUSED_MODE.minBreakoutVolume) {
+        // Check daily trade limit for focused mode
+        if (dailyTradeCount >= FOCUSED_MODE.maxDailyTrades) {
           state.candlesProcessed++
           state.currentIndex = index
           return
         }
 
-        // Check regime - only trade trending days
-        if (FOCUSED_MODE.onlyTrendingDays) {
-          if (regime.type !== 'TRENDING_UP' && regime.type !== 'TRENDING_DOWN' && regime.type !== 'HIGH_VOLATILITY') {
+        // Find the ORB signal specifically from masterSignal.strategies
+        const orbSignal = masterSignal.strategies.find(s => s.strategy === 'ORB_BREAKOUT')
+
+        if (orbSignal && orbSignal.direction !== 'FLAT') {
+          // Validate ORB range is within acceptable bounds
+          const orbHigh = indicators.openingRangeHigh
+          const orbLow = indicators.openingRangeLow
+          const orbRange = orbHigh - orbLow
+
+          // Skip if range too small or too large
+          if (orbRange < FOCUSED_MODE.minORBRangePoints || orbRange > FOCUSED_MODE.maxORBRangePoints) {
             state.candlesProcessed++
             state.currentIndex = index
             return
           }
-        }
 
-        // ORB signal is valid - use it
-        signalToUse = {
-          direction: orbSignal.direction as 'LONG' | 'SHORT',
-          confidence: orbSignal.confidence,
-          strategy: 'ORB_BREAKOUT',
-          stopLoss: orbSignal.direction === 'LONG' ? orbLow : orbHigh,
-          takeProfit: orbSignal.direction === 'LONG'
-            ? currentPrice + (orbRange * 2)  // 2R target
-            : currentPrice - (orbRange * 2),
-          riskRewardRatio: 2.0,
-        }
-      }
-    }
-    // ==========================================================================
-    // FALLBACK: Standard multi-strategy mode (if FOCUSED_MODE disabled)
-    // ==========================================================================
-    else {
-      // Advanced signal takes priority if it exists and meets STRICT requirements
-      if (advancedSignal &&
-          advancedSignal.direction !== 'FLAT' &&
-          advancedSignal.confidence >= PROFIT_CONFIG.minConfidence &&
-          advancedSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+          // Validate volume on breakout
+          if (indicators.relativeVolume < FOCUSED_MODE.minBreakoutVolume) {
+            state.candlesProcessed++
+            state.currentIndex = index
+            return
+          }
 
-        // Momentum must confirm direction
-        const momentumConfirms = advancedSignal.direction === 'LONG'
-          ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
-          : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+          // Check regime - only trade trending days
+          if (FOCUSED_MODE.onlyTrendingDays) {
+            // MarketRegime is a string type, not object
+            if (regime !== 'TRENDING_UP' && regime !== 'TRENDING_DOWN' && regime !== 'HIGH_VOLATILITY') {
+              state.candlesProcessed++
+              state.currentIndex = index
+              return
+            }
+          }
 
-        if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+          // ORB signal is valid - use it
           signalToUse = {
-            direction: advancedSignal.direction as 'LONG' | 'SHORT',
-            confidence: advancedSignal.confidence,
-            strategy: advancedSignal.strategy,
-            stopLoss: advancedSignal.stopLoss,
-            takeProfit: advancedSignal.takeProfit,
-            riskRewardRatio: advancedSignal.riskRewardRatio,
+            direction: orbSignal.direction as 'LONG' | 'SHORT',
+            confidence: orbSignal.confidence,
+            strategy: 'ORB_BREAKOUT',
+            stopLoss: orbSignal.direction === 'LONG' ? orbLow : orbHigh,
+            takeProfit: orbSignal.direction === 'LONG'
+              ? currentPrice + (orbRange * 2)  // 2R target
+              : currentPrice - (orbRange * 2),
+            riskRewardRatio: 2.0,
           }
         }
       }
+      // Standard multi-strategy mode (if FOCUSED_MODE disabled)
+      else {
+        // Advanced signal takes priority if it exists and meets STRICT requirements
+        if (advancedSignal &&
+            advancedSignal.direction !== 'FLAT' &&
+            advancedSignal.confidence >= PROFIT_CONFIG.minConfidence &&
+            advancedSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
 
-      // Fall back to master signal ONLY if it meets STRICT requirements
-      if (!signalToUse &&
-          masterSignal.direction !== 'FLAT' &&
-          masterSignal.confluenceScore >= PROFIT_CONFIG.minConfluenceScore &&
-          masterSignal.confidence >= PROFIT_CONFIG.minConfidence &&
-          masterSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+          // Momentum must confirm direction
+          const momentumConfirms = advancedSignal.direction === 'LONG'
+            ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
+            : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
 
-        // Momentum must confirm
-        const momentumConfirms = masterSignal.direction === 'LONG'
-          ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
-          : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+          if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+            signalToUse = {
+              direction: advancedSignal.direction as 'LONG' | 'SHORT',
+              confidence: advancedSignal.confidence,
+              strategy: advancedSignal.strategy,
+              stopLoss: advancedSignal.stopLoss,
+              takeProfit: advancedSignal.takeProfit,
+              riskRewardRatio: advancedSignal.riskRewardRatio,
+            }
+          }
+        }
 
-        if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
-          signalToUse = {
-            direction: masterSignal.direction as 'LONG' | 'SHORT',
-            confidence: masterSignal.confidence,
-            strategy: masterSignal.primaryStrategy,
-            stopLoss: masterSignal.stopLoss,
-            takeProfit: masterSignal.takeProfit,
-            riskRewardRatio: masterSignal.riskRewardRatio,
+        // Fall back to master signal ONLY if it meets STRICT requirements
+        if (!signalToUse &&
+            masterSignal.direction !== 'FLAT' &&
+            masterSignal.confluenceScore >= PROFIT_CONFIG.minConfluenceScore &&
+            masterSignal.confidence >= PROFIT_CONFIG.minConfidence &&
+            masterSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+
+          // Momentum must confirm
+          const momentumConfirms = masterSignal.direction === 'LONG'
+            ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
+            : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+
+          if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+            signalToUse = {
+              direction: masterSignal.direction as 'LONG' | 'SHORT',
+              confidence: masterSignal.confidence,
+              strategy: masterSignal.primaryStrategy,
+              stopLoss: masterSignal.stopLoss,
+              takeProfit: masterSignal.takeProfit,
+              riskRewardRatio: masterSignal.riskRewardRatio,
+            }
           }
         }
       }
@@ -2313,12 +2512,29 @@ async function processCandle(index: number): Promise<void> {
       // Trailing stop distance (1.5x ATR after first target hit)
       const trailingDistance = atr * 1.5
 
-      // Position size based on confidence AND Apex risk level
-      // Higher confidence = larger position, but always respect Apex limits
-      const confidenceMultiplier = signalToUse.confidence >= 85 ? 1.5 :
-                                   signalToUse.confidence >= 75 ? 1.0 : 0.75
-      const baseContracts = useAdvanced ? confidenceMultiplier : masterSignal.positionSizeMultiplier
-      const riskAdjustedContracts = baseContracts * apexRisk.positionSizeMultiplier
+      // =======================================================================
+      // QUALITY-BASED POSITION SIZING (World-Class Strategies)
+      // Quality score determines position size: FULL > HALF > QUARTER
+      // =======================================================================
+      let qualityMultiplier = 1.0
+      if (signalToUse.qualityScore !== undefined) {
+        // World-class signal with quality score
+        if (signalToUse.qualityScore >= 80) {
+          qualityMultiplier = 1.0  // FULL_SIZE - high quality setup
+        } else if (signalToUse.qualityScore >= 60) {
+          qualityMultiplier = 0.5  // HALF_SIZE - moderate quality
+        } else if (signalToUse.qualityScore >= 40) {
+          qualityMultiplier = 0.25 // QUARTER_SIZE - lower quality but tradeable
+        }
+      } else {
+        // Fallback: Old confidence-based sizing
+        qualityMultiplier = signalToUse.confidence >= 85 ? 1.5 :
+                            signalToUse.confidence >= 75 ? 1.0 : 0.75
+      }
+
+      // Apply both quality and prop firm risk multipliers
+      const baseContracts = qualityMultiplier
+      const riskAdjustedContracts = baseContracts * propFirmRisk.positionSizeMultiplier
 
       // APEX MAX CONTRACTS LIMIT - 17 contracts max for 150K account
       // Also apply PA contract scaling if in Performance Account
@@ -2739,7 +2955,7 @@ export async function POST(request: NextRequest) {
       state.maxDrawdown = 0
       state.peakBalance = 150000
       state.currentBalance = 150000
-      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0 }
+      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0, spread: 0, gapLosses: 0 }
       state.latencyStats = { totalLatencyMs: 0, avgLatencyMs: 0, maxLatencyMs: 0, minLatencyMs: Infinity }
       state.candlesProcessed = 0
       state.strategyPerformance = {}

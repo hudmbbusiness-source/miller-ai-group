@@ -730,44 +730,76 @@ let config: EngineConfig = {
 }
 
 // =============================================================================
+// FOCUSED STRATEGY MODE - Use ONLY the proven ORB strategy
+// =============================================================================
+// The ORB (Opening Range Breakout) strategy has:
+// - 74.56% documented win rate (Quantified Strategies)
+// - 2.512 profit factor
+// - Clear, mechanical rules
+
+const FOCUSED_MODE = {
+  enabled: true,               // Use ONLY ORB strategy, ignore others
+  onlyORBSignals: true,        // Only take ORB breakout trades
+  onlyTrendingDays: true,      // Skip ranging/choppy days
+
+  // Time window for ORB trades (after range forms, before exhaustion)
+  orbTradeWindowStart: 1000,   // 10:00 AM ET (after 30-min range forms)
+  orbTradeWindowEnd: 1300,     // 1:00 PM ET (ORB edge diminishes later)
+
+  // ORB-specific requirements
+  minORBRangePoints: 3,        // Need at least 3-point range ($150 on ES)
+  maxORBRangePoints: 15,       // Skip if range too wide (choppy open)
+  minBreakoutVolume: 1.3,      // Need 130% of average volume on breakout
+
+  // Only trade ONE direction per day (first clear breakout)
+  oneDirectionPerDay: true,
+
+  // Maximum trades per day in focused mode
+  maxDailyTrades: 2,           // ORB is typically 1-2 trades max
+}
+
+// =============================================================================
 // PRODUCTION-READY PROFIT MAXIMIZATION CONFIG
 // =============================================================================
 
 const PROFIT_CONFIG = {
   // DAILY LOSS LIMIT - Protect the account at all costs
-  dailyMaxLoss: 1000,          // Stop trading if down $1,000 in a day
-  dailyMaxLossPercent: 0.67,   // Or 0.67% of account
+  dailyMaxLoss: 800,           // Stop trading if down $800 in a day (tighter)
+  dailyMaxLossPercent: 0.53,   // Or 0.53% of account
 
   // MAX RISK PER TRADE - Prevent catastrophic single-trade losses
-  maxLossPerTrade: 350,        // Maximum $350 risk per trade (7 points ES with 1 contract)
-  maxLossPerTradePoints: 8,    // Alternative: max 8 point stop on ES ($400 with 1 contract)
+  maxLossPerTrade: 300,        // Maximum $300 risk per trade (6 points ES with 1 contract)
+  maxLossPerTradePoints: 6,    // Max 6 point stop on ES ($300 with 1 contract)
 
-  // ENTRY REQUIREMENTS - Only take the BEST setups
-  minConfluenceScore: 60,      // Need 60+ confluence (was 25 - way too low)
-  minConfidence: 75,           // Need 75%+ confidence (was 70)
-  minRiskReward: 2.0,          // Need 2:1 R:R minimum (was 1.5)
+  // LOSING STREAK LIMITER - Stop after consecutive losses
+  maxConsecutiveLosses: 2,     // Stop trading after 2 losses in a row (wait for next day)
+
+  // ENTRY REQUIREMENTS - ULTRA SELECTIVE - Only take the ABSOLUTE BEST setups
+  minConfluenceScore: 70,      // Need 70+ confluence (was 60 - too low)
+  minConfidence: 80,           // Need 80%+ confidence (was 75)
+  minRiskReward: 2.5,          // Need 2.5:1 R:R minimum (was 2.0)
 
   // MTF ALIGNMENT - Trade with the trend ONLY
   requireMTFAlignment: true,   // Higher timeframes must agree
 
-  // TRADE FREQUENCY - Quality over quantity
-  maxTradesPerDay: 8,          // Maximum 8 trades per day
-  minTimeBetweenTrades: 15,    // Wait 15 minutes between trades (in candles)
+  // TRADE FREQUENCY - STRICT Quality over quantity
+  maxTradesPerDay: 5,          // Maximum 5 trades per day (was 8 - too many)
+  minTimeBetweenTrades: 20,    // Wait 20 minutes between trades (was 15)
 
-  // MOMENTUM REQUIREMENTS
+  // MOMENTUM REQUIREMENTS - STRICTER
   requireMomentumConfirm: true,  // RSI and MACD must confirm
-  rsiOversoldThreshold: 35,      // Only long when RSI > 35 (not oversold trap)
-  rsiOverboughtThreshold: 65,    // Only short when RSI < 65 (not overbought trap)
+  rsiOversoldThreshold: 40,      // Only long when RSI > 40 (was 35)
+  rsiOverboughtThreshold: 60,    // Only short when RSI < 60 (was 65)
 
   // VOLATILITY FILTER
-  minATRMultiple: 0.5,          // Skip if ATR too low (no movement)
-  maxATRMultiple: 3.0,          // Skip if ATR too high (too risky)
+  minATRMultiple: 0.6,          // Skip if ATR too low (no movement)
+  maxATRMultiple: 2.5,          // Skip if ATR too high (too risky)
 
-  // TREND STRENGTH
-  minTrendStrength: 0.6,        // EMA alignment must be 60%+
+  // TREND STRENGTH - STRICTER
+  minTrendStrength: 0.7,        // EMA alignment must be 70%+ (was 60%)
 
   // STOP LOSS TIGHTENING
-  maxStopATRMultiplier: 1.0,   // Tighter stops: max 1.0 ATR (was 1.5)
+  maxStopATRMultiplier: 0.8,   // Even tighter stops: max 0.8 ATR (was 1.0)
 }
 
 // Daily P&L tracking
@@ -775,6 +807,7 @@ let dailyPnL = 0
 let dailyTradeCount = 0
 let lastTradeIndex = 0
 let currentTradingDay = ''
+let consecutiveLosses = 0       // Track losing streak
 
 // =============================================================================
 // SESSION DETECTION & FILTERING (Local version for config compatibility)
@@ -2081,54 +2114,122 @@ async function processCandle(index: number): Promise<void> {
     const currentRSI = indicators.rsi
     const macdHistogram = indicators.macdHistogram
 
-    // Determine which signal to use - prefer advanced institutional signals
-    let useAdvanced = false
+    // Determine which signal to use
     let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number } | null = null
 
-    // Advanced signal takes priority if it exists and meets STRICT requirements
-    if (advancedSignal &&
-        advancedSignal.direction !== 'FLAT' &&
-        advancedSignal.confidence >= PROFIT_CONFIG.minConfidence &&
-        advancedSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+    // ==========================================================================
+    // FOCUSED MODE: Only use ORB signals (74.56% documented win rate)
+    // ==========================================================================
+    if (FOCUSED_MODE.enabled) {
+      // Check if we're in the ORB trade window (10:00 AM - 1:00 PM ET)
+      const { etTime } = getETTime(currentCandle.time)
+      if (etTime < FOCUSED_MODE.orbTradeWindowStart || etTime > FOCUSED_MODE.orbTradeWindowEnd) {
+        // Outside ORB window - skip
+        state.candlesProcessed++
+        state.currentIndex = index
+        return
+      }
 
-      // CHECK 5: Momentum must confirm direction
-      const momentumConfirms = advancedSignal.direction === 'LONG'
-        ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
-        : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+      // Check daily trade limit for focused mode
+      if (dailyTradeCount >= FOCUSED_MODE.maxDailyTrades) {
+        state.candlesProcessed++
+        state.currentIndex = index
+        return
+      }
 
-      if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
-        useAdvanced = true
+      // Find the ORB signal specifically from masterSignal.strategies
+      const orbSignal = masterSignal.strategies.find(s => s.strategy === 'ORB_BREAKOUT')
+
+      if (orbSignal && orbSignal.direction !== 'FLAT') {
+        // Validate ORB range is within acceptable bounds
+        const orbHigh = indicators.openingRangeHigh
+        const orbLow = indicators.openingRangeLow
+        const orbRange = orbHigh - orbLow
+
+        // Skip if range too small or too large
+        if (orbRange < FOCUSED_MODE.minORBRangePoints || orbRange > FOCUSED_MODE.maxORBRangePoints) {
+          state.candlesProcessed++
+          state.currentIndex = index
+          return
+        }
+
+        // Validate volume on breakout
+        if (indicators.relativeVolume < FOCUSED_MODE.minBreakoutVolume) {
+          state.candlesProcessed++
+          state.currentIndex = index
+          return
+        }
+
+        // Check regime - only trade trending days
+        if (FOCUSED_MODE.onlyTrendingDays) {
+          if (regime.type !== 'TRENDING_UP' && regime.type !== 'TRENDING_DOWN' && regime.type !== 'HIGH_VOLATILITY') {
+            state.candlesProcessed++
+            state.currentIndex = index
+            return
+          }
+        }
+
+        // ORB signal is valid - use it
         signalToUse = {
-          direction: advancedSignal.direction as 'LONG' | 'SHORT',
-          confidence: advancedSignal.confidence,
-          strategy: advancedSignal.strategy,
-          stopLoss: advancedSignal.stopLoss,
-          takeProfit: advancedSignal.takeProfit,
-          riskRewardRatio: advancedSignal.riskRewardRatio,
+          direction: orbSignal.direction as 'LONG' | 'SHORT',
+          confidence: orbSignal.confidence,
+          strategy: 'ORB_BREAKOUT',
+          stopLoss: orbSignal.direction === 'LONG' ? orbLow : orbHigh,
+          takeProfit: orbSignal.direction === 'LONG'
+            ? currentPrice + (orbRange * 2)  // 2R target
+            : currentPrice - (orbRange * 2),
+          riskRewardRatio: 2.0,
         }
       }
     }
+    // ==========================================================================
+    // FALLBACK: Standard multi-strategy mode (if FOCUSED_MODE disabled)
+    // ==========================================================================
+    else {
+      // Advanced signal takes priority if it exists and meets STRICT requirements
+      if (advancedSignal &&
+          advancedSignal.direction !== 'FLAT' &&
+          advancedSignal.confidence >= PROFIT_CONFIG.minConfidence &&
+          advancedSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
 
-    // Fall back to master signal ONLY if it meets STRICT requirements
-    if (!signalToUse &&
-        masterSignal.direction !== 'FLAT' &&
-        masterSignal.confluenceScore >= PROFIT_CONFIG.minConfluenceScore &&
-        masterSignal.confidence >= PROFIT_CONFIG.minConfidence &&
-        masterSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+        // Momentum must confirm direction
+        const momentumConfirms = advancedSignal.direction === 'LONG'
+          ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
+          : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
 
-      // Momentum must confirm
-      const momentumConfirms = masterSignal.direction === 'LONG'
-        ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
-        : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+        if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+          signalToUse = {
+            direction: advancedSignal.direction as 'LONG' | 'SHORT',
+            confidence: advancedSignal.confidence,
+            strategy: advancedSignal.strategy,
+            stopLoss: advancedSignal.stopLoss,
+            takeProfit: advancedSignal.takeProfit,
+            riskRewardRatio: advancedSignal.riskRewardRatio,
+          }
+        }
+      }
 
-      if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
-        signalToUse = {
-          direction: masterSignal.direction as 'LONG' | 'SHORT',
-          confidence: masterSignal.confidence,
-          strategy: masterSignal.primaryStrategy,
-          stopLoss: masterSignal.stopLoss,
-          takeProfit: masterSignal.takeProfit,
-          riskRewardRatio: masterSignal.riskRewardRatio,
+      // Fall back to master signal ONLY if it meets STRICT requirements
+      if (!signalToUse &&
+          masterSignal.direction !== 'FLAT' &&
+          masterSignal.confluenceScore >= PROFIT_CONFIG.minConfluenceScore &&
+          masterSignal.confidence >= PROFIT_CONFIG.minConfidence &&
+          masterSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+
+        // Momentum must confirm
+        const momentumConfirms = masterSignal.direction === 'LONG'
+          ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
+          : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+
+        if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
+          signalToUse = {
+            direction: masterSignal.direction as 'LONG' | 'SHORT',
+            confidence: masterSignal.confidence,
+            strategy: masterSignal.primaryStrategy,
+            stopLoss: masterSignal.stopLoss,
+            takeProfit: masterSignal.takeProfit,
+            riskRewardRatio: masterSignal.riskRewardRatio,
+          }
         }
       }
     }

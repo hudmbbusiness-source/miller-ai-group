@@ -738,6 +738,10 @@ const PROFIT_CONFIG = {
   dailyMaxLoss: 1000,          // Stop trading if down $1,000 in a day
   dailyMaxLossPercent: 0.67,   // Or 0.67% of account
 
+  // MAX RISK PER TRADE - Prevent catastrophic single-trade losses
+  maxLossPerTrade: 350,        // Maximum $350 risk per trade (7 points ES with 1 contract)
+  maxLossPerTradePoints: 8,    // Alternative: max 8 point stop on ES ($400 with 1 contract)
+
   // ENTRY REQUIREMENTS - Only take the BEST setups
   minConfluenceScore: 60,      // Need 60+ confluence (was 25 - way too low)
   minConfidence: 75,           // Need 75%+ confidence (was 70)
@@ -761,6 +765,9 @@ const PROFIT_CONFIG = {
 
   // TREND STRENGTH
   minTrendStrength: 0.6,        // EMA alignment must be 60%+
+
+  // STOP LOSS TIGHTENING
+  maxStopATRMultiplier: 1.0,   // Tighter stops: max 1.0 ATR (was 1.5)
 }
 
 // Daily P&L tracking
@@ -2178,10 +2185,20 @@ async function processCandle(index: number): Promise<void> {
       // USE SIGNAL's CALCULATED STOPS & TARGETS
       // These come from institutional analysis (order flow, volume profile, SMC, etc.)
       const slippageAdjustment = Math.abs(entryPrice - rawEntryPrice)
-      const stopLoss = entryDir === 'LONG'
+      let stopLoss = entryDir === 'LONG'
         ? signalToUse.stopLoss - slippageAdjustment
         : signalToUse.stopLoss + slippageAdjustment
       const takeProfit = signalToUse.takeProfit
+
+      // MAX LOSS PER TRADE - Cap stop loss to prevent catastrophic losses
+      // With ES at $50/point, 8 points = $400 max risk per contract
+      const rawRiskPoints = Math.abs(entryPrice - stopLoss)
+      if (rawRiskPoints > PROFIT_CONFIG.maxLossPerTradePoints) {
+        // Tighten the stop to respect max loss limit
+        stopLoss = entryDir === 'LONG'
+          ? entryPrice - PROFIT_CONFIG.maxLossPerTradePoints
+          : entryPrice + PROFIT_CONFIG.maxLossPerTradePoints
+      }
 
       // Calculate partial profit targets (1R and 2R)
       const riskAmount = Math.abs(entryPrice - stopLoss)

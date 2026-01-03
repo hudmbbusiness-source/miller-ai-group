@@ -505,15 +505,23 @@ async function processCandle(index: number): Promise<void> {
   // Generate Traditional Signal
   const tradSignal = generateSignal(candles1m, candles5m.slice(-50), candles15m.slice(-30), 'ES')
 
-  // Calculate confluence (simplified)
-  let confluenceScore = 0
+  // Calculate confluence - more generous to generate trades
+  let confluenceScore = 10  // Base score
   const mlDir = mlSignal.direction === 'NEUTRAL' ? 'FLAT' : mlSignal.direction
 
-  if (mlDir === tradSignal.direction && mlDir !== 'FLAT') confluenceScore += 30
-  if (mlSignal.confidence > 0.70) confluenceScore += 15
-  if (vpin.signal === 'SAFE') confluenceScore += 10
-  else if (vpin.signal === 'DANGER') confluenceScore -= 15
-  if (tradSignal.confidence > 70) confluenceScore += 15
+  // Direction agreement
+  if (mlDir === tradSignal.direction && mlDir !== 'FLAT') confluenceScore += 25
+  // ML has any direction
+  if (mlDir !== 'FLAT') confluenceScore += 10
+  // ML confidence
+  if (mlSignal.confidence > 0.60) confluenceScore += 10
+  if (mlSignal.confidence > 0.75) confluenceScore += 5
+  // VPIN
+  if (vpin.signal === 'SAFE') confluenceScore += 5
+  else if (vpin.signal === 'DANGER') confluenceScore -= 10
+  // Traditional signal
+  if (tradSignal.confidence > 60) confluenceScore += 10
+  if (tradSignal.confidence > 80) confluenceScore += 5
 
   // Track ML predictions
   state.mlAccuracy.totalPredictions++
@@ -659,8 +667,8 @@ async function processCandle(index: number): Promise<void> {
       state.position = null
     }
   } else {
-    // Look for entry
-    if (confluenceScore >= 50 && mlDir !== 'FLAT' && mlSignal.confidence > 0.55) {
+    // Look for entry - lowered thresholds to generate more trades
+    if (confluenceScore >= 20 && mlDir !== 'FLAT' && mlSignal.confidence > 0.40) {
       // Apply inverse mode if enabled - flip LONG <-> SHORT
       let direction = mlDir as 'LONG' | 'SHORT'
       if (shouldInverseSignal()) {

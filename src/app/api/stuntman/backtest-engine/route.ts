@@ -236,8 +236,8 @@ interface EngineConfig {
 let config: EngineConfig = {
   speed: 1,
   inverseMode: false,
-  inverseThreshold: 45,
-  autoInverse: false,
+  inverseThreshold: 40,  // Flip when win rate drops below 40%
+  autoInverse: true,     // AUTO-INVERSE ON BY DEFAULT - fully automatic
 }
 
 // Speed to batch size mapping

@@ -63,6 +63,14 @@ import {
   DEFAULT_EMA_CONFIG,
 } from '@/lib/stuntman/strategy-engine'
 
+// === INSTITUTIONAL-GRADE ADVANCED STRATEGIES ===
+import {
+  analyzeMarket,
+  generateAdvancedMasterSignal,
+  AdvancedAnalysis,
+  AdvancedSignal,
+} from '@/lib/stuntman/advanced-strategies'
+
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
 // =============================================================================
@@ -459,6 +467,8 @@ interface BacktestState {
   candlesProcessed: number
   lastProcessedTime: number
   processingSpeed: number  // candles per second
+  // Advanced analysis history
+  deltaHistory: number[]      // Historical delta values for divergence detection
 }
 
 // =============================================================================
@@ -701,6 +711,7 @@ let state: BacktestState = {
   candlesProcessed: 0,
   lastProcessedTime: 0,
   processingSpeed: 0,
+  deltaHistory: [],
 }
 
 // =============================================================================
@@ -999,6 +1010,29 @@ async function processCandle(index: number): Promise<void> {
     }
   )
 
+  // === ADVANCED INSTITUTIONAL ANALYSIS ===
+  // Order Flow, Volume Profile, Smart Money Concepts, Statistical
+  const advancedAnalysis = analyzeMarket(
+    candles1m,
+    state.deltaHistory || [],  // Delta history for divergence detection
+    [],   // Bid volumes (would need L2 data)
+    [],   // Ask volumes (would need L2 data)
+    candles1m.map(c => c.close)
+  )
+
+  // Generate advanced signal using institutional methods
+  const advancedSignal = generateAdvancedMasterSignal(
+    candles1m,
+    advancedAnalysis,
+    indicators.atr
+  )
+
+  // Track delta for divergence detection
+  state.deltaHistory.push(vpin.vpin)
+  if (state.deltaHistory.length > 100) {
+    state.deltaHistory = state.deltaHistory.slice(-100)  // Keep last 100
+  }
+
   // For backwards compatibility with adaptive ML
   const closes = candles1m.map(c => c.close)
   const price = currentPrice
@@ -1285,18 +1319,45 @@ async function processCandle(index: number): Promise<void> {
     const mtfTrend = getMTFConfirmation(candles5m.slice(-50), candles15m.slice(-30))
 
     // ==========================================================================
-    // NEW ENTRY LOGIC: Use MasterSignal from Strategy Engine
-    // Requires: Direction, Confluence >= 25%, R:R >= 1.5
+    // INSTITUTIONAL ENTRY LOGIC
+    // Uses ADVANCED signal (Order Flow, Volume Profile, Smart Money, Z-Score)
+    // Falls back to basic strategy engine if no advanced signal
     // ==========================================================================
 
-    // Check if master signal has a valid entry
-    const shouldEnter = masterSignal.direction !== 'FLAT' &&
-                        masterSignal.confluenceScore >= 25 &&
-                        masterSignal.riskRewardRatio >= 1.5
+    // Determine which signal to use - prefer advanced institutional signals
+    let useAdvanced = false
+    let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number } | null = null
 
-    if (shouldEnter) {
-      // We've already checked direction !== 'FLAT' in shouldEnter
-      let entryDir: 'LONG' | 'SHORT' = masterSignal.direction as 'LONG' | 'SHORT'
+    // Advanced signal takes priority if it exists and has high confidence
+    if (advancedSignal && advancedSignal.direction !== 'FLAT' && advancedSignal.confidence >= 70) {
+      useAdvanced = true
+      signalToUse = {
+        direction: advancedSignal.direction as 'LONG' | 'SHORT',
+        confidence: advancedSignal.confidence,
+        strategy: advancedSignal.strategy,
+        stopLoss: advancedSignal.stopLoss,
+        takeProfit: advancedSignal.takeProfit,
+        riskRewardRatio: advancedSignal.riskRewardRatio,
+      }
+    }
+    // Fall back to master signal if no advanced signal
+    else if (masterSignal.direction !== 'FLAT' &&
+             masterSignal.confluenceScore >= 25 &&
+             masterSignal.riskRewardRatio >= 1.5) {
+      signalToUse = {
+        direction: masterSignal.direction as 'LONG' | 'SHORT',
+        confidence: masterSignal.confidence,
+        strategy: masterSignal.primaryStrategy,
+        stopLoss: masterSignal.stopLoss,
+        takeProfit: masterSignal.takeProfit,
+        riskRewardRatio: masterSignal.riskRewardRatio,
+      }
+    }
+
+    const shouldEnter = signalToUse !== null
+
+    if (shouldEnter && signalToUse) {
+      let entryDir: 'LONG' | 'SHORT' = signalToUse.direction
 
       // Apply inverse mode if enabled - flip LONG <-> SHORT
       if (shouldInverseSignal()) {
@@ -1327,13 +1388,13 @@ async function processCandle(index: number): Promise<void> {
       // Apply slippage to entry price (slippage works against you)
       const entryPrice = applySlippage(currentPrice, entryDir, true, volatility)
 
-      // STRATEGY ENGINE provides calculated stop/target from research-backed strategies
-      // Adjust for entry slippage
+      // USE SIGNAL's CALCULATED STOPS & TARGETS
+      // These come from institutional analysis (order flow, volume profile, SMC, etc.)
       const slippageAdjustment = Math.abs(entryPrice - rawEntryPrice)
       const stopLoss = entryDir === 'LONG'
-        ? masterSignal.stopLoss - slippageAdjustment
-        : masterSignal.stopLoss + slippageAdjustment
-      const takeProfit = masterSignal.takeProfit
+        ? signalToUse.stopLoss - slippageAdjustment
+        : signalToUse.stopLoss + slippageAdjustment
+      const takeProfit = signalToUse.takeProfit
 
       // Calculate partial profit targets (1R and 2R)
       const riskAmount = Math.abs(entryPrice - stopLoss)
@@ -1347,9 +1408,11 @@ async function processCandle(index: number): Promise<void> {
       // Trailing stop distance (1.5x ATR after first target hit)
       const trailingDistance = atr * 1.5
 
-      // Position size based on STRATEGY ENGINE's confluence-based sizing AND Apex risk level
-      // CRITICAL: Reduce size when approaching max drawdown
-      const baseContracts = masterSignal.positionSizeMultiplier
+      // Position size based on confidence AND Apex risk level
+      // Higher confidence = larger position, but always respect Apex limits
+      const confidenceMultiplier = signalToUse.confidence >= 85 ? 1.5 :
+                                   signalToUse.confidence >= 75 ? 1.0 : 0.75
+      const baseContracts = useAdvanced ? confidenceMultiplier : masterSignal.positionSizeMultiplier
       const riskAdjustedContracts = baseContracts * apexRisk.positionSizeMultiplier
       const contracts = Math.max(1, Math.floor(riskAdjustedContracts))
 
@@ -1382,17 +1445,17 @@ async function processCandle(index: number): Promise<void> {
         trailingDistance,
         highestPrice: entryPrice,
         lowestPrice: entryPrice,
-        confluenceScore: masterSignal.confluenceScore,
-        mlConfidence: masterSignal.confidence / 100,
+        confluenceScore: signalToUse.confidence,  // Use the actual signal's confidence
+        mlConfidence: signalToUse.confidence / 100,
         vpinAtEntry: vpin.vpin,
         volatilityAtEntry: volatility,
         regime: adaptiveRegime,  // Use adaptive regime for ML learning
         features,
         stopMultiplierUsed: stopMultiplier,
         targetMultiplierUsed: targetMultiplier,
-        strategy: masterSignal.primaryStrategy,
+        strategy: signalToUse.strategy,
         entryAnalytics: {
-          strategy: masterSignal.primaryStrategy,
+          strategy: signalToUse.strategy,
           rsiAtEntry: lastRsi,
           ema20Distance,
           ema50Distance,

@@ -438,15 +438,19 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
     <div className="relative h-full">
       <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
       {/* Overlay for current price */}
-      {chartData?.currentPrice && (
-        <div className="absolute top-2 right-2 bg-black/80 px-3 py-1.5 rounded-lg border border-white/10">
-          <div className="text-xs text-white/40 mb-0.5">HISTORICAL DATA</div>
+      {chartData?.currentPrice ? (
+        <div className="absolute top-2 right-2 bg-black/80 px-3 py-1.5 rounded-lg border border-amber-500/30">
+          <div className="text-xs text-amber-400 mb-0.5 font-medium">ES FUTURES (REAL)</div>
           <div className="text-lg font-bold text-white">
             {chartData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
-          <div className="text-[10px] text-amber-400">
-            Candle {chartData.currentIndex} / Processing...
+          <div className="text-[10px] text-white/50">
+            Candle {chartData.currentIndex?.toLocaleString()} • {isRunning ? 'Processing...' : 'Paused'}
           </div>
+        </div>
+      ) : (
+        <div className="absolute top-2 right-2 bg-black/80 px-3 py-1.5 rounded-lg border border-white/10">
+          <div className="text-xs text-white/40">Click START to begin simulation</div>
         </div>
       )}
       {/* Status indicator */}
@@ -549,11 +553,17 @@ export default function PaperTradingPage() {
     }
   }, [])
 
+  // Initial fetch
   useEffect(() => {
     fetchData()
-    const poll = setInterval(fetchData, 1500) // Fast polling for real-time feel
+  }, [])
+
+  // Dynamic polling - faster when simulation is running
+  useEffect(() => {
+    const pollInterval = data?.status?.running ? 400 : 2000  // 400ms when running for smooth updates
+    const poll = setInterval(fetchData, pollInterval)
     return () => clearInterval(poll)
-  }, [fetchData])
+  }, [fetchData, data?.status?.running])
 
   // ===========================================================================
   // ACTIONS

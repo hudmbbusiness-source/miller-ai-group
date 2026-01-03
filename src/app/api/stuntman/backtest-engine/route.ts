@@ -330,99 +330,104 @@ const vpinCalculator = new VPINCalculator(50000, 50)
 const deltaAnalyzer = new DeltaAnalyzer()
 
 // =============================================================================
-// FETCH HISTORICAL DATA
+// FETCH HISTORICAL DATA - REAL ES FUTURES
 // =============================================================================
 
 async function fetchHistoricalData(days: number = 30): Promise<boolean> {
   try {
-    console.log(`[BACKTEST] Fetching ${days} days of historical data...`)
+    console.log(`[BACKTEST] Fetching ${days} days of REAL ES futures data...`)
 
-    // Fetch from Crypto.com (using BTC as ES proxy)
-    // They provide up to 300 candles per request
-    const symbol = 'BTC_USDT'
+    // Use Yahoo Finance for REAL ES futures data
+    const symbol = 'ES=F'  // E-mini S&P 500 Futures
+    const now = Math.floor(Date.now() / 1000)
+    const startTime = now - (days * 24 * 60 * 60)
 
-    // Fetch multiple batches for more data
-    const batches = Math.ceil(days * 24 * 60 / 300)  // 1m candles
-    const allCandles1m: Candle[] = []
+    // Fetch 1-minute data from Yahoo Finance
+    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${now}&interval=1m&includePrePost=true`
+    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${now}&interval=5m&includePrePost=true`
+    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${now}&interval=15m&includePrePost=true`
 
-    for (let i = 0; i < Math.min(batches, 10); i++) {  // Max 10 batches = ~2 days of 1m data
-      const res = await fetch(
-        `https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name=${symbol}&timeframe=1m&count=300`,
-        { cache: 'no-store' }
-      )
-
-      if (!res.ok) continue
-
-      const data = await res.json()
-      if (data.result?.data) {
-        const basePrice = 5900  // ES price range
-        const firstPrice = data.result.data[0]?.c || 1
-        const scale = basePrice / firstPrice
-
-        const candles = data.result.data.map((c: any) => ({
-          time: c.t,
-          open: c.o * scale,
-          high: c.h * scale,
-          low: c.l * scale,
-          close: c.c * scale,
-          volume: c.v,
-        }))
-
-        allCandles1m.push(...candles)
-      }
-
-      // Small delay between requests
-      await new Promise(r => setTimeout(r, 100))
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
 
-    // Also fetch 5m and 15m for multi-timeframe analysis
-    const [res5m, res15m] = await Promise.all([
-      fetch(`https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name=${symbol}&timeframe=5m&count=300`, { cache: 'no-store' }),
-      fetch(`https://api.crypto.com/exchange/v1/public/get-candlestick?instrument_name=${symbol}&timeframe=15m&count=300`, { cache: 'no-store' }),
+    // Fetch all timeframes in parallel
+    const [res1m, res5m, res15m] = await Promise.all([
+      fetch(url1m, { headers, cache: 'no-store' }),
+      fetch(url5m, { headers, cache: 'no-store' }),
+      fetch(url15m, { headers, cache: 'no-store' }),
     ])
 
-    const basePrice = 5900
+    // Parse 1m data
+    if (res1m.ok) {
+      const data = await res1m.json()
+      const result = data.chart?.result?.[0]
+      if (result?.timestamp && result?.indicators?.quote?.[0]) {
+        const timestamps = result.timestamp
+        const quote = result.indicators.quote[0]
 
+        historicalData.candles1m = timestamps.map((t: number, i: number) => ({
+          time: t * 1000,  // Convert to milliseconds
+          open: quote.open[i] || quote.close[i] || 0,
+          high: quote.high[i] || quote.close[i] || 0,
+          low: quote.low[i] || quote.close[i] || 0,
+          close: quote.close[i] || 0,
+          volume: quote.volume[i] || 0,
+        })).filter((c: Candle) => c.close > 0)  // Filter out null candles
+
+        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} REAL ES 1m candles`)
+      }
+    }
+
+    // Parse 5m data
     if (res5m.ok) {
       const data = await res5m.json()
-      if (data.result?.data) {
-        const firstPrice = data.result.data[0]?.c || 1
-        const scale = basePrice / firstPrice
-        historicalData.candles5m = data.result.data.map((c: any) => ({
-          time: c.t,
-          open: c.o * scale,
-          high: c.h * scale,
-          low: c.l * scale,
-          close: c.c * scale,
-          volume: c.v,
-        }))
+      const result = data.chart?.result?.[0]
+      if (result?.timestamp && result?.indicators?.quote?.[0]) {
+        const timestamps = result.timestamp
+        const quote = result.indicators.quote[0]
+
+        historicalData.candles5m = timestamps.map((t: number, i: number) => ({
+          time: t * 1000,
+          open: quote.open[i] || quote.close[i] || 0,
+          high: quote.high[i] || quote.close[i] || 0,
+          low: quote.low[i] || quote.close[i] || 0,
+          close: quote.close[i] || 0,
+          volume: quote.volume[i] || 0,
+        })).filter((c: Candle) => c.close > 0)
+
+        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} REAL ES 5m candles`)
       }
     }
 
+    // Parse 15m data
     if (res15m.ok) {
       const data = await res15m.json()
-      if (data.result?.data) {
-        const firstPrice = data.result.data[0]?.c || 1
-        const scale = basePrice / firstPrice
-        historicalData.candles15m = data.result.data.map((c: any) => ({
-          time: c.t,
-          open: c.o * scale,
-          high: c.h * scale,
-          low: c.l * scale,
-          close: c.c * scale,
-          volume: c.v,
-        }))
+      const result = data.chart?.result?.[0]
+      if (result?.timestamp && result?.indicators?.quote?.[0]) {
+        const timestamps = result.timestamp
+        const quote = result.indicators.quote[0]
+
+        historicalData.candles15m = timestamps.map((t: number, i: number) => ({
+          time: t * 1000,
+          open: quote.open[i] || quote.close[i] || 0,
+          high: quote.high[i] || quote.close[i] || 0,
+          low: quote.low[i] || quote.close[i] || 0,
+          close: quote.close[i] || 0,
+          volume: quote.volume[i] || 0,
+        })).filter((c: Candle) => c.close > 0)
+
+        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} REAL ES 15m candles`)
       }
     }
 
-    historicalData.candles1m = allCandles1m
-    state.totalCandles = allCandles1m.length
+    state.totalCandles = historicalData.candles1m.length
 
-    console.log(`[BACKTEST] Loaded ${allCandles1m.length} 1m candles, ${historicalData.candles5m.length} 5m candles, ${historicalData.candles15m.length} 15m candles`)
+    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m REAL ES candles`)
 
-    return allCandles1m.length > 100
+    return historicalData.candles1m.length > 100
   } catch (e) {
-    console.error('[BACKTEST] Failed to fetch historical data:', e)
+    console.error('[BACKTEST] Failed to fetch ES futures data:', e)
     return false
   }
 }
@@ -897,15 +902,15 @@ export async function GET(request: NextRequest) {
       },
       // Data Source Info
       dataSource: {
-        provider: 'Crypto.com Exchange API',
-        instrument: 'BTC_USDT (scaled to ES price range)',
+        provider: 'Yahoo Finance',
+        instrument: 'ES=F (E-mini S&P 500 Futures)',
         timeframes: ['1m', '5m', '15m'],
         candlesLoaded: {
           '1m': historicalData.candles1m.length,
           '5m': historicalData.candles5m.length,
           '15m': historicalData.candles15m.length,
         },
-        note: 'Historical data fetched on-demand, scaled to match ES futures price action',
+        note: 'REAL ES futures historical data from Yahoo Finance',
         delay: 'None - processing historical data at selected speed',
       },
       // Chart Data - Historical candles being processed

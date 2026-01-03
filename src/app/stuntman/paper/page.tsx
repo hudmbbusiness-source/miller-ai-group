@@ -138,10 +138,25 @@ interface BacktestData {
   strategies: Strategy[]
   recentTrades: BacktestTrade[]
   position: any
+  config?: {
+    speed: number | 'MAX'
+    inverseMode: boolean
+    autoInverse: boolean
+    currentlyInversed: boolean
+  }
+  dataSource?: {
+    provider: string
+    candlesLoaded: {
+      '1m': number
+      '5m': number
+      '15m': number
+    }
+  }
+  chartData?: ChartData
 }
 
 // =============================================================================
-// TRADINGVIEW CHART COMPONENT
+// TRADINGVIEW CHART COMPONENT (Live Market Reference)
 // =============================================================================
 
 function TradingViewChart({ symbol }: { symbol: string }) {
@@ -197,6 +212,253 @@ function TradingViewChart({ symbol }: { symbol: string }) {
       className="tradingview-widget-container"
       style={{ height: '100%', width: '100%' }}
     />
+  )
+}
+
+// =============================================================================
+// HISTORICAL SIMULATION CHART (lightweight-charts)
+// =============================================================================
+
+interface ChartData {
+  candles: Array<{
+    time: number
+    open: number
+    high: number
+    low: number
+    close: number
+    volume: number
+  }>
+  trades: Array<{
+    time: number
+    position: string
+    color: string
+    shape: string
+    text: string
+  }>
+  currentPosition: {
+    entryTime: number
+    entryPrice: number
+    direction: 'LONG' | 'SHORT'
+    stopLoss: number
+    takeProfit: number
+  } | null
+  currentIndex: number
+  currentPrice: number
+  currentTime: number
+}
+
+function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | undefined, isRunning: boolean }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<any>(null)
+  const candleSeriesRef = useRef<any>(null)
+  const volumeSeriesRef = useRef<any>(null)
+  const stopLossLineRef = useRef<any>(null)
+  const takeProfitLineRef = useRef<any>(null)
+  const entryLineRef = useRef<any>(null)
+
+  // Initialize chart
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    // Dynamically import lightweight-charts
+    import('lightweight-charts').then(({ createChart, CrosshairMode }) => {
+      if (!containerRef.current || chartRef.current) return
+
+      const containerHeight = containerRef.current.clientHeight || 350
+      const chart = createChart(containerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: containerHeight,
+        layout: {
+          background: { color: '#000000' },
+          textColor: '#999999',
+        },
+        grid: {
+          vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+        },
+        timeScale: {
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          timeVisible: true,
+          secondsVisible: false,
+        },
+      })
+
+      // Add candlestick series
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderDownColor: '#ef4444',
+        borderUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+        wickUpColor: '#22c55e',
+      })
+
+      // Add volume series
+      const volumeSeries = chart.addHistogramSeries({
+        color: '#26a69a',
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
+      })
+      volumeSeries.priceScale().applyOptions({
+        scaleMargins: { top: 0.85, bottom: 0 },
+      })
+
+      chartRef.current = chart
+      candleSeriesRef.current = candleSeries
+      volumeSeriesRef.current = volumeSeries
+
+      // Handle resize
+      const handleResize = () => {
+        if (containerRef.current) {
+          chart.applyOptions({ width: containerRef.current.clientWidth })
+        }
+      }
+      window.addEventListener('resize', handleResize)
+
+      return () => {
+        window.removeEventListener('resize', handleResize)
+        chart.remove()
+      }
+    })
+
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.remove()
+        chartRef.current = null
+        candleSeriesRef.current = null
+        volumeSeriesRef.current = null
+      }
+    }
+  }, [])
+
+  // Update chart data
+  useEffect(() => {
+    if (!chartData?.candles || !candleSeriesRef.current) return
+
+    // Update candlestick data
+    const candleData = chartData.candles.map(c => ({
+      time: c.time as any,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+    }))
+
+    candleSeriesRef.current.setData(candleData)
+
+    // Update volume data
+    if (volumeSeriesRef.current) {
+      const volumeData = chartData.candles.map(c => ({
+        time: c.time as any,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+      }))
+      volumeSeriesRef.current.setData(volumeData)
+    }
+
+    // Add trade markers
+    if (chartData.trades?.length > 0) {
+      const markers = chartData.trades.map(t => ({
+        time: t.time as any,
+        position: t.position as any,
+        color: t.color,
+        shape: t.shape as any,
+        text: t.text,
+      }))
+      candleSeriesRef.current.setMarkers(markers)
+    }
+
+    // Draw position lines
+    if (chartData.currentPosition && chartRef.current) {
+      const pos = chartData.currentPosition
+
+      // Remove old lines
+      if (entryLineRef.current) candleSeriesRef.current.removePriceLine(entryLineRef.current)
+      if (stopLossLineRef.current) candleSeriesRef.current.removePriceLine(stopLossLineRef.current)
+      if (takeProfitLineRef.current) candleSeriesRef.current.removePriceLine(takeProfitLineRef.current)
+
+      // Entry line
+      entryLineRef.current = candleSeriesRef.current.createPriceLine({
+        price: pos.entryPrice,
+        color: pos.direction === 'LONG' ? '#22c55e' : '#ef4444',
+        lineWidth: 2,
+        lineStyle: 0,
+        axisLabelVisible: true,
+        title: `${pos.direction} Entry`,
+      })
+
+      // Stop loss line
+      stopLossLineRef.current = candleSeriesRef.current.createPriceLine({
+        price: pos.stopLoss,
+        color: '#ef4444',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: 'Stop Loss',
+      })
+
+      // Take profit line
+      takeProfitLineRef.current = candleSeriesRef.current.createPriceLine({
+        price: pos.takeProfit,
+        color: '#22c55e',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: 'Take Profit',
+      })
+    } else {
+      // Remove lines if no position
+      if (entryLineRef.current) {
+        try { candleSeriesRef.current?.removePriceLine(entryLineRef.current) } catch {}
+        entryLineRef.current = null
+      }
+      if (stopLossLineRef.current) {
+        try { candleSeriesRef.current?.removePriceLine(stopLossLineRef.current) } catch {}
+        stopLossLineRef.current = null
+      }
+      if (takeProfitLineRef.current) {
+        try { candleSeriesRef.current?.removePriceLine(takeProfitLineRef.current) } catch {}
+        takeProfitLineRef.current = null
+      }
+    }
+
+    // Auto-scroll to latest candle if running
+    if (isRunning && chartRef.current) {
+      chartRef.current.timeScale().scrollToRealTime()
+    }
+  }, [chartData, isRunning])
+
+  return (
+    <div className="relative h-full">
+      <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+      {/* Overlay for current price */}
+      {chartData?.currentPrice && (
+        <div className="absolute top-2 right-2 bg-black/80 px-3 py-1.5 rounded-lg border border-white/10">
+          <div className="text-xs text-white/40 mb-0.5">HISTORICAL DATA</div>
+          <div className="text-lg font-bold text-white">
+            {chartData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+          <div className="text-[10px] text-amber-400">
+            Candle {chartData.currentIndex} / Processing...
+          </div>
+        </div>
+      )}
+      {/* Status indicator */}
+      <div className={`absolute top-2 left-2 flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+        isRunning ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-white/5 border border-white/10'
+      }`}>
+        <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
+        <span className={`text-xs font-medium ${isRunning ? 'text-amber-400' : 'text-white/50'}`}>
+          {isRunning ? 'SIMULATING' : 'PAUSED'}
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -616,13 +878,37 @@ export default function PaperTradingPage() {
         {/* =================================================================== */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* ================================================================= */}
-          {/* CHART (3 cols) */}
+          {/* CHARTS (3 cols) */}
           {/* ================================================================= */}
           <div className="lg:col-span-3 space-y-4">
-            {/* Chart */}
-            <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
-              <div className="h-[400px]">
-                <TradingViewChart symbol={tvSymbol} />
+            {/* Dual Chart Layout */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* TradingView - Live Market Reference */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs font-medium text-white/70">LIVE MARKET</span>
+                  </div>
+                  <span className="text-[10px] text-white/40">{instrument} Futures</span>
+                </div>
+                <div className="h-[350px]">
+                  <TradingViewChart symbol={tvSymbol} />
+                </div>
+              </div>
+
+              {/* Historical Simulation Chart - Backtest in Progress */}
+              <div className="bg-white/[0.02] border border-amber-500/20 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-amber-500/20 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
+                    <span className="text-xs font-medium text-amber-400">PAPER SIMULATION</span>
+                  </div>
+                  <span className="text-[10px] text-white/40">Historical Data Replay</span>
+                </div>
+                <div className="h-[350px]">
+                  <HistoricalChart chartData={data?.chartData} isRunning={isRunning} />
+                </div>
               </div>
             </div>
 

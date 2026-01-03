@@ -908,6 +908,40 @@ export async function GET(request: NextRequest) {
         note: 'Historical data fetched on-demand, scaled to match ES futures price action',
         delay: 'None - processing historical data at selected speed',
       },
+      // Chart Data - Historical candles being processed
+      chartData: {
+        // Send last 200 candles up to current processing point
+        candles: historicalData.candles1m
+          .slice(Math.max(0, state.currentIndex - 200), state.currentIndex + 1)
+          .map(c => ({
+            time: Math.floor(c.time / 1000), // Convert to seconds for lightweight-charts
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume,
+          })),
+        // Trade markers for chart
+        trades: state.trades.slice(-50).map(t => ({
+          time: Math.floor(t.timestamp / 1000),
+          position: t.direction === 'LONG' ? 'belowBar' : 'aboveBar',
+          color: t.netPnL >= 0 ? '#22c55e' : '#ef4444',
+          shape: t.direction === 'LONG' ? 'arrowUp' : 'arrowDown',
+          text: `${t.direction} ${t.netPnL >= 0 ? '+' : ''}$${t.netPnL.toFixed(0)}`,
+        })),
+        // Current position marker
+        currentPosition: state.position ? {
+          entryTime: Math.floor(state.position.entryTime / 1000),
+          entryPrice: state.position.entryPrice,
+          direction: state.position.direction,
+          stopLoss: state.position.stopLoss,
+          takeProfit: state.position.takeProfit,
+        } : null,
+        // Current candle info
+        currentIndex: state.currentIndex,
+        currentPrice: historicalData.candles1m[state.currentIndex]?.close || 0,
+        currentTime: historicalData.candles1m[state.currentIndex]?.time || 0,
+      },
     })
   } catch (e) {
     console.error('Backtest GET error:', e)

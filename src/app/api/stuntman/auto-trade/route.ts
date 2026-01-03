@@ -167,6 +167,136 @@ let state: AutoTraderState = {
 }
 
 // =============================================================================
+// APEX TRADING RULES
+// =============================================================================
+
+interface ApexTradingRules {
+  // Trading hours (ET timezone)
+  marketOpen: { hour: 18, minute: 0 }   // 6:00 PM ET (Sunday)
+  marketClose: { hour: 16, minute: 59 } // 4:59 PM ET (Mon-Fri)
+  // Requirements
+  minTradingDays: 7        // Minimum 7 trading days to qualify
+  profitTarget: 9000       // $9,000 profit target
+  maxTrailingDrawdown: 5000 // $5,000 trailing drawdown
+  maxContracts: 17         // Max 17 contracts for 150K account
+}
+
+const APEX_RULES: ApexTradingRules = {
+  marketOpen: { hour: 18, minute: 0 },
+  marketClose: { hour: 16, minute: 59 },
+  minTradingDays: 7,
+  profitTarget: 9000,
+  maxTrailingDrawdown: 5000,
+  maxContracts: 17,
+}
+
+// Track unique trading days
+let tradingDayHistory: Set<string> = new Set()
+
+/**
+ * Check if market is open for trading
+ * Apex rules: 6:00 PM ET Sunday - 4:59 PM ET Friday
+ * Must close all trades by 4:59 PM ET each day
+ */
+function isMarketOpen(): { open: boolean; reason: string; minutesUntilClose?: number } {
+  const now = new Date()
+
+  // Convert to ET timezone
+  const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const hour = etTime.getHours()
+  const minute = etTime.getMinutes()
+  const day = etTime.getDay() // 0 = Sunday, 6 = Saturday
+
+  // Saturday - market closed
+  if (day === 6) {
+    return { open: false, reason: 'Market closed (Saturday)' }
+  }
+
+  // Sunday before 6 PM - market closed
+  if (day === 0 && hour < 18) {
+    const minutesUntilOpen = (18 - hour) * 60 - minute
+    return { open: false, reason: `Market opens in ${minutesUntilOpen} minutes (6:00 PM ET)` }
+  }
+
+  // Friday after 4:59 PM - market closed
+  if (day === 5 && (hour > 16 || (hour === 16 && minute >= 59))) {
+    return { open: false, reason: 'Market closed (Friday after 4:59 PM ET)' }
+  }
+
+  // Mon-Fri: Check if before 4:59 PM
+  if (day >= 1 && day <= 5) {
+    // Check close time (4:59 PM)
+    if (hour > 16 || (hour === 16 && minute >= 59)) {
+      return { open: false, reason: 'Market closed (after 4:59 PM ET)' }
+    }
+
+    // Calculate minutes until 4:59 PM close
+    const minutesUntilClose = ((16 * 60 + 59) - (hour * 60 + minute))
+
+    // Warning if less than 15 minutes to close
+    if (minutesUntilClose <= 15) {
+      return {
+        open: true,
+        reason: `⚠️ CLOSE POSITIONS NOW - Only ${minutesUntilClose} min until 4:59 PM close!`,
+        minutesUntilClose
+      }
+    }
+
+    return { open: true, reason: 'Market open', minutesUntilClose }
+  }
+
+  // Sunday after 6 PM - market open
+  if (day === 0 && hour >= 18) {
+    return { open: true, reason: 'Market open (Sunday session)', minutesUntilClose: 60 * 22 + 59 }
+  }
+
+  return { open: true, reason: 'Market open' }
+}
+
+/**
+ * Check if we need to auto-close position (4:45 PM safety margin)
+ */
+function shouldAutoClose(): { close: boolean; reason: string } {
+  const now = new Date()
+  const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const hour = etTime.getHours()
+  const minute = etTime.getMinutes()
+  const day = etTime.getDay()
+
+  // Mon-Fri: Auto-close at 4:45 PM (14 min before deadline)
+  if (day >= 1 && day <= 5) {
+    if (hour === 16 && minute >= 45) {
+      return { close: true, reason: `AUTO-CLOSE: ${16 * 60 + 59 - (hour * 60 + minute)} min until 4:59 PM deadline` }
+    }
+    // Friday special: Close at 4:30 PM for safety
+    if (day === 5 && hour === 16 && minute >= 30) {
+      return { close: true, reason: 'AUTO-CLOSE: Friday early close for safety' }
+    }
+  }
+
+  return { close: false, reason: '' }
+}
+
+/**
+ * Record a trading day (for 7-day minimum tracking)
+ */
+function recordTradingDay(): number {
+  const now = new Date()
+  const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const dateStr = etTime.toISOString().split('T')[0] // YYYY-MM-DD
+
+  tradingDayHistory.add(dateStr)
+  return tradingDayHistory.size
+}
+
+/**
+ * Get trading days count
+ */
+function getTradingDaysCount(): number {
+  return tradingDayHistory.size
+}
+
+// =============================================================================
 // ENGINES - ALL INITIALIZED
 // =============================================================================
 
@@ -414,12 +544,42 @@ function selectExecutionAlgorithm(
 async function runAutoTrader(): Promise<void> {
   if (!state.enabled) return
 
-  const session = getCurrentSession()
   state.lastCheck = Date.now()
 
-  // Only trade during RTH
-  if (session !== 'RTH') {
-    console.log('[AutoTrade] Outside trading hours')
+  // ==========================================================================
+  // APEX RULE: Check Market Hours (6 PM ET - 4:59 PM ET)
+  // ==========================================================================
+  const marketStatus = isMarketOpen()
+  console.log(`[MARKET] ${marketStatus.reason}`)
+
+  if (!marketStatus.open) {
+    console.log('[AutoTrade] Market closed - no trading allowed')
+    return
+  }
+
+  // ==========================================================================
+  // APEX RULE: Auto-close at 4:45 PM (14 min before 4:59 deadline)
+  // ==========================================================================
+  const autoCloseCheck = shouldAutoClose()
+  if (autoCloseCheck.close && state.position) {
+    console.log(`[APEX RULE] ${autoCloseCheck.reason}`)
+    const candles = await fetchCandles(state.instrument, '1', 1)
+    const currentPrice = candles[0]?.close || state.position.entryPrice
+    const conditions = state.marketConditions || {
+      spread: 0.25, spreadPercent: 0.00005, bidDepth: 1000, askDepth: 1000,
+      imbalance: 0, volatility: 0.01, recentVolume: 10000, avgVolume: 10000, toxicity: 0.3
+    }
+    await executeExitAdvanced('APEX 4:59 PM Rule - Auto Close', currentPrice, conditions)
+    return
+  }
+
+  // Warn if less than 30 minutes to close
+  if (marketStatus.minutesUntilClose && marketStatus.minutesUntilClose < 30) {
+    console.log(`⚠️ WARNING: Only ${marketStatus.minutesUntilClose} min until market close - NO NEW ENTRIES`)
+    if (state.position) {
+      console.log('[CLOSE WARNING] Consider closing position soon!')
+    }
+    // Don't enter new trades within 30 min of close
     return
   }
 
@@ -908,7 +1068,11 @@ function recordTradeResult(exitPrice: number, pnl: number, slippage: number, rea
   state.currentBalance += pnl
   state.position = null
 
+  // APEX RULE: Track unique trading days (need 7 minimum)
+  state.tradingDays = recordTradingDay()
+
   console.log(`[EXIT] ${reason} | P&L: $${pnl.toFixed(2)} | Slippage: $${slippage.toFixed(2)}`)
+  console.log(`[APEX] Trading days: ${state.tradingDays}/${APEX_RULES.minTradingDays} (need ${Math.max(0, APEX_RULES.minTradingDays - state.tradingDays)} more)`)
 }
 
 // =============================================================================
@@ -933,8 +1097,29 @@ export async function GET(request: NextRequest) {
     const profitAboveTarget = Math.max(0, state.todayPnL - 9000)
     const withdrawable = state.todayPnL >= 9000 ? profitAboveTarget * 0.9 : 0
 
+    // Get market status
+    const marketStatus = isMarketOpen()
+    const autoCloseCheck = shouldAutoClose()
+
     return NextResponse.json({
       success: true,
+      // APEX Rules Status
+      apexRules: {
+        profitTarget: APEX_RULES.profitTarget,
+        maxDrawdown: APEX_RULES.maxTrailingDrawdown,
+        minTradingDays: APEX_RULES.minTradingDays,
+        maxContracts: APEX_RULES.maxContracts,
+        closeTime: '4:59 PM ET',
+        autoCloseTime: '4:45 PM ET',
+      },
+      // Market Status
+      market: {
+        open: marketStatus.open,
+        status: marketStatus.reason,
+        minutesUntilClose: marketStatus.minutesUntilClose,
+        autoCloseTriggered: autoCloseCheck.close,
+        autoCloseReason: autoCloseCheck.reason,
+      },
       // Status
       status: {
         enabled: state.enabled,
@@ -945,6 +1130,8 @@ export async function GET(request: NextRequest) {
         position: state.position,
         lastCheck: state.lastCheck,
         daysRemaining: 4,  // Days to hit $9000 target
+        tradingDays: state.tradingDays,
+        tradingDaysNeeded: Math.max(0, APEX_RULES.minTradingDays - state.tradingDays),
       },
       // ML Signal
       mlSignal: state.lastMLSignal ? {

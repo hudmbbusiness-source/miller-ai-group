@@ -1,5 +1,5 @@
 // @ts-nocheck
-// v5 API - NO setMarkers, NO createPriceLine - rebuilt 2026-01-02T04:15
+// BUILD: 2026-01-02-v2
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -994,7 +994,8 @@ export default function PaperTradingPage() {
               </div>
               <div className="mt-3 pt-3 border-t border-white/5 text-[10px] text-white/30 text-center">
                 Matches live trading 1:1<br/>
-                Real fees • Real slippage • Real latency
+                Real fees • Real slippage • Real latency<br/>
+                <span className="text-amber-400">BUILD: v2-fixed</span>
               </div>
             </div>
 

@@ -527,7 +527,8 @@ export default function PaperTradingPage() {
   const [inverseMode, setInverseMode] = useState(false)
   const [autoInverse, setAutoInverse] = useState(false)
 
-  const tvSymbol = instrument === 'ES' ? 'CME_MINI:ES1!' : 'CME_MINI:NQ1!'
+  // Correct TradingView symbols for futures
+  const tvSymbol = instrument === 'ES' ? 'ES1!' : 'NQ1!'
 
   // ===========================================================================
   // FETCH DATA

@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -12,54 +12,97 @@ import {
   Power,
   ChevronDown,
   AlertTriangle,
-  CheckCircle,
-  Clock,
-  Target,
-  DollarSign,
   Activity,
-  BarChart2,
-  Settings,
-  Brain,
   Zap,
+  Bot,
+  Play,
+  Pause,
+  DollarSign,
+  Target,
+  Clock,
+  BarChart2,
+  ArrowUpRight,
+  ArrowDownRight,
+  Wallet,
+  Settings,
+  X,
 } from 'lucide-react'
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-interface AccountData {
-  balance: number
+interface Signal {
+  direction: 'LONG' | 'SHORT' | 'FLAT'
+  confidence: number
+  entry: number
+  stopLoss: number
+  takeProfit: number
+  strategy: string
+  reasons: string[]
+  timestamp: number
+}
+
+interface Position {
+  instrument: 'ES' | 'NQ'
+  direction: 'LONG' | 'SHORT'
+  entryPrice: number
+  contracts: number
+  stopLoss: number
+  takeProfit: number
+  entryTime: number
+}
+
+interface Trade {
+  id: string
+  instrument: 'ES' | 'NQ'
+  direction: 'LONG' | 'SHORT'
+  entryPrice: number
+  exitPrice: number
+  contracts: number
   pnl: number
-  drawdownUsed: number
-  drawdownLimit: number
-  profitTarget: number
-  daysRemaining: number
+  entryTime: number
+  exitTime: number
+  reason: string
 }
 
-interface RiskStatus {
-  status: 'SAFE' | 'WARNING' | 'DANGER' | 'VIOLATED'
-  canTrade: boolean
-  safetyBuffer: number
-  maxDailyLoss: number
-  requiredDailyProfit: number
-  positionSize: number
-}
-
-interface ExecutionStatus {
-  configured: boolean
+interface AutoTraderStatus {
   enabled: boolean
+  instrument: 'ES' | 'NQ'
+  session: string
+  hasPosition: boolean
+  position: Position | null
+  lastSignal: Signal | null
+  lastCheck: number
+}
+
+interface Performance {
+  todayPnL: number
+  todayTrades: number
+  totalTrades: number
+  wins: number
+  losses: number
+  winRate: number
+  profitFactor: number
+  startBalance: number
+  currentBalance: number
+  drawdownUsed: number
+  profitTarget: number
+  targetProgress: number
+  withdrawable: number
 }
 
 // =============================================================================
-// TRADINGVIEW WIDGET
+// TRADINGVIEW CHART COMPONENT
 // =============================================================================
 
-function Chart({ symbol }: { symbol: string }) {
-  const ref = useRef<HTMLDivElement>(null)
+function TradingViewChart({ symbol }: { symbol: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!ref.current) return
-    ref.current.innerHTML = ''
+    if (!containerRef.current) return
+
+    containerRef.current.innerHTML = ''
 
     const script = document.createElement('script')
     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
@@ -67,8 +110,8 @@ function Chart({ symbol }: { symbol: string }) {
     script.async = true
     script.innerHTML = JSON.stringify({
       autosize: true,
-      symbol,
-      interval: '15',
+      symbol: symbol,
+      interval: '5',
       timezone: 'America/New_York',
       theme: 'dark',
       style: '1',
@@ -77,395 +120,518 @@ function Chart({ symbol }: { symbol: string }) {
       gridColor: 'rgba(255, 255, 255, 0.03)',
       hide_top_toolbar: false,
       hide_legend: false,
-      allow_symbol_change: true,
+      allow_symbol_change: false,
       save_image: false,
       calendar: false,
       hide_volume: false,
+      studies: ['MAExp@tv-basicstudies', 'RSI@tv-basicstudies', 'MACD@tv-basicstudies'],
       support_host: 'https://www.tradingview.com',
     })
 
-    const container = document.createElement('div')
-    container.className = 'tradingview-widget-container__widget'
-    container.style.height = '100%'
-    container.style.width = '100%'
+    const widgetContainer = document.createElement('div')
+    widgetContainer.className = 'tradingview-widget-container__widget'
+    widgetContainer.style.height = '100%'
+    widgetContainer.style.width = '100%'
 
-    ref.current.appendChild(container)
-    ref.current.appendChild(script)
+    containerRef.current.appendChild(widgetContainer)
+    containerRef.current.appendChild(script)
 
-    return () => { if (ref.current) ref.current.innerHTML = '' }
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = ''
+      }
+    }
   }, [symbol])
 
-  return <div ref={ref} style={{ height: '100%', width: '100%' }} />
+  return (
+    <div
+      ref={containerRef}
+      className="tradingview-widget-container"
+      style={{ height: '100%', width: '100%' }}
+    />
+  )
 }
 
 // =============================================================================
-// MAIN COMPONENT
+// MAIN DASHBOARD COMPONENT
 // =============================================================================
 
-export default function StuntMan() {
+export default function StuntManDashboard() {
+  // Core State
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'auto' | 'manual'>('auto')
   const [instrument, setInstrument] = useState<'ES' | 'NQ'>('ES')
-  const [showInstrumentMenu, setShowInstrumentMenu] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
 
-  // Data
-  const [account, setAccount] = useState<AccountData>({
-    balance: 150000,
-    pnl: 0,
-    drawdownUsed: 0,
-    drawdownLimit: 5000,
-    profitTarget: 9000,
-    daysRemaining: 6,
-  })
-  const [risk, setRisk] = useState<RiskStatus>({
-    status: 'SAFE',
-    canTrade: true,
-    safetyBuffer: 4000,
-    maxDailyLoss: 1500,
-    requiredDailyProfit: 1500,
-    positionSize: 1,
-  })
-  const [execution, setExecution] = useState<ExecutionStatus>({
-    configured: false,
-    enabled: false,
-  })
-  const [dataSource, setDataSource] = useState<'estimated' | 'synced'>('estimated')
-  const [tradingOn, setTradingOn] = useState(false)
-  const [toggling, setToggling] = useState(false)
+  // Auto-Trader State
+  const [autoStatus, setAutoStatus] = useState<AutoTraderStatus | null>(null)
+  const [performance, setPerformance] = useState<Performance | null>(null)
+  const [recentTrades, setRecentTrades] = useState<Trade[]>([])
+  const [configured, setConfigured] = useState(false)
 
-  // TradingView symbol
+  // Manual Trading State
+  const [contracts, setContracts] = useState(1)
+  const [executing, setExecuting] = useState(false)
+
+  // TradingView Symbol
   const tvSymbol = instrument === 'ES' ? 'CME_MINI:ES1!' : 'CME_MINI:NQ1!'
 
-  // Fetch data on mount
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [accRes, execRes] = await Promise.all([
-          fetch('/api/stuntman/account-sync?daysRemaining=6'),
-          fetch('/api/stuntman/execute'),
-        ])
+  // ==========================================================================
+  // DATA FETCHING
+  // ==========================================================================
 
-        const accData = await accRes.json()
-        const execData = await execRes.json()
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/stuntman/auto-trade')
+      const data = await res.json()
 
-        if (accData.success) {
-          setDataSource(accData.dataSource || 'estimated')
-          setAccount({
-            balance: accData.account?.balance?.netLiquidation || 150000,
-            pnl: accData.account?.balance?.totalPnL || 0,
-            drawdownUsed: accData.riskStatus?.trailingDrawdown || 0,
-            drawdownLimit: 5000,
-            profitTarget: 9000,
-            daysRemaining: accData.riskStatus?.daysRemaining || 6,
-          })
-          if (accData.riskStatus) {
-            setRisk({
-              status: accData.riskStatus.riskStatus || 'SAFE',
-              canTrade: accData.riskStatus.canTrade ?? true,
-              safetyBuffer: accData.riskStatus.safetyBuffer || 4000,
-              maxDailyLoss: accData.riskStatus.maxAllowedLossToday || 1500,
-              requiredDailyProfit: accData.riskStatus.requiredDailyProfit || 1500,
-              positionSize: accData.riskStatus.recommendedPositionSize || 1,
-            })
-          }
-        }
-
-        setExecution({
-          configured: execData.configured || false,
-          enabled: execData.enabled || false,
-        })
-        setTradingOn(execData.enabled || false)
-      } catch (e) {
-        console.error('Failed to fetch data:', e)
-      } finally {
-        setLoading(false)
+      if (data.success) {
+        setAutoStatus(data.status)
+        setPerformance(data.performance)
+        setRecentTrades(data.recentTrades || [])
+        setConfigured(data.configured)
       }
+    } catch (e) {
+      console.error('Fetch error:', e)
+    } finally {
+      setLoading(false)
     }
-    fetchData()
   }, [])
 
-  // Toggle trading
-  const toggleTrading = async () => {
-    setToggling(true)
-    try {
-      const res = await fetch('/api/stuntman/execute', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: tradingOn ? 'disable' : 'enable' }),
-      })
-      const data = await res.json()
-      setTradingOn(data.enabled)
-    } catch (e) {
-      console.error('Toggle failed:', e)
-    }
-    setToggling(false)
+  useEffect(() => {
+    fetchData()
+    const poll = setInterval(fetchData, 3000)
+    return () => clearInterval(poll)
+  }, [fetchData])
+
+  // ==========================================================================
+  // ACTIONS
+  // ==========================================================================
+
+  const toggleAuto = async () => {
+    const action = autoStatus?.enabled ? 'stop' : 'start'
+    await fetch('/api/stuntman/auto-trade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, instrument }),
+    })
+    await fetchData()
   }
 
-  // Helpers
-  const fmt = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-  const pct = (n: number, total: number) => Math.min(100, Math.max(0, (n / total) * 100))
+  const executeTrade = async (direction: 'BUY' | 'SELL') => {
+    setExecuting(true)
+    try {
+      const res = await fetch('/api/stuntman/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: direction, instrument, contracts }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        alert(data.error || 'Trade failed')
+      }
+      await fetchData()
+    } catch (e) {
+      alert('Execution failed')
+    }
+    setExecuting(false)
+  }
+
+  const closePosition = async () => {
+    await fetch('/api/stuntman/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'FLAT', instrument }),
+    })
+    await fetchData()
+  }
+
+  // ==========================================================================
+  // HELPERS
+  // ==========================================================================
+
+  const fmt = (n: number) => new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0
+  }).format(n)
+
+  const fmtPrice = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 })
+
+  // ==========================================================================
+  // LOADING STATE
+  // ==========================================================================
 
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <RefreshCw className="w-8 h-8 text-white/30 animate-spin" />
+        <div className="text-center">
+          <RefreshCw className="w-10 h-10 text-emerald-500 animate-spin mx-auto mb-4" />
+          <p className="text-white/50">Loading StuntMan...</p>
+        </div>
       </div>
     )
   }
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <header className="border-b border-white/5">
-        <div className="max-w-[1400px] mx-auto px-4 h-16 flex items-center justify-between">
+      {/* ================================================================== */}
+      {/* HEADER */}
+      {/* ================================================================== */}
+      <header className="border-b border-white/5 bg-black sticky top-0 z-50">
+        <div className="max-w-[1800px] mx-auto px-4 h-14 flex items-center justify-between">
           {/* Left */}
-          <div className="flex items-center gap-6">
-            <Link href="/app" className="flex items-center gap-2 text-white/50 hover:text-white transition">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Exit</span>
+          <div className="flex items-center gap-4">
+            <Link href="/app" className="text-white/40 hover:text-white">
+              <ArrowLeft className="w-5 h-5" />
             </Link>
-            <div className="h-6 w-px bg-white/10" />
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center font-bold text-sm">
-                S
-              </div>
-              <span className="font-semibold">StuntMan</span>
+              <Bot className="w-6 h-6 text-emerald-400" />
+              <span className="font-bold">StuntMan</span>
+            </div>
+
+            {/* Instrument Selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-sm"
+              >
+                {instrument}
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showMenu && (
+                <div className="absolute top-full mt-1 left-0 bg-zinc-900 border border-white/10 rounded-lg overflow-hidden z-50">
+                  <button
+                    onClick={() => { setInstrument('ES'); setShowMenu(false) }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-white/5"
+                  >
+                    ES - S&P 500 E-mini
+                  </button>
+                  <button
+                    onClick={() => { setInstrument('NQ'); setShowMenu(false) }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-white/5"
+                  >
+                    NQ - Nasdaq E-mini
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Right */}
-          <div className="flex items-center gap-4">
-            {/* Data Source */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs ${
-              dataSource === 'synced' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+          <div className="flex items-center gap-3">
+            {/* Session */}
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              autoStatus?.session === 'RTH' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
             }`}>
-              {dataSource === 'estimated' && <AlertTriangle className="w-3 h-3" />}
-              {dataSource === 'estimated' ? 'Estimated' : 'Synced'}
+              {autoStatus?.session || 'CLOSED'}
             </div>
 
-            {/* Trading Toggle */}
-            {execution.configured && (
+            {/* Auto Toggle */}
+            {configured && (
               <button
-                onClick={toggleTrading}
-                disabled={toggling}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                  tradingOn
+                onClick={toggleAuto}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${
+                  autoStatus?.enabled
                     ? 'bg-emerald-500 text-black'
-                    : 'bg-white/10 text-white hover:bg-white/20'
+                    : 'bg-white/10 hover:bg-white/20'
                 }`}
               >
-                {toggling ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Power className="w-4 h-4" />
-                )}
-                {tradingOn ? 'Trading ON' : 'Trading OFF'}
+                {autoStatus?.enabled ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {autoStatus?.enabled ? 'STOP' : 'START'}
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-[1400px] mx-auto px-4 py-6">
-        {/* Top Section: Account Overview */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Account Card */}
-          <div className="lg:col-span-2 bg-white/[0.02] rounded-2xl border border-white/5 p-6">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <p className="text-white/40 text-sm mb-1">Apex 150K Evaluation</p>
-                <h2 className="text-4xl font-bold tracking-tight">{fmt(account.balance)}</h2>
-                <p className={`text-lg mt-1 ${account.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {account.pnl >= 0 ? '+' : ''}{fmt(account.pnl)}
-                </p>
-              </div>
-              <div className="text-right">
-                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-                  risk.status === 'SAFE' ? 'bg-emerald-500/10 text-emerald-400' :
-                  risk.status === 'WARNING' ? 'bg-amber-500/10 text-amber-400' :
-                  'bg-red-500/10 text-red-400'
-                }`}>
-                  <Shield className="w-4 h-4" />
-                  {risk.status}
-                </div>
-                <p className="text-white/40 text-xs mt-2">{account.daysRemaining} days left</p>
-              </div>
+      {/* ================================================================== */}
+      {/* MAIN CONTENT */}
+      {/* ================================================================== */}
+      <main className="max-w-[1800px] mx-auto p-4">
+        {/* ================================================================ */}
+        {/* STATS BAR */}
+        {/* ================================================================ */}
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          {/* Balance */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
+              <Wallet className="w-3 h-3" /> Balance
             </div>
+            <div className="text-xl font-bold">{fmt(performance?.currentBalance || 150000)}</div>
+          </div>
 
-            {/* Progress Bars */}
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-white/40">Profit Target</span>
-                  <span>{fmt(Math.max(0, account.pnl))} / {fmt(account.profitTarget)}</span>
-                </div>
-                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all"
-                    style={{ width: `${pct(Math.max(0, account.pnl), account.profitTarget)}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-white/40">Drawdown</span>
-                  <span className={account.drawdownUsed > 3000 ? 'text-red-400' : ''}>
-                    {fmt(account.drawdownUsed)} / {fmt(account.drawdownLimit)}
-                  </span>
-                </div>
-                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      account.drawdownUsed > 4000 ? 'bg-red-500' :
-                      account.drawdownUsed > 3000 ? 'bg-amber-500' :
-                      'bg-white/20'
-                    }`}
-                    style={{ width: `${pct(account.drawdownUsed, account.drawdownLimit)}%` }}
-                  />
-                </div>
-              </div>
+          {/* Today P&L */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
+              <DollarSign className="w-3 h-3" /> Today
+            </div>
+            <div className={`text-xl font-bold ${(performance?.todayPnL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {(performance?.todayPnL || 0) >= 0 ? '+' : ''}{fmt(performance?.todayPnL || 0)}
             </div>
           </div>
 
-          {/* Safety Metrics */}
-          <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6">
-            <h3 className="text-white/40 text-sm mb-4 flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Safety Limits
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-white/60 text-sm">Daily Target</span>
-                  <span className="text-emerald-400 font-medium">{fmt(risk.requiredDailyProfit)}</span>
-                </div>
-                <p className="text-white/30 text-xs">Required profit per day</p>
-              </div>
-              <div className="h-px bg-white/5" />
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-white/60 text-sm">Max Loss Today</span>
-                  <span className="text-red-400 font-medium">{fmt(risk.maxDailyLoss)}</span>
-                </div>
-                <p className="text-white/30 text-xs">Stop trading if reached</p>
-              </div>
-              <div className="h-px bg-white/5" />
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-white/60 text-sm">Position Size</span>
-                  <span className="font-medium">{risk.positionSize} contracts</span>
-                </div>
-                <p className="text-white/30 text-xs">Recommended size</p>
-              </div>
-              <div className="h-px bg-white/5" />
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-white/60 text-sm">Safety Buffer</span>
-                  <span className="font-medium">{fmt(risk.safetyBuffer)}</span>
-                </div>
-                <p className="text-white/30 text-xs">Cushion before limits</p>
-              </div>
+          {/* Target */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
+              <Target className="w-3 h-3" /> Target
             </div>
+            <div className="text-xl font-bold">{(performance?.targetProgress || 0).toFixed(0)}%</div>
+            <div className="text-[10px] text-white/30">{fmt(performance?.todayPnL || 0)} / $9,000</div>
+          </div>
+
+          {/* Win Rate */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
+              <BarChart2 className="w-3 h-3" /> Win Rate
+            </div>
+            <div className="text-xl font-bold">{(performance?.winRate || 0).toFixed(0)}%</div>
+            <div className="text-[10px] text-white/30">{performance?.wins || 0}W / {performance?.losses || 0}L</div>
+          </div>
+
+          {/* Drawdown */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
+              <Shield className="w-3 h-3" /> Drawdown
+            </div>
+            <div className="text-xl font-bold">{fmt(performance?.drawdownUsed || 0)}</div>
+            <div className="text-[10px] text-white/30">of $5,000</div>
+          </div>
+
+          {/* Withdrawable */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
+              <ArrowUpRight className="w-3 h-3" /> Cash Out
+            </div>
+            <div className="text-xl font-bold text-emerald-400">{fmt(performance?.withdrawable || 0)}</div>
+            <div className="text-[10px] text-white/30">90% payout</div>
           </div>
         </div>
 
-        {/* Chart Section */}
-        <div className="bg-white/[0.02] rounded-2xl border border-white/5 overflow-hidden mb-6">
-          {/* Chart Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-            <div className="relative">
+        {/* ================================================================ */}
+        {/* MAIN GRID */}
+        {/* ================================================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* ============================================================ */}
+          {/* CHART (3 cols) */}
+          {/* ============================================================ */}
+          <div className="lg:col-span-3 bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
+            <div className="h-[550px]">
+              <TradingViewChart symbol={tvSymbol} />
+            </div>
+          </div>
+
+          {/* ============================================================ */}
+          {/* TRADING PANEL (1 col) */}
+          {/* ============================================================ */}
+          <div className="space-y-4">
+            {/* Tabs */}
+            <div className="flex bg-white/5 p-1 rounded-lg">
               <button
-                onClick={() => setShowInstrumentMenu(!showInstrumentMenu)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
+                onClick={() => setActiveTab('auto')}
+                className={`flex-1 py-2 rounded text-sm font-medium ${
+                  activeTab === 'auto' ? 'bg-white/10' : 'text-white/50'
+                }`}
               >
-                <span className="font-medium">{instrument === 'ES' ? 'E-mini S&P 500' : 'E-mini Nasdaq'}</span>
-                <ChevronDown className="w-4 h-4 text-white/50" />
+                <Bot className="w-4 h-4 inline mr-1" /> Auto
               </button>
-              {showInstrumentMenu && (
-                <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-white/10 rounded-lg overflow-hidden z-10">
-                  <button
-                    onClick={() => { setInstrument('ES'); setShowInstrumentMenu(false) }}
-                    className={`w-full px-4 py-2 text-left text-sm hover:bg-white/5 ${instrument === 'ES' ? 'bg-white/5' : ''}`}
-                  >
-                    ES - E-mini S&P 500
-                  </button>
-                  <button
-                    onClick={() => { setInstrument('NQ'); setShowInstrumentMenu(false) }}
-                    className={`w-full px-4 py-2 text-left text-sm hover:bg-white/5 ${instrument === 'NQ' ? 'bg-white/5' : ''}`}
-                  >
-                    NQ - E-mini Nasdaq
-                  </button>
+              <button
+                onClick={() => setActiveTab('manual')}
+                className={`flex-1 py-2 rounded text-sm font-medium ${
+                  activeTab === 'manual' ? 'bg-white/10' : 'text-white/50'
+                }`}
+              >
+                <Zap className="w-4 h-4 inline mr-1" /> Manual
+              </button>
+            </div>
+
+            {/* ========================================================== */}
+            {/* AUTO TRADING PANEL */}
+            {/* ========================================================== */}
+            {activeTab === 'auto' && (
+              <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4 space-y-4">
+                {!configured ? (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+                    <p className="text-white/50 mb-4">PickMyTrade Required</p>
+                    <a href="https://pickmytrade.trade" target="_blank" className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium">
+                      Connect Now
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    {/* Signal Display */}
+                    <div>
+                      <div className="text-xs text-white/40 mb-2">Current Signal</div>
+                      <div className={`p-4 rounded-lg border ${
+                        autoStatus?.lastSignal?.direction === 'LONG'
+                          ? 'bg-emerald-500/10 border-emerald-500/30'
+                          : autoStatus?.lastSignal?.direction === 'SHORT'
+                          ? 'bg-red-500/10 border-red-500/30'
+                          : 'bg-white/5 border-white/10'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-2xl font-bold ${
+                            autoStatus?.lastSignal?.direction === 'LONG' ? 'text-emerald-400' :
+                            autoStatus?.lastSignal?.direction === 'SHORT' ? 'text-red-400' :
+                            'text-white/30'
+                          }`}>
+                            {autoStatus?.lastSignal?.direction || 'WAITING'}
+                          </span>
+                          {autoStatus?.lastSignal && autoStatus.lastSignal.direction !== 'FLAT' && (
+                            <span className="text-lg font-medium text-white/60">
+                              {autoStatus.lastSignal.confidence.toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+                        {autoStatus?.lastSignal?.strategy && (
+                          <div className="text-xs text-white/40">{autoStatus.lastSignal.strategy}</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Active Position */}
+                    {autoStatus?.position && (
+                      <div>
+                        <div className="text-xs text-white/40 mb-2">Active Position</div>
+                        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xl font-bold text-blue-400">
+                              {autoStatus.position.direction} {autoStatus.position.contracts}x
+                            </span>
+                            <span className="text-white/60">
+                              @ {fmtPrice(autoStatus.position.entryPrice)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                            <div>
+                              <span className="text-white/40">Stop: </span>
+                              <span className="text-red-400">{fmtPrice(autoStatus.position.stopLoss)}</span>
+                            </div>
+                            <div>
+                              <span className="text-white/40">Target: </span>
+                              <span className="text-emerald-400">{fmtPrice(autoStatus.position.takeProfit)}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={closePosition}
+                            className="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium"
+                          >
+                            Close Position
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Status */}
+                    <div className={`text-center text-sm py-2 rounded-lg ${
+                      autoStatus?.enabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-white/40'
+                    }`}>
+                      {autoStatus?.enabled ? '● Auto-Trading Active' : '○ Auto-Trading Paused'}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ========================================================== */}
+            {/* MANUAL TRADING PANEL */}
+            {/* ========================================================== */}
+            {activeTab === 'manual' && (
+              <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4 space-y-4">
+                {!configured ? (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+                    <p className="text-white/50">Connect PickMyTrade to trade</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Contracts */}
+                    <div>
+                      <div className="text-xs text-white/40 mb-2">Contracts</div>
+                      <div className="grid grid-cols-5 gap-2">
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setContracts(n)}
+                            className={`py-2.5 rounded-lg font-bold transition ${
+                              contracts === n ? 'bg-white text-black' : 'bg-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Trade Buttons */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => executeTrade('BUY')}
+                        disabled={executing}
+                        className="py-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xl flex items-center justify-center gap-2"
+                      >
+                        {executing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingUp className="w-5 h-5" />}
+                        BUY
+                      </button>
+                      <button
+                        onClick={() => executeTrade('SELL')}
+                        disabled={executing}
+                        className="py-5 rounded-xl bg-red-500 hover:bg-red-400 disabled:opacity-50 text-white font-bold text-xl flex items-center justify-center gap-2"
+                      >
+                        {executing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingDown className="w-5 h-5" />}
+                        SELL
+                      </button>
+                    </div>
+
+                    <div className="text-xs text-white/30 text-center">
+                      {instrument} • {contracts} contract{contracts > 1 ? 's' : ''}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ========================================================== */}
+            {/* RECENT TRADES */}
+            {/* ========================================================== */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+              <div className="text-xs text-white/40 mb-3">Recent Trades</div>
+              {recentTrades.length === 0 ? (
+                <div className="text-center text-white/20 py-6">No trades yet today</div>
+              ) : (
+                <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                  {recentTrades.map(trade => (
+                    <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          trade.pnl >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'
+                        }`}>
+                          {trade.pnl >= 0 ? (
+                            <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <ArrowDownRight className="w-4 h-4 text-red-400" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium">
+                            {trade.direction} {trade.contracts}x {trade.instrument}
+                          </div>
+                          <div className="text-[10px] text-white/40">{trade.reason}</div>
+                        </div>
+                      </div>
+                      <div className={`text-sm font-bold ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {trade.pnl >= 0 ? '+' : ''}{fmt(trade.pnl)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 text-sm text-white/40">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              Live
-            </div>
-          </div>
-
-          {/* Chart */}
-          <div className="h-[500px]">
-            <Chart symbol={tvSymbol} />
           </div>
         </div>
-
-        {/* Trading Controls */}
-        {execution.configured && (
-          <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-medium flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-400" />
-                Quick Trade
-              </h3>
-              <div className="text-sm text-white/40">
-                {instrument} • {risk.positionSize} contract{risk.positionSize > 1 ? 's' : ''}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                disabled={!tradingOn}
-                className="py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/5 disabled:text-white/20 text-black font-bold text-lg transition flex items-center justify-center gap-2"
-              >
-                <TrendingUp className="w-5 h-5" />
-                BUY
-              </button>
-              <button
-                disabled={!tradingOn}
-                className="py-4 rounded-xl bg-red-500 hover:bg-red-400 disabled:bg-white/5 disabled:text-white/20 text-white font-bold text-lg transition flex items-center justify-center gap-2"
-              >
-                <TrendingDown className="w-5 h-5" />
-                SELL
-              </button>
-            </div>
-
-            {!tradingOn && (
-              <p className="text-center text-white/30 text-sm mt-4">
-                Enable trading above to place orders
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Not Configured State */}
-        {!execution.configured && (
-          <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6 text-center">
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="font-medium text-lg mb-2">PickMyTrade Not Connected</h3>
-            <p className="text-white/50 text-sm mb-4 max-w-md mx-auto">
-              Connect PickMyTrade to enable automated trade execution on your Apex account.
-            </p>
-            <a
-              href="https://pickmytrade.trade"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-black rounded-lg font-medium hover:bg-amber-400 transition"
-            >
-              Setup PickMyTrade
-            </a>
-          </div>
-        )}
       </main>
     </div>
   )

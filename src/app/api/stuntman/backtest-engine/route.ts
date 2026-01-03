@@ -33,6 +33,16 @@ import {
   DeltaAnalyzer,
 } from '@/lib/stuntman/order-flow-analysis'
 import { Trade as OrderFlowTrade } from '@/lib/stuntman/types'
+import {
+  generateAdaptiveSignal,
+  extractFeatures,
+  detectMarketRegime,
+  recordTradeOutcome,
+  getAdaptiveStats,
+  MarketRegime,
+  PatternFeatures,
+  TradeOutcome,
+} from '@/lib/stuntman/adaptive-ml'
 
 // =============================================================================
 // REALISTIC TRADING COSTS (Match Apex/Rithmic 1:1)
@@ -174,6 +184,11 @@ interface BacktestState {
     mlConfidence: number
     vpinAtEntry: number
     volatilityAtEntry: number    // For cost calculations
+    regime: MarketRegime         // Market regime at entry
+    features: PatternFeatures    // Pattern features at entry
+    stopMultiplierUsed: number   // For adaptive learning
+    targetMultiplierUsed: number // For adaptive learning
+    strategy: string             // Strategy that generated signal
   } | null
   // Results
   trades: BacktestTrade[]
@@ -489,43 +504,41 @@ async function processCandle(index: number): Promise<void> {
   const currentCandle = candles1m[candles1m.length - 1]
   const currentPrice = currentCandle.close
 
-  // Generate order flow data
+  // Generate order flow data for VPIN
   const recentCandles = candles1m.slice(-10)
   for (const c of recentCandles) {
     const trades = simulateTradesFromCandle(c)
     vpinCalculator.addTrades(trades)
   }
-
-  // Calculate VPIN
   const vpin = vpinCalculator.calculate()
 
-  // Generate ML Signal
-  const mlSignal = generateMLSignal(candles5m.slice(-50))
+  // Extract pattern features for adaptive ML
+  const features = extractFeatures(candles1m)
+  const regime = detectMarketRegime(candles1m, features)
 
-  // Generate Traditional Signal
+  // Generate signals from all strategies
+  const mlSignal = generateMLSignal(candles5m.slice(-50))
   const tradSignal = generateSignal(candles1m, candles5m.slice(-50), candles15m.slice(-30), 'ES')
 
-  // Calculate confluence - more generous to generate trades
-  let confluenceScore = 10  // Base score
-  const mlDir = mlSignal.direction === 'NEUTRAL' ? 'FLAT' : mlSignal.direction
+  // Build strategy array for adaptive signal
+  const strategies = [
+    { name: 'ML_Neural', direction: mlSignal.direction === 'NEUTRAL' ? 'FLAT' as const : mlSignal.direction, confidence: mlSignal.confidence * 100 },
+    { name: tradSignal.strategy, direction: tradSignal.direction, confidence: tradSignal.confidence },
+  ]
 
-  // Direction agreement
-  if (mlDir === tradSignal.direction && mlDir !== 'FLAT') confluenceScore += 25
-  // ML has any direction
-  if (mlDir !== 'FLAT') confluenceScore += 10
-  // ML confidence
-  if (mlSignal.confidence > 0.60) confluenceScore += 10
-  if (mlSignal.confidence > 0.75) confluenceScore += 5
-  // VPIN
-  if (vpin.signal === 'SAFE') confluenceScore += 5
-  else if (vpin.signal === 'DANGER') confluenceScore -= 10
-  // Traditional signal
-  if (tradSignal.confidence > 60) confluenceScore += 10
-  if (tradSignal.confidence > 80) confluenceScore += 5
+  // Add VPIN-based signal
+  if (vpin.signal === 'DANGER' && vpin.vpin > 0.7) {
+    // High VPIN often precedes reversals - fade the current direction
+    const fadeDir = features.priceChange5 > 0 ? 'SHORT' : 'LONG'
+    strategies.push({ name: 'VPIN_Fade', direction: fadeDir as 'LONG' | 'SHORT', confidence: vpin.vpin * 60 })
+  }
+
+  // Generate ADAPTIVE signal (learns from past performance)
+  const adaptiveSignal = generateAdaptiveSignal(candles1m, strategies)
 
   // Track ML predictions
   state.mlAccuracy.totalPredictions++
-  const confLevel = mlSignal.confidence > 0.8 ? 'high' : mlSignal.confidence > 0.6 ? 'medium' : 'low'
+  const confLevel = adaptiveSignal.confidence > 80 ? 'high' : adaptiveSignal.confidence > 60 ? 'medium' : 'low'
   state.mlAccuracy.byConfidenceLevel[confLevel].total++
 
   // Position Management
@@ -656,7 +669,7 @@ async function processCandle(index: number): Promise<void> {
       }
 
       // Track strategy performance (with net P&L)
-      const strategy = tradSignal.strategy
+      const strategy = pos.strategy || 'Unknown'
       if (!state.strategyPerformance[strategy]) {
         state.strategyPerformance[strategy] = { trades: 0, wins: 0, pnl: 0 }
       }
@@ -664,22 +677,38 @@ async function processCandle(index: number): Promise<void> {
       state.strategyPerformance[strategy].pnl += netPnL
       if (netPnL > 0) state.strategyPerformance[strategy].wins++
 
+      // ADAPTIVE LEARNING: Record trade outcome for ML to learn from
+      const tradeOutcome: TradeOutcome = {
+        features: pos.features,
+        direction: pos.direction,
+        regime: pos.regime,
+        pnlPercent: (netPnL / 150000) * 100, // % of starting balance
+        wasWinner: netPnL > 0,
+        holdingBars: Math.floor(holdingTime),
+        stopMultiplierUsed: pos.stopMultiplierUsed,
+        targetMultiplierUsed: pos.targetMultiplierUsed,
+        strategy: pos.strategy,
+      }
+      recordTradeOutcome(tradeOutcome)
+
       state.position = null
     }
   } else {
-    // Look for entry - use traditional signal if ML is flat
-    const hasSignal = mlDir !== 'FLAT' || tradSignal.direction !== 'FLAT'
-    let entryDirection: 'LONG' | 'SHORT' | 'FLAT' = mlDir !== 'FLAT' ? mlDir : tradSignal.direction
+    // ADAPTIVE ENTRY: Use learned optimal parameters
+    let entryDirection = adaptiveSignal.direction
 
-    if (hasSignal && entryDirection !== 'FLAT') {
+    // Only enter if adaptive signal is not FLAT and has sufficient strength
+    if (entryDirection !== 'FLAT' && adaptiveSignal.strength !== 'NONE') {
       // Apply inverse mode if enabled - flip LONG <-> SHORT
       if (shouldInverseSignal()) {
         entryDirection = entryDirection === 'LONG' ? 'SHORT' : 'LONG'
       }
 
       const atr = calculateATR(candles1m.slice(-14))
-      const stopDistance = atr * 2
-      const targetDistance = atr * 3
+
+      // USE ADAPTIVE OPTIMAL PARAMETERS (learned from past performance)
+      const stopDistance = atr * adaptiveSignal.optimalStopMultiplier
+      const targetDistance = atr * adaptiveSignal.optimalTargetMultiplier
 
       // Calculate volatility for slippage
       const recentPrices = candles1m.slice(-20).map(c => (c.high - c.low) / c.close)
@@ -696,19 +725,27 @@ async function processCandle(index: number): Promise<void> {
       const stopLoss = entryDirection === 'LONG' ? entryPrice - stopDistance : entryPrice + stopDistance
       const takeProfit = entryDirection === 'LONG' ? entryPrice + targetDistance : entryPrice - targetDistance
 
+      // Position size based on edge strength (adaptive)
+      const contracts = Math.max(1, Math.floor(adaptiveSignal.positionSizeMultiplier))
+
       state.position = {
         direction: entryDirection,
         rawEntryPrice,
         entryPrice,
         entryTime: currentCandle.time,
         entryLatencyMs,
-        contracts: 1,
+        contracts,
         stopLoss,
         takeProfit,
-        confluenceScore,
+        confluenceScore: adaptiveSignal.confidence,
         mlConfidence: mlSignal.confidence,
         vpinAtEntry: vpin.vpin,
         volatilityAtEntry: volatility,
+        regime,
+        features,
+        stopMultiplierUsed: adaptiveSignal.optimalStopMultiplier,
+        targetMultiplierUsed: adaptiveSignal.optimalTargetMultiplier,
+        strategy: Object.keys(adaptiveSignal.strategyWeights)[0] || tradSignal.strategy,
       }
     }
   }
@@ -912,9 +949,17 @@ export async function GET(request: NextRequest) {
         inverseLosses: inverseStats.inverseLosses,
         active: inverseStats.currentlyInversed,
       },
+      // ADAPTIVE ML STATS - What the system is learning
+      adaptiveML: {
+        ...getAdaptiveStats(),
+        status: 'LEARNING', // Always learning from outcomes
+        description: 'Self-optimizing based on trade outcomes',
+      },
+      // Current Market Regime
+      currentRegime: state.position?.regime || 'UNKNOWN',
       // Data Source Info
       dataSource: {
-        provider: 'Yahoo Finance',
+        provider: 'Yahoo Finance + Adaptive ML',
         instrument: 'SPY (S&P 500 ETF) scaled to ES prices',
         timeframes: ['1m', '5m', '15m'],
         candlesLoaded: {
@@ -922,7 +967,7 @@ export async function GET(request: NextRequest) {
           '5m': historicalData.candles5m.length,
           '15m': historicalData.candles15m.length,
         },
-        note: 'SPY tracks ES futures perfectly - scaled 10x to match ES price range',
+        note: 'WORLD-CLASS: Adaptive ML learns from every trade',
         delay: 'None - processing historical data at selected speed',
       },
       // Chart Data - Historical candles being processed

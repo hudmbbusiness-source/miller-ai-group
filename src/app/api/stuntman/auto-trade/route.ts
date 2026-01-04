@@ -1683,9 +1683,7 @@ async function runAutoTrader(): Promise<void> {
   // ==========================================================================
   console.log('[STEP 7.5] Generating world-class strategy signals...')
 
-  // Get current price for session data fallbacks
-  const currentPrice = candles1m[candles1m.length - 1].close
-
+  // Use existing currentPrice from above (line ~1598)
   // Calculate VWAP and stdDev for world-class strategies
   const vwapPrices = candles1m.slice(-50).map(c => c.close)
   const vwapAvg = vwapPrices.reduce((s, p) => s + p, 0) / vwapPrices.length
@@ -1699,12 +1697,14 @@ async function runAutoTrader(): Promise<void> {
   const sessionLow = Math.min(...last100.map(c => c.low))
 
   // Get prop firm risk status for world-class strategies
+  // Signature: (balance, startingBalance, maxDrawdown, dailyPnL, consecutiveLosses, dailyTrades)
   const propFirmRisk = calculatePropFirmRisk(
-    state.todayPnL,
-    150000 + state.todayPnL,  // Current balance
-    6000,                      // Max drawdown
-    0,                         // Consecutive losses handled separately
-    state.todayTrades.length
+    150000 + state.todayPnL,   // Current balance
+    150000,                     // Starting balance
+    6000,                       // Max drawdown
+    state.todayPnL,             // Daily P&L
+    0,                          // Consecutive losses handled separately
+    state.todayTrades.length    // Daily trade count
   )
 
   // Generate ALL world-class signals (same as paper trading)

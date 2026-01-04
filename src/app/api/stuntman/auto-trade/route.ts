@@ -2371,6 +2371,12 @@ export async function GET(request: NextRequest) {
     // Uses learned patterns from paper trading for live decisions
     await ensureLearningStateLoaded()
 
+    // CRITICAL: Run auto-trader on EVERY poll when enabled
+    // This makes the system fully automatic - each GET triggers the trading logic
+    if (state.enabled) {
+      await runAutoTrader()
+    }
+
     const winRate = state.totalTrades > 0 ? (state.wins / state.totalTrades) * 100 : 0
     const profitFactor = state.losses > 0 && state.wins > 0
       ? state.todayTrades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0) /

@@ -2758,22 +2758,24 @@ async function processCandle(index: number): Promise<void> {
     let shouldExit = false
     let exitReason = ''
 
-    // Stop loss (includes trailing stop)
-    if (pos.direction === 'LONG' && currentPrice <= pos.stopLoss) {
-      shouldExit = true
-      exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
-    } else if (pos.direction === 'SHORT' && currentPrice >= pos.stopLoss) {
-      shouldExit = true
-      exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
-    }
-
-    // Take profit (final target)
-    if (pos.direction === 'LONG' && currentPrice >= pos.takeProfit) {
-      shouldExit = true
-      exitReason = 'Take Profit'
-    } else if (pos.direction === 'SHORT' && currentPrice <= pos.takeProfit) {
-      shouldExit = true
-      exitReason = 'Take Profit'
+    // Check exits in priority order - STOP LOSS first, then TAKE PROFIT
+    // Use else-if to prevent one exit reason overwriting another
+    if (pos.direction === 'LONG') {
+      if (currentPrice <= pos.stopLoss) {
+        shouldExit = true
+        exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
+      } else if (currentPrice >= pos.takeProfit) {
+        shouldExit = true
+        exitReason = 'Take Profit'
+      }
+    } else if (pos.direction === 'SHORT') {
+      if (currentPrice >= pos.stopLoss) {
+        shouldExit = true
+        exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
+      } else if (currentPrice <= pos.takeProfit) {
+        shouldExit = true
+        exitReason = 'Take Profit'
+      }
     }
 
     // Reversal signal - ONLY exit if VERY high confidence AND we're already in profit
@@ -3270,16 +3272,33 @@ async function processCandle(index: number): Promise<void> {
       : 0
 
     // ==========================================================================
-    // SELECT BEST SIGNAL BASED ON CONFLUENCE SCORE
+    // SELECT BEST SIGNAL BASED ON CONFLUENCE SCORE + TREND ALIGNMENT
     // ==========================================================================
     let selectedDirection: 'LONG' | 'SHORT' | null = null
     let selectedSignals: CandidateSignal[] = []
     let winningConfluenceScore = 0
 
-    // Determine winning direction based on confluence score
+    // TREND FILTER: Determine bias based on EMA position
+    // If price > EMA50, prefer LONG. If price < EMA50, prefer SHORT.
+    const trendBias: 'LONG' | 'SHORT' | 'NEUTRAL' =
+      currentPrice > indicators.ema50 * 1.001 ? 'LONG' :   // 0.1% buffer
+      currentPrice < indicators.ema50 * 0.999 ? 'SHORT' :
+      'NEUTRAL'
+
+    // Apply trend filter to confluence results
+    // Counter-trend trades require 20% higher confluence score
+    const trendPenalty = 0.8  // 20% reduction for counter-trend
+    const adjustedLongScore = trendBias === 'SHORT'
+      ? longConfluenceResult.score * trendPenalty
+      : longConfluenceResult.score * (trendBias === 'LONG' ? 1.1 : 1.0)  // 10% bonus with trend
+    const adjustedShortScore = trendBias === 'LONG'
+      ? shortConfluenceResult.score * trendPenalty
+      : shortConfluenceResult.score * (trendBias === 'SHORT' ? 1.1 : 1.0)  // 10% bonus with trend
+
+    // Determine winning direction based on ADJUSTED confluence score
     if (longConfluenceResult.passes && shortConfluenceResult.passes) {
-      // Both pass - take the higher score
-      if (longConfluenceResult.score > shortConfluenceResult.score) {
+      // Both pass - take the higher ADJUSTED score (respects trend)
+      if (adjustedLongScore > adjustedShortScore) {
         selectedDirection = 'LONG'
         selectedSignals = longSignals
         winningConfluenceScore = longConfluenceResult.score

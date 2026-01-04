@@ -1031,6 +1031,96 @@ const PROFIT_CONFIG = {
 }
 
 // =============================================================================
+// GAP PROTECTION CONFIG - Reduce exposure near known gap times
+// =============================================================================
+// Gaps caused a -$2,280 loss (45-point gap) in testing.
+// This config reduces position size during high gap-risk periods.
+
+const GAP_PROTECTION = {
+  enabled: true,
+
+  // KNOWN GAP RISK PERIODS (all times in EST)
+  // These are when ES futures can gap significantly
+
+  // 1. Market Close - 3:30 PM to 4:00 PM
+  // Risk: Positions held past close can gap at next open
+  closeWarningStartHour: 15.5,    // 3:30 PM EST
+  closePositionMultiplier: 0.5,   // 50% position size in last 30 min
+
+  // 2. No New Positions After 3:45 PM
+  // Avoid positions that could be held overnight
+  noNewPositionsAfterHour: 15.75, // 3:45 PM EST
+  noNewPositionsMultiplier: 0.0,  // 0% = no new positions (emergency block)
+
+  // 3. Pre-Market Gap Risk (before 9:30 AM)
+  // Overnight news can cause gaps at open
+  preMarketStartHour: 4.0,        // 4:00 AM EST (futures open)
+  preMarketEndHour: 9.5,          // 9:30 AM EST (RTH open)
+  preMarketMultiplier: 0.25,      // 25% position size
+
+  // 4. Overnight Session (8 PM to 4 AM)
+  // Low liquidity, can gap on Asian/European news
+  overnightStartHour: 20.0,       // 8:00 PM EST
+  overnightEndHour: 4.0,          // 4:00 AM EST
+  overnightMultiplier: 0.25,      // 25% position size
+
+  // 5. LUNCH HOUR chop (11 AM to 1 PM)
+  // Not a gap risk, but high chop = whipsaw losses
+  lunchStartHour: 11.0,           // 11:00 AM EST
+  lunchEndHour: 13.0,             // 1:00 PM EST
+  lunchMultiplier: 0.5,           // 50% position size (avoid chop)
+
+  // 6. Known High Gap Risk Days
+  // Add specific date handling for FOMC, NFP, etc. if needed
+  // (For now, market intel system handles this)
+}
+
+// Calculate gap protection multiplier based on time of day
+function getGapProtectionMultiplier(timestamp: number): { multiplier: number; reason: string } {
+  if (!GAP_PROTECTION.enabled) {
+    return { multiplier: 1.0, reason: 'Gap protection disabled' }
+  }
+
+  const date = new Date(timestamp)
+  // Convert to EST (UTC-5, or UTC-4 during DST - simplified to UTC-5)
+  const utcHour = date.getUTCHours()
+  const utcMinute = date.getUTCMinutes()
+  const estHour = utcHour - 5 + (utcMinute / 60)
+  // Handle negative hours (wrap around from previous day)
+  const normalizedHour = estHour < 0 ? estHour + 24 : estHour
+
+  // Check each gap risk period (in order of severity)
+
+  // 1. NO NEW POSITIONS AFTER 3:45 PM (most restrictive)
+  if (normalizedHour >= GAP_PROTECTION.noNewPositionsAfterHour && normalizedHour < 16.0) {
+    return { multiplier: GAP_PROTECTION.noNewPositionsMultiplier, reason: 'No new positions after 3:45 PM' }
+  }
+
+  // 2. CLOSE WARNING (3:30 PM - 3:45 PM)
+  if (normalizedHour >= GAP_PROTECTION.closeWarningStartHour && normalizedHour < GAP_PROTECTION.noNewPositionsAfterHour) {
+    return { multiplier: GAP_PROTECTION.closePositionMultiplier, reason: 'Market close warning' }
+  }
+
+  // 3. OVERNIGHT SESSION (8 PM - 4 AM)
+  if (normalizedHour >= GAP_PROTECTION.overnightStartHour || normalizedHour < GAP_PROTECTION.overnightEndHour) {
+    return { multiplier: GAP_PROTECTION.overnightMultiplier, reason: 'Overnight session - high gap risk' }
+  }
+
+  // 4. PRE-MARKET (4 AM - 9:30 AM)
+  if (normalizedHour >= GAP_PROTECTION.preMarketStartHour && normalizedHour < GAP_PROTECTION.preMarketEndHour) {
+    return { multiplier: GAP_PROTECTION.preMarketMultiplier, reason: 'Pre-market - gap risk at open' }
+  }
+
+  // 5. LUNCH HOUR CHOP (11 AM - 1 PM)
+  if (normalizedHour >= GAP_PROTECTION.lunchStartHour && normalizedHour < GAP_PROTECTION.lunchEndHour) {
+    return { multiplier: GAP_PROTECTION.lunchMultiplier, reason: 'Lunch hour - high chop' }
+  }
+
+  // No gap risk - normal trading
+  return { multiplier: 1.0, reason: 'Normal trading hours' }
+}
+
+// =============================================================================
 // ADAPTIVE CONFLUENCE THRESHOLDS - REGIME-BASED DYNAMIC REQUIREMENTS
 // Same as live trading - thresholds adapt to market conditions
 // =============================================================================
@@ -3504,6 +3594,17 @@ async function processCandle(index: number): Promise<void> {
       const evalSchedule = getEvalScheduleMultiplier()
       const evalDailyShape = getDailyPnLShapingMultiplier()
 
+      // GAP PROTECTION - Reduce size near known gap times
+      const gapProtection = getGapProtectionMultiplier(currentCandle.time)
+      const gapMultiplier = gapProtection.multiplier
+
+      // If gap protection says 0% (no new positions), skip this entry
+      if (gapMultiplier === 0) {
+        state.candlesProcessed++
+        state.currentIndex = index
+        return  // Skip trade entry - high gap risk period
+      }
+
       const baseContracts = qualityMultiplier
       const riskAdjustedContracts = baseContracts
         * degradedRiskMultiplier     // GOVERNANCE: danger zone = 0.1, not blocked
@@ -3514,6 +3615,7 @@ async function processCandle(index: number): Promise<void> {
         * mtfMultiplier              // GOVERNANCE: counter-trend = 0.25, not blocked
         * consecutiveLossMultiplier  // RISK: consecutive losses = 0.1-1.0, with cooling
         * propFirmRisk.positionSizeMultiplier
+        * gapMultiplier              // GAP PROTECTION: reduce size near gap times (0.25-1.0)
         // EVAL MODE MULTIPLIERS
         * evalStrategyWeight         // EVAL: Strategy priority (0.8-1.5)
         * evalTimeAllocation         // EVAL: Time-of-day allocation (0.1-1.5)

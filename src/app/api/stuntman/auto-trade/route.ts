@@ -136,6 +136,80 @@ let liveDailyTradeCount = 0
 let liveLastTradeTime = 0
 
 // =============================================================================
+// GAP PROTECTION CONFIG - Reduce exposure near known gap times
+// =============================================================================
+// Matches paper trading 1:1 - prevents catastrophic gap losses
+
+const GAP_PROTECTION = {
+  enabled: true,
+
+  // 1. Market Close - 3:30 PM to 4:00 PM
+  closeWarningStartHour: 15.5,    // 3:30 PM EST
+  closePositionMultiplier: 0.5,   // 50% position size in last 30 min
+
+  // 2. No New Positions After 3:45 PM
+  noNewPositionsAfterHour: 15.75, // 3:45 PM EST
+  noNewPositionsMultiplier: 0.0,  // 0% = no new positions
+
+  // 3. Pre-Market Gap Risk (before 9:30 AM)
+  preMarketStartHour: 4.0,        // 4:00 AM EST
+  preMarketEndHour: 9.5,          // 9:30 AM EST
+  preMarketMultiplier: 0.25,      // 25% position size
+
+  // 4. Overnight Session (8 PM to 4 AM)
+  overnightStartHour: 20.0,       // 8:00 PM EST
+  overnightEndHour: 4.0,          // 4:00 AM EST
+  overnightMultiplier: 0.25,      // 25% position size
+
+  // 5. LUNCH HOUR chop (11 AM to 1 PM)
+  lunchStartHour: 11.0,           // 11:00 AM EST
+  lunchEndHour: 13.0,             // 1:00 PM EST
+  lunchMultiplier: 0.5,           // 50% position size
+}
+
+// Calculate gap protection multiplier based on current time
+function getGapProtectionMultiplier(): { multiplier: number; reason: string } {
+  if (!GAP_PROTECTION.enabled) {
+    return { multiplier: 1.0, reason: 'Gap protection disabled' }
+  }
+
+  // Get current EST time
+  const now = new Date()
+  const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const estHour = estTime.getHours() + estTime.getMinutes() / 60
+
+  // Check each gap risk period (in order of severity)
+
+  // 1. NO NEW POSITIONS AFTER 3:45 PM (most restrictive)
+  if (estHour >= GAP_PROTECTION.noNewPositionsAfterHour && estHour < 16.0) {
+    return { multiplier: GAP_PROTECTION.noNewPositionsMultiplier, reason: 'No new positions after 3:45 PM' }
+  }
+
+  // 2. CLOSE WARNING (3:30 PM - 3:45 PM)
+  if (estHour >= GAP_PROTECTION.closeWarningStartHour && estHour < GAP_PROTECTION.noNewPositionsAfterHour) {
+    return { multiplier: GAP_PROTECTION.closePositionMultiplier, reason: 'Market close warning' }
+  }
+
+  // 3. OVERNIGHT SESSION (8 PM - 4 AM)
+  if (estHour >= GAP_PROTECTION.overnightStartHour || estHour < GAP_PROTECTION.overnightEndHour) {
+    return { multiplier: GAP_PROTECTION.overnightMultiplier, reason: 'Overnight session - high gap risk' }
+  }
+
+  // 4. PRE-MARKET (4 AM - 9:30 AM)
+  if (estHour >= GAP_PROTECTION.preMarketStartHour && estHour < GAP_PROTECTION.preMarketEndHour) {
+    return { multiplier: GAP_PROTECTION.preMarketMultiplier, reason: 'Pre-market - gap risk at open' }
+  }
+
+  // 5. LUNCH HOUR CHOP (11 AM - 1 PM)
+  if (estHour >= GAP_PROTECTION.lunchStartHour && estHour < GAP_PROTECTION.lunchEndHour) {
+    return { multiplier: GAP_PROTECTION.lunchMultiplier, reason: 'Lunch hour - high chop' }
+  }
+
+  // No gap risk - normal trading
+  return { multiplier: 1.0, reason: 'Normal trading hours' }
+}
+
+// =============================================================================
 // ADVANCED POSITION MANAGEMENT SYSTEM
 // =============================================================================
 // This system provides:
@@ -678,7 +752,15 @@ function calculateDynamicContractSize(
     factors.push(`Consecutive losses (${performanceTracker.consecutiveLosses}): ${lossReduction.toFixed(2)}x`)
   }
 
-  // 7. ENFORCE HARD LIMITS
+  // 7. GAP PROTECTION - Reduce size near known gap times
+  const gapProtection = getGapProtectionMultiplier()
+  if (gapProtection.multiplier < 1.0) {
+    const oldContracts = contracts
+    contracts = Math.floor(contracts * gapProtection.multiplier)
+    factors.push(`Gap protection (${gapProtection.reason}): ${gapProtection.multiplier}x (${oldContracts} -> ${contracts})`)
+  }
+
+  // 8. ENFORCE HARD LIMITS
   contracts = Math.max(CONTRACT_SCALING.minContracts, Math.min(CONTRACT_SCALING.maxContracts, contracts))
   factors.push(`Final: ${contracts} contracts (limits: ${CONTRACT_SCALING.minContracts}-${CONTRACT_SCALING.maxContracts})`)
 

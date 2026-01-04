@@ -1059,14 +1059,15 @@ export function generateAdvancedMasterSignal(
   if (analysis.deltaDivergence.detected && analysis.deltaDivergence.confidence >= 70) {
     const dir = analysis.deltaDivergence.type === 'BULLISH' ? 'LONG' : 'SHORT'
 
-    // COUNTER-TREND PENALTY: In strong trend, reversal signals get 50% confidence reduction
+    // COUNTER-TREND PENALTY: In strong trend, reversal signals get 75% confidence reduction
+    // This is AGGRESSIVE - reversal signals in trends almost always fail
     let adjustedConfidence = analysis.deltaDivergence.confidence
     if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
-      adjustedConfidence *= 0.5  // 50% penalty for counter-trend
+      adjustedConfidence *= 0.25  // 75% penalty for counter-trend (was 50%)
     }
 
     // Only add if still above minimum threshold after penalty
-    if (adjustedConfidence >= 50) {
+    if (adjustedConfidence >= 60) {  // Raised from 50
       signals.push({
         direction: dir,
         confidence: adjustedConfidence,
@@ -1095,13 +1096,13 @@ export function generateAdvancedMasterSignal(
     if (nearbyFVG || ob.volume > 0) {
       const dir = ob.type === 'BULLISH' ? 'LONG' : 'SHORT'
 
-      // COUNTER-TREND PENALTY
+      // COUNTER-TREND PENALTY - 75% reduction for trading against strong trend
       let adjustedConfidence = nearbyFVG ? 85 : 75
       if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
-        adjustedConfidence *= 0.5  // 50% penalty for counter-trend
+        adjustedConfidence *= 0.25  // 75% penalty for counter-trend (was 50%)
       }
 
-      if (adjustedConfidence >= 50) {
+      if (adjustedConfidence >= 60) {  // Raised threshold from 50
         signals.push({
           direction: dir,
           confidence: adjustedConfidence,
@@ -1123,13 +1124,13 @@ export function generateAdvancedMasterSignal(
   if (sweptPools.length > 0 && analysis.marketStructure.lastCHoCH) {
     const dir = analysis.marketStructure.lastCHoCH.type === 'BULLISH' ? 'LONG' : 'SHORT'
 
-    // COUNTER-TREND PENALTY
+    // COUNTER-TREND PENALTY - 75% reduction for trading against strong trend
     let adjustedConfidence = 80
     if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
-      adjustedConfidence *= 0.5
+      adjustedConfidence *= 0.25  // 75% penalty for counter-trend (was 50%)
     }
 
-    if (adjustedConfidence >= 50) {
+    if (adjustedConfidence >= 60) {  // Raised threshold from 50
       signals.push({
         direction: dir,
         confidence: adjustedConfidence,
@@ -1148,13 +1149,13 @@ export function generateAdvancedMasterSignal(
   // NOTE: Mean reversion is a COUNTER-TREND strategy
   const vpSignal = generateVolumeProfileSignal(currentPrice, analysis.volumeProfile, atr)
   if (vpSignal && Math.abs(analysis.zscore.zscore) >= 1.5) {
-    // Apply counter-trend penalty
+    // Apply counter-trend penalty - 75% reduction for trading against strong trend
     if ((trendBias === 'LONG' && vpSignal.direction === 'SHORT') ||
         (trendBias === 'SHORT' && vpSignal.direction === 'LONG')) {
-      vpSignal.confidence *= 0.5
+      vpSignal.confidence *= 0.25  // 75% penalty for counter-trend (was 50%)
     }
 
-    if (vpSignal.confidence >= 50) {
+    if (vpSignal.confidence >= 60) {  // Raised threshold from 50
       vpSignal.confidence = Math.min(95, vpSignal.confidence + 10)
       vpSignal.reasoning += ` + Z-score ${analysis.zscore.zscore.toFixed(2)}${trendBias !== 'NEUTRAL' && trendBias !== vpSignal.direction ? ' (counter-trend)' : ''}`
       signals.push(vpSignal)
@@ -1166,13 +1167,13 @@ export function generateAdvancedMasterSignal(
   if (Math.abs(analysis.zscore.zscore) >= 2.0) {
     const zSignal = generateZScoreSignal(candles.map(c => c.close), atr)
     if (zSignal) {
-      // Apply counter-trend penalty
+      // Apply counter-trend penalty - 75% reduction for trading against strong trend
       if ((trendBias === 'LONG' && zSignal.direction === 'SHORT') ||
           (trendBias === 'SHORT' && zSignal.direction === 'LONG')) {
-        zSignal.confidence *= 0.5
+        zSignal.confidence *= 0.25  // 75% penalty for counter-trend (was 50%)
       }
 
-      if (zSignal.confidence >= 50) {
+      if (zSignal.confidence >= 60) {  // Raised threshold from 50
         signals.push(zSignal)
       }
     }
@@ -1189,13 +1190,13 @@ export function generateAdvancedMasterSignal(
     if (nearPOC || nearOB) {
       const dir = analysis.absorption.type === 'SELL_ABSORBED' ? 'LONG' : 'SHORT'
 
-      // COUNTER-TREND PENALTY
+      // COUNTER-TREND PENALTY - 75% reduction for trading against strong trend
       let adjustedConfidence = 75
       if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
-        adjustedConfidence *= 0.5
+        adjustedConfidence *= 0.25  // 75% penalty for counter-trend (was 50%)
       }
 
-      if (adjustedConfidence >= 50) {
+      if (adjustedConfidence >= 60) {  // Raised threshold from 50
         signals.push({
           direction: dir,
           confidence: adjustedConfidence,

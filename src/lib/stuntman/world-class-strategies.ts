@@ -309,20 +309,19 @@ export function detectBOSSignal(
   if (structure.trend === 'BULLISH' && htfBias !== 'BEARISH') {
     const priorSwingHigh = structure.lastSwingHigh
 
-    // Must close above, not just wick
-    if (current.close > priorSwingHigh && isDisplacement) {
-      // Check for pullback - price came down to retest
+    // Must close above, not just wick (displacement is optional quality bonus)
+    if (current.close > priorSwingHigh) {
+      // Check for pullback - price came down to retest (loosened from 0.3 to 0.8 ATR)
       const pullbackCandles = candles.slice(-10, -1)
       const lowestPullback = Math.min(...pullbackCandles.map(c => c.low))
-      const hasRetested = lowestPullback <= priorSwingHigh + atr * 0.3
+      const hasRetested = lowestPullback <= priorSwingHigh + atr * 0.8
 
-      if (!hasRetested) {
-        return null // Wait for retest, don't chase
-      }
+      // Displacement bonus for quality, not requirement
+      const displacementBonus = isDisplacement ? 20 : 0
 
       // Quality score based on confluence
-      let qualityScore = 50
-      if (isDisplacement) qualityScore += 15
+      let qualityScore = 40 + displacementBonus
+      if (hasRetested) qualityScore += 15 // Retest adds quality, not requirement
       if (htfBias === 'BULLISH') qualityScore += 20
       if (regime.trendStrength > 60) qualityScore += 15
 
@@ -369,17 +368,17 @@ export function detectBOSSignal(
   if (structure.trend === 'BEARISH' && htfBias !== 'BULLISH') {
     const priorSwingLow = structure.lastSwingLow
 
-    if (current.close < priorSwingLow && isDisplacement) {
+    // Must close below (displacement is optional quality bonus)
+    if (current.close < priorSwingLow) {
       const pullbackCandles = candles.slice(-10, -1)
       const highestPullback = Math.max(...pullbackCandles.map(c => c.high))
-      const hasRetested = highestPullback >= priorSwingLow - atr * 0.3
+      const hasRetested = highestPullback >= priorSwingLow - atr * 0.8 // Loosened from 0.3
 
-      if (!hasRetested) {
-        return null
-      }
+      // Displacement bonus for quality, not requirement
+      const displacementBonus = isDisplacement ? 20 : 0
 
-      let qualityScore = 50
-      if (isDisplacement) qualityScore += 15
+      let qualityScore = 40 + displacementBonus
+      if (hasRetested) qualityScore += 15 // Retest adds quality, not requirement
       if (htfBias === 'BEARISH') qualityScore += 20
       if (regime.trendStrength > 60) qualityScore += 15
 
@@ -451,13 +450,11 @@ export function detectCHoCHSignal(
   const prev = candles[candles.length - 2]
   const atr = calculateATR(candles.slice(-20), 14)
 
-  // Look for liquidity sweep before CHoCH (institutional requirement)
+  // Look for liquidity sweep before CHoCH (adds quality but not required)
+  // Changed: sweep is now OPTIONAL - adds confidence but doesn't block entry
   const liquidityPools = detectLiquidityPools(candles.slice(-30))
   const recentSweep = liquidityPools.some(p => p.swept)
-
-  if (!recentSweep) {
-    return null // CHoCH without liquidity sweep is weak
-  }
+  const sweepBonus = recentSweep ? 20 : 0  // Bonus for sweep, not requirement
 
   // BULLISH CHoCH: Was bearish, now breaking above last lower high
   if (structure.trend === 'BEARISH' && structure.hasLH) {
@@ -472,8 +469,7 @@ export function detectCHoCHSignal(
         return null // Wait for confirmation
       }
 
-      let qualityScore = 45
-      if (recentSweep) qualityScore += 20
+      let qualityScore = 45 + sweepBonus  // Use sweepBonus calculated above
       if (htfBias === 'BULLISH' || htfBias === 'NEUTRAL') qualityScore += 15
       if (regime.volatilityPercentile > 50) qualityScore += 10
 
@@ -528,8 +524,7 @@ export function detectCHoCHSignal(
         return null
       }
 
-      let qualityScore = 45
-      if (recentSweep) qualityScore += 20
+      let qualityScore = 45 + sweepBonus  // Use sweepBonus calculated above
       if (htfBias === 'BEARISH' || htfBias === 'NEUTRAL') qualityScore += 15
       if (regime.volatilityPercentile > 50) qualityScore += 10
 
@@ -888,9 +883,18 @@ export function detectSessionReversionSignal(
     return null
   }
 
-  // Check for overextension past session levels
-  const nyHigh = sessionHighs.ny
-  const nyLow = sessionLows.ny
+  // FALLBACK: Calculate session levels from recent candles if not provided properly
+  // This happens when Asia/London data isn't available (historical data during NY only)
+  const recentCandles = candles.slice(-100)  // Last ~2 hours of 1m candles
+  const calculatedHigh = Math.max(...recentCandles.map(c => c.high))
+  const calculatedLow = Math.min(...recentCandles.map(c => c.low))
+
+  // Use provided NY levels if they look valid (have a range), else use calculated fallback
+  const nyRange = sessionHighs.ny - sessionLows.ny
+  const isValidSessionData = nyRange > atr * 0.5  // Session should have at least 0.5 ATR range
+
+  const nyHigh = isValidSessionData ? sessionHighs.ny : calculatedHigh
+  const nyLow = isValidSessionData ? sessionLows.ny : calculatedLow
 
   // Overextension above NY high
   if (current.high > nyHigh + atr * 0.5 && current.close < nyHigh) {
@@ -1160,9 +1164,10 @@ export function detectVolatilityBreakoutSignal(
   regime: RegimeAnalysis,
   htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): StrategySignal | null {
-  // Only trade out of low volatility compression
-  if (regime.volatilityPercentile > 30) {
-    return null // Not in compression
+  // Only trade out of low/medium volatility compression
+  // Changed from 30 to 60 - was too strict and never triggered
+  if (regime.volatilityPercentile > 60) {
+    return null // Not in compression - too volatile
   }
 
   const current = candles[candles.length - 1]
@@ -1308,25 +1313,33 @@ export function detectVWAPReversionSignal(
   const upper2SD = vwap + vwapStdDev * 2
   const lower2SD = vwap - vwapStdDev * 2
 
+  // Handle edge case: if stdDev is 0 or very small, calculate from candles
+  const effectiveStdDev = vwapStdDev > 0.5 ? vwapStdDev : calculateATR(candles.slice(-20), 14) * 0.3
+
   // Distance from VWAP in standard deviations
-  const distanceSD = (current.close - vwap) / vwapStdDev
+  const distanceSD = (current.close - vwap) / effectiveStdDev
 
   // RSI for exhaustion confirmation
   const rsi = calculateRSI(candles.map(c => c.close), 14)
   const lastRSI = rsi[rsi.length - 1]
 
-  // LONG: Price below -2 SD AND RSI oversold
-  if (distanceSD <= -2 && lastRSI < 35) {
-    // Check for reversal candle (wick rejection, bullish close)
-    const hasRejectionWick = (current.close - current.low) > (current.high - current.low) * 0.6
+  // Check for reversal candle (wick rejection)
+  const hasRejectionWick = (current.close - current.low) > (current.high - current.low) * 0.5
 
-    if (!hasRejectionWick && current.close < current.open) {
-      return null // Wait for reversal confirmation
+  // LONG: Price below -1.5 SD (loosened from -2), RSI helps but isn't required
+  if (distanceSD <= -1.5) {
+    // Need at least ONE confirmation: RSI oversold OR rejection wick OR bearish close
+    const hasRsiConfirmation = lastRSI < 40
+    const hasCandleConfirmation = hasRejectionWick || current.close > current.open
+
+    if (!hasRsiConfirmation && !hasCandleConfirmation) {
+      return null // Need at least one confirmation
     }
 
-    let qualityScore = 50
-    if (Math.abs(distanceSD) > 2.5) qualityScore += 15
-    if (lastRSI < 25) qualityScore += 10
+    let qualityScore = 45
+    if (Math.abs(distanceSD) > 2) qualityScore += 15
+    if (Math.abs(distanceSD) > 2.5) qualityScore += 10
+    if (lastRSI < 30) qualityScore += 15
     if (regime.current.startsWith('RANGE')) qualityScore += 15
     if (hasRejectionWick) qualityScore += 10
 
@@ -1366,19 +1379,22 @@ export function detectVWAPReversionSignal(
     }
   }
 
-  // SHORT: Price above +2 SD AND RSI overbought
-  if (distanceSD >= 2 && lastRSI > 65) {
-    const hasRejectionWick = (current.high - current.close) > (current.high - current.low) * 0.6
+  // SHORT: Price above +1.5 SD (loosened from +2)
+  if (distanceSD >= 1.5) {
+    const hasRejectionWickShort = (current.high - current.close) > (current.high - current.low) * 0.5
+    const hasRsiConfirmationShort = lastRSI > 60
+    const hasCandleConfirmationShort = hasRejectionWickShort || current.close < current.open
 
-    if (!hasRejectionWick && current.close > current.open) {
-      return null
+    if (!hasRsiConfirmationShort && !hasCandleConfirmationShort) {
+      return null // Need at least one confirmation
     }
 
-    let qualityScore = 50
-    if (Math.abs(distanceSD) > 2.5) qualityScore += 15
-    if (lastRSI > 75) qualityScore += 10
+    let qualityScore = 45
+    if (Math.abs(distanceSD) > 2) qualityScore += 15
+    if (Math.abs(distanceSD) > 2.5) qualityScore += 10
+    if (lastRSI > 70) qualityScore += 15
     if (regime.current.startsWith('RANGE')) qualityScore += 15
-    if (hasRejectionWick) qualityScore += 10
+    if (hasRejectionWickShort) qualityScore += 10
 
     return {
       type: 'VWAP_DEVIATION',
@@ -1591,8 +1607,10 @@ export function detectORBSignal(
 
   // Check current session time
   const session = getCurrentSessionType()
-  if (session !== 'NY_OPEN' && session !== 'NY_MORNING') {
-    return null // ORB only valid until ~12pm
+  // Extended ORB validity: Now includes NY_AFTERNOON (until 4pm)
+  // ORB setups can work all day if the range holds
+  if (session !== 'NY_OPEN' && session !== 'NY_MORNING' && session !== 'NY_AFTERNOON') {
+    return null // ORB not valid outside RTH
   }
 
   // Volume confirmation
@@ -1712,14 +1730,14 @@ export function detectKillZoneReversalSignal(
 ): StrategySignal | null {
   const session = getCurrentSessionType()
 
-  // Only trade in Kill Zones
-  const isKillZone = session === 'NY_OPEN' || session === 'NY_AFTERNOON'
+  // Extended Kill Zones: Now includes NY_MORNING (was too restrictive)
+  const isKillZone = session === 'NY_OPEN' || session === 'NY_MORNING' || session === 'NY_AFTERNOON'
   if (!isKillZone) {
     return null
   }
 
-  // Skip strong trends
-  if (regime.trendStrength > 70) {
+  // Skip strong trends - raised threshold from 70 to 80
+  if (regime.trendStrength > 80) {
     return null
   }
 
@@ -1727,28 +1745,31 @@ export function detectKillZoneReversalSignal(
   const atr = calculateATR(candles.slice(-20), 14)
   const structure = analyzeSwingStructure(candles.slice(-30))
 
-  // Look for liquidity event prior (required)
+  // Look for liquidity event prior (adds quality but not required)
+  // Changed: sweep is now OPTIONAL - adds confidence but doesn't block entry
   const pools = detectLiquidityPools(candles.slice(-20))
   const recentSweep = pools.some(p => p.swept)
+  const sweepBonus = recentSweep ? 20 : 0  // Bonus for sweep, not requirement
 
-  if (!recentSweep) {
-    return null // Need liquidity event first
-  }
-
-  // BULLISH REVERSAL: Sweep of lows + structure shift
+  // BULLISH REVERSAL: Structure shift during kill zone (sweep adds quality)
+  // Changed: sweep is optional - reversal candle is the key requirement
   const sweptSellSide = pools.find(p => p.type === 'SELL_SIDE' && p.swept)
-  if (sweptSellSide && current.close > current.open &&
-      current.close > candles[candles.length - 2].high) {
+  const sellSidePool = pools.find(p => p.type === 'SELL_SIDE') || { price: structure.lastSwingLow, strength: 1 }
 
-    let qualityScore = 55
+  // Check for bullish reversal candle during kill zone
+  if (current.close > current.open && current.close > candles[candles.length - 2].high) {
+    let qualityScore = 45 + sweepBonus  // Use sweepBonus calculated above
     if (htfBias !== 'BEARISH') qualityScore += 15
-    if (sweptSellSide.strength >= 3) qualityScore += 10
+    if (sweptSellSide && sweptSellSide.strength >= 3) qualityScore += 10
     if (session === 'NY_OPEN') qualityScore += 10 // Best kill zone
+
+    // Use swept price if available, otherwise use structure
+    const stopPrice = sweptSellSide ? sweptSellSide.price - atr * 0.5 : sellSidePool.price - atr * 0.5
 
     return {
       type: 'KILLZONE_REVERSAL',
       direction: 'LONG',
-      confidence: 75,
+      confidence: sweptSellSide ? 75 : 65,  // Higher confidence with sweep
       qualityScore,
       entry: {
         price: current.close,
@@ -1757,7 +1778,7 @@ export function detectKillZoneReversalSignal(
         maxSlippage: atr * 0.4
       },
       stopLoss: {
-        price: sweptSellSide.price - atr * 0.5,
+        price: stopPrice,
         type: 'STRUCTURE',
         breakEvenTrigger: atr * 2
       },
@@ -1766,7 +1787,7 @@ export function detectKillZoneReversalSignal(
         { price: current.close + atr * 4, percentToExit: 50, type: 'ATR_MULTIPLE' }
       ],
       invalidation: [
-        { type: 'PRICE_LEVEL', level: sweptSellSide.price - atr * 0.3, description: 'New low' },
+        { type: 'PRICE_LEVEL', level: stopPrice + atr * 0.2, description: 'New low' },
         { type: 'TIME', description: 'No move within kill zone window' }
       ],
       timeLimit: 60,
@@ -1782,20 +1803,25 @@ export function detectKillZoneReversalSignal(
     }
   }
 
-  // BEARISH REVERSAL: Sweep of highs + structure shift
+  // BEARISH REVERSAL: Structure shift during kill zone (sweep adds quality)
+  // Changed: sweep is optional - reversal candle is the key requirement
   const sweptBuySide = pools.find(p => p.type === 'BUY_SIDE' && p.swept)
-  if (sweptBuySide && current.close < current.open &&
-      current.close < candles[candles.length - 2].low) {
+  const buySidePool = pools.find(p => p.type === 'BUY_SIDE') || { price: structure.lastSwingHigh, strength: 1 }
 
-    let qualityScore = 55
+  // Check for bearish reversal candle during kill zone
+  if (current.close < current.open && current.close < candles[candles.length - 2].low) {
+    let qualityScore = 45 + sweepBonus  // Use sweepBonus calculated above
     if (htfBias !== 'BULLISH') qualityScore += 15
-    if (sweptBuySide.strength >= 3) qualityScore += 10
+    if (sweptBuySide && sweptBuySide.strength >= 3) qualityScore += 10
     if (session === 'NY_OPEN') qualityScore += 10
+
+    // Use swept price if available, otherwise use structure
+    const stopPrice = sweptBuySide ? sweptBuySide.price + atr * 0.5 : buySidePool.price + atr * 0.5
 
     return {
       type: 'KILLZONE_REVERSAL',
       direction: 'SHORT',
-      confidence: 75,
+      confidence: sweptBuySide ? 75 : 65,  // Higher confidence with sweep
       qualityScore,
       entry: {
         price: current.close,
@@ -1804,7 +1830,7 @@ export function detectKillZoneReversalSignal(
         maxSlippage: atr * 0.4
       },
       stopLoss: {
-        price: sweptBuySide.price + atr * 0.5,
+        price: stopPrice,
         type: 'STRUCTURE',
         breakEvenTrigger: atr * 2
       },
@@ -1813,7 +1839,7 @@ export function detectKillZoneReversalSignal(
         { price: current.close - atr * 4, percentToExit: 50, type: 'ATR_MULTIPLE' }
       ],
       invalidation: [
-        { type: 'PRICE_LEVEL', level: sweptBuySide.price + atr * 0.3, description: 'New high' }
+        { type: 'PRICE_LEVEL', level: stopPrice - atr * 0.2, description: 'New high' }
       ],
       timeLimit: 60,
       metadata: {

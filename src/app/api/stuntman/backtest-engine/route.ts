@@ -140,14 +140,16 @@ const TRADING_COSTS = {
   exchangeFeePerSide: 1.28,     // CME E-mini ES
   nfaFee: 0.02,                 // NFA regulatory fee
 
-  // Slippage simulation - REALISTIC for ES futures
-  baseSlippageTicks: 0.25,      // Minimum slippage (1 tick = $12.50 for ES)
-  volatilitySlippageMultiplier: 0.1,  // REDUCED: ES is highly liquid, minimal slippage
+  // Slippage simulation - REALISTIC for ES futures (INCREASED for 1:1 with live)
+  // Live reality: 0.5-2 ticks typical, 3-5 during fast moves, 5+ during news
+  baseSlippageTicks: 0.5,       // Minimum slippage (1 tick = $12.50 for ES)
+  volatilitySlippageMultiplier: 0.4,  // Higher multiplier for volatile periods
+  maxSlippageTicks: 4,          // Cap at 4 ticks (can spike higher during news)
 
-  // Latency simulation (milliseconds)
-  minLatencyMs: 50,             // Best case latency
-  maxLatencyMs: 200,            // Worst case latency
-  avgLatencyMs: 100,            // Average latency
+  // Latency simulation (milliseconds) - INCREASED for realism
+  minLatencyMs: 80,             // Best case latency with market order
+  maxLatencyMs: 400,            // Worst case latency during fast markets
+  avgLatencyMs: 150,            // Average latency (not 50ms like algo firms)
 
   // ES Contract specifications
   tickSize: 0.25,               // ES tick size
@@ -174,11 +176,12 @@ function calculateTradeCosts(
   // Exchange fees (both sides)
   const exchangeFees = (TRADING_COSTS.exchangeFeePerSide + TRADING_COSTS.nfaFee) * 2 * contracts
 
-  // Slippage calculation - REALISTIC for ES (0.25-1 tick typical)
-  // ES is one of the most liquid futures, slippage is minimal during RTH
-  const volatilityFactor = Math.max(1, Math.min(2, volatility / 0.02))  // Cap at 2x
-  const slippageTicks = Math.min(1, TRADING_COSTS.baseSlippageTicks +
-    (TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * Math.random()))
+  // Slippage calculation - REALISTIC for ES (0.5-4 ticks typical, can be higher during news)
+  // ES is liquid but retail traders still face slippage, especially during fast moves
+  const volatilityFactor = Math.max(1, Math.min(3, volatility / 0.015))  // Up to 3x during vol
+  const baseSlip = TRADING_COSTS.baseSlippageTicks + (Math.random() * 0.5)  // 0.5-1 tick base
+  const volSlip = TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * (0.5 + Math.random())
+  const slippageTicks = Math.min(TRADING_COSTS.maxSlippageTicks, baseSlip + volSlip)
   const slippage = slippageTicks * TRADING_COSTS.tickValue * contracts * 2  // Entry and exit
 
   const totalCosts = commission + exchangeFees + slippage
@@ -203,11 +206,12 @@ function simulateLatency(): number {
   return Math.max(TRADING_COSTS.minLatencyMs, Math.min(TRADING_COSTS.maxLatencyMs, latency))
 }
 
-// Apply slippage to price
+// Apply slippage to price - REALISTIC for retail traders
 function applySlippage(price: number, direction: 'LONG' | 'SHORT', isEntry: boolean, volatility: number): number {
-  const volatilityFactor = Math.max(1, volatility / 0.01)
-  const slippageTicks = TRADING_COSTS.baseSlippageTicks +
-    (TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * Math.random())
+  const volatilityFactor = Math.max(1, Math.min(3, volatility / 0.012))  // Up to 3x
+  const baseSlip = TRADING_COSTS.baseSlippageTicks + (Math.random() * 0.5)
+  const volSlip = TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * Math.random()
+  const slippageTicks = Math.min(TRADING_COSTS.maxSlippageTicks, baseSlip + volSlip)
   const slippagePoints = slippageTicks * TRADING_COSTS.tickSize
 
   // Slippage always works against you
@@ -350,15 +354,30 @@ function simulateOrderRejection(candle: Candle, recentCandles: Candle[], contrac
   return { rejected: false, reason: '' }
 }
 
-// Partial fill simulation
+// Partial fill simulation - REALISTIC for retail traders
 function simulateOrderFill(candle: Candle, recentCandles: Candle[], contracts: number): { fillPercentage: number; contractsFilled: number } {
   const avgVolume = recentCandles.slice(-20).reduce((s, c) => s + c.volume, 0) / Math.max(1, recentCandles.slice(-20).length)
   const volumeRatio = avgVolume > 0 ? candle.volume / avgVolume : 1
 
-  let fillPercentage = 100
-  if (volumeRatio < 0.3 && contracts > 3) fillPercentage = 60 + Math.random() * 30
-  else if (volumeRatio < 0.5 && contracts > 5) fillPercentage = 75 + Math.random() * 20
-  else if (contracts > 10) fillPercentage = 85 + Math.random() * 15
+  // Base fill rate is 95%, not 100% - retail orders aren't always first in queue
+  let fillPercentage = 95 + Math.random() * 5  // 95-100% base
+
+  // Low volume periods = worse fills
+  if (volumeRatio < 0.3) fillPercentage *= 0.75  // Very low volume
+  else if (volumeRatio < 0.5) fillPercentage *= 0.85  // Low volume
+  else if (volumeRatio < 0.8) fillPercentage *= 0.92  // Below average
+
+  // Large orders get worse fills
+  if (contracts > 3) fillPercentage *= 0.95
+  if (contracts > 5) fillPercentage *= 0.90
+  if (contracts > 10) fillPercentage *= 0.85
+
+  // Time of day impact
+  const timeOfDay = getTimeOfDay(candle.time)
+  if (timeOfDay === 'RTH_OPEN') fillPercentage *= 0.90  // Opening = worse fills
+  if (timeOfDay === 'PRE' || timeOfDay === 'POST') fillPercentage *= 0.80  // Extended hours
+
+  fillPercentage = Math.max(50, Math.min(100, fillPercentage))  // Cap between 50-100%
 
   return { fillPercentage, contractsFilled: Math.max(1, Math.floor(contracts * fillPercentage / 100)) }
 }

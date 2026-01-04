@@ -64,6 +64,74 @@ import {
   getAdaptiveStats,
   AdaptiveSignal,
 } from '@/lib/stuntman/adaptive-ml'
+import {
+  classifyMarketRegime,
+  calculatePropFirmRisk,
+} from '@/lib/stuntman/world-class-strategies'
+
+// =============================================================================
+// DYNAMIC REGIME-ADAPTIVE STRATEGY SYSTEM (from paper trading)
+// =============================================================================
+
+const DYNAMIC_STRATEGY_SYSTEM = {
+  enabled: true,
+
+  // REGIME -> STRATEGY MAPPING (matching MarketRegimeType from world-class-strategies)
+  regimeStrategies: {
+    'TREND_STRONG_UP': ['BOS_CONTINUATION', 'TREND_PULLBACK', 'ORB_BREAKOUT'],
+    'TREND_WEAK_UP': ['BOS_CONTINUATION', 'TREND_PULLBACK', 'ORB_BREAKOUT', 'VWAP_DEVIATION'],
+    'TREND_STRONG_DOWN': ['BOS_CONTINUATION', 'TREND_PULLBACK', 'ORB_BREAKOUT'],
+    'TREND_WEAK_DOWN': ['BOS_CONTINUATION', 'TREND_PULLBACK', 'ORB_BREAKOUT', 'VWAP_DEVIATION'],
+    'RANGE_TIGHT': ['VWAP_DEVIATION', 'RANGE_FADE', 'SESSION_REVERSION'],
+    'RANGE_WIDE': ['VWAP_DEVIATION', 'RANGE_FADE', 'SESSION_REVERSION', 'LIQUIDITY_SWEEP'],
+    'HIGH_VOLATILITY': ['VOLATILITY_BREAKOUT', 'FAILED_BREAKOUT', 'KILLZONE_REVERSAL'],
+    'LOW_VOLATILITY': ['RANGE_FADE', 'VWAP_DEVIATION'],
+    'NEWS_DRIVEN': ['VOLATILITY_BREAKOUT', 'FAILED_BREAKOUT'],  // Be cautious
+    'ILLIQUID': [],  // Don't trade in illiquid markets
+  } as Record<string, string[]>,
+
+  // SESSION BOOSTS
+  sessionBoosts: {
+    'RTH_OPEN': { boost: ['ORB_BREAKOUT', 'VOLATILITY_BREAKOUT', 'LIQUIDITY_SWEEP'], multiplier: 1.5 },
+    'RTH_MID': { boost: ['VWAP_DEVIATION', 'RANGE_FADE', 'VP_VAH_REVERSAL'], multiplier: 1.3 },
+    'RTH_AFTERNOON': { boost: ['BOS_CONTINUATION', 'TREND_PULLBACK', 'OB_FVG_CONFLUENCE'], multiplier: 1.4 },
+    'RTH_CLOSE': { boost: ['BOS_CONTINUATION', 'VOLATILITY_BREAKOUT'], multiplier: 1.2 },
+  } as Record<string, { boost: string[]; multiplier: number }>,
+
+  // CONFLUENCE REQUIREMENTS
+  confluence: {
+    minStrategiesAgreeing: 2,
+    minConfidenceAverage: 70,
+  },
+
+  // APEX 150K SETTINGS
+  apex150k: {
+    dailyTarget: 1285,
+    dailyMaxLoss: 600,
+    minRiskReward: 2.0,
+    minWinProbability: 0.50,
+    maxTradesPerDay: 6,
+  },
+}
+
+// PROFIT CONFIG - Strict requirements for live trading
+const LIVE_PROFIT_CONFIG = {
+  dailyMaxLoss: 800,
+  maxLossPerTrade: 300,
+  maxLossPerTradePoints: 6,
+  maxConsecutiveLosses: 2,
+  minConfluenceScore: 70,  // Higher for live trading
+  minConfidence: 80,
+  minRiskReward: 2.5,
+  maxTradesPerDay: 5,
+  minTimeBetweenTrades: 20,
+}
+
+// Track consecutive losses for live trading
+let liveConsecutiveLosses = 0
+let liveDailyPnL = 0
+let liveDailyTradeCount = 0
+let liveLastTradeTime = 0
 
 // =============================================================================
 // TYPES
@@ -707,129 +775,166 @@ async function runAutoTrader(): Promise<void> {
   console.log(`[MKT] Volatility: ${(conditions.volatility * 100).toFixed(2)}% | Toxicity: ${(conditions.toxicity * 100).toFixed(1)}%`)
 
   // ==========================================================================
-  // STEP 7: CONFLUENCE SCORING (ALL SIGNALS COMBINED)
+  // STEP 7: WORLD-CLASS REGIME DETECTION (from paper trading system)
   // ==========================================================================
-  console.log('[STEP 7] Calculating confluence...')
+  console.log('[STEP 7] Detecting market regime...')
 
-  let confluenceScore = 0
+  const regimeAnalysis = classifyMarketRegime(candles1m, 100)
+  const currentRegime = regimeAnalysis.current
+  const regimeTrend = regimeAnalysis.trendStrength
+
+  console.log(`[REGIME] ${currentRegime} | Trend: ${regimeTrend.toFixed(0)}% | Volatility: ${regimeAnalysis.volatilityPercentile.toFixed(0)}%`)
+
+  // Get optimal strategies for current regime
+  const optimalStrategies = DYNAMIC_STRATEGY_SYSTEM.regimeStrategies[currentRegime] ||
+                            DYNAMIC_STRATEGY_SYSTEM.regimeStrategies['UNKNOWN']
+  console.log(`[REGIME] Optimal strategies: ${optimalStrategies.slice(0, 3).join(', ')}`)
+
+  // ==========================================================================
+  // STEP 8: ENHANCED CONFLUENCE SCORING (7-factor system from paper trading)
+  // ==========================================================================
+  console.log('[STEP 8] Calculating enhanced confluence...')
+
   const factors: string[] = []
-
-  // Normalize ML direction
   const mlDir = mlSignal.direction === 'NEUTRAL' ? 'FLAT' : mlSignal.direction
 
-  // 1. ML + Traditional Agreement (30 points)
-  if (mlDir === traditionalSignal.direction && mlDir !== 'FLAT') {
-    confluenceScore += 30
-    factors.push(`ML+Trad agree: ${mlDir}`)
-  }
+  // Calculate RSI for momentum check (approximation from candles)
+  const closes = candles1m.slice(-14).map(c => c.close)
+  const gains = closes.slice(1).map((c, i) => Math.max(0, c - closes[i]))
+  const losses = closes.slice(1).map((c, i) => Math.max(0, closes[i] - c))
+  const avgGain = gains.reduce((s, g) => s + g, 0) / 14
+  const avgLoss = losses.reduce((s, l) => s + l, 0) / 14
+  const rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
 
-  // 2. Order Flow Agreement (25 points)
-  if (orderFlowSignal.direction !== 'NEUTRAL') {
-    if ((orderFlowSignal.direction === 'LONG' && mlDir === 'LONG') ||
-        (orderFlowSignal.direction === 'SHORT' && mlDir === 'SHORT')) {
-      confluenceScore += 25
-      factors.push(`Order flow confirms: ${orderFlowSignal.direction}`)
+  // Calculate enhanced confluence score (100 points max)
+  let signalCount = 0
+  let totalConfidence = 0
+
+  // Count agreeing signals
+  if (mlDir !== 'FLAT') signalCount++
+  if (traditionalSignal.direction === mlDir && traditionalSignal.direction !== 'FLAT') signalCount++
+  if (orderFlowSignal.direction === mlDir) signalCount++
+  if ((mlDir === 'LONG' && delta.imbalanceRatio > 0.1) || (mlDir === 'SHORT' && delta.imbalanceRatio < -0.1)) signalCount++
+
+  // 1. SIGNAL COUNT SCORE (20 points max)
+  const signalCountScore = Math.min(20, signalCount * 5 + 5)
+  factors.push(`Signals: ${signalCount} (${signalCountScore}pts)`)
+
+  // 2. CONFIDENCE SCORE (25 points max)
+  totalConfidence = (mlSignal.confidence * 100 + traditionalSignal.confidence) / 2
+  const confidenceScore = (totalConfidence / 100) * 25
+  factors.push(`Confidence: ${totalConfidence.toFixed(0)}% (${confidenceScore.toFixed(0)}pts)`)
+
+  // 3. REGIME ALIGNMENT SCORE (15 points max)
+  let regimeScore = 0
+  if (currentRegime.includes('TREND') && mlDir !== 'FLAT') {
+    if ((currentRegime.includes('UP') && mlDir === 'LONG') ||
+        (currentRegime.includes('DOWN') && mlDir === 'SHORT')) {
+      regimeScore = 15
+      factors.push(`Regime aligned: ${currentRegime} (15pts)`)
     }
+  } else if (currentRegime === 'RANGE_TIGHT' || currentRegime === 'RANGE_WIDE') {
+    regimeScore = 10 // Mean reversion still works
+    factors.push(`Range regime (10pts)`)
   }
 
-  // 3. ML Confidence > 70% (15 points)
-  if (mlSignal.confidence > 0.70) {
-    confluenceScore += 15
-    factors.push(`ML conf: ${(mlSignal.confidence * 100).toFixed(0)}%`)
+  // 4. SESSION ALIGNMENT SCORE (10 points max)
+  const session = getCurrentSession()
+  let sessionScore = 5 // Base score
+  const sessionBoost = DYNAMIC_STRATEGY_SYSTEM.sessionBoosts[session]
+  if (sessionBoost) {
+    sessionScore = 10
+    factors.push(`Session boost: ${session} (10pts)`)
   }
 
-  // 4. VPIN Safe (10 points) or Danger (-15 points)
+  // 5. MOMENTUM CONFIRMATION (15 points max)
+  let momentumScore = 0
+  if (mlDir === 'LONG') {
+    if (rsi > 40 && rsi < 70) momentumScore += 8
+    if (delta.imbalanceRatio > 0) momentumScore += 7
+  } else if (mlDir === 'SHORT') {
+    if (rsi < 60 && rsi > 30) momentumScore += 8
+    if (delta.imbalanceRatio < 0) momentumScore += 7
+  }
+  if (momentumScore > 0) factors.push(`Momentum: RSI=${rsi.toFixed(0)} (${momentumScore}pts)`)
+
+  // 6. ORDER FLOW SCORE (10 points max)
+  let orderFlowScore = 0
   if (vpin.signal === 'SAFE') {
-    confluenceScore += 10
-    factors.push('VPIN safe')
+    orderFlowScore += 5
+    factors.push('VPIN safe (5pts)')
   } else if (vpin.signal === 'DANGER') {
-    confluenceScore -= 15
-    factors.push('VPIN DANGER')
+    orderFlowScore -= 10
+    factors.push('VPIN DANGER (-10pts)')
   }
-
-  // 5. Delta Confirmation (15 points)
-  if ((mlDir === 'LONG' && delta.imbalanceRatio > 0.2) ||
-      (mlDir === 'SHORT' && delta.imbalanceRatio < -0.2)) {
-    confluenceScore += 15
-    factors.push(`Delta confirms: ${(delta.imbalanceRatio * 100).toFixed(0)}%`)
-  }
-
-  // 6. Delta Divergence Warning (-10 points)
-  if (delta.deltaDivergence) {
-    confluenceScore -= 10
-    factors.push('Delta divergence!')
-  }
-
-  // 7. Large Order Detection (20 points)
   if (largeOrder.detected) {
-    if ((largeOrder.side === 'BUY' && mlDir === 'LONG') ||
-        (largeOrder.side === 'SELL' && mlDir === 'SHORT')) {
-      confluenceScore += 20
-      factors.push(`Large ${largeOrder.side} supports`)
-    } else if ((largeOrder.side === 'BUY' && mlDir === 'SHORT') ||
-               (largeOrder.side === 'SELL' && mlDir === 'LONG')) {
-      confluenceScore -= 15
-      factors.push(`Large ${largeOrder.side} against!`)
+    if ((largeOrder.side === 'BUY' && mlDir === 'LONG') || (largeOrder.side === 'SELL' && mlDir === 'SHORT')) {
+      orderFlowScore += 5
+      factors.push(`Large ${largeOrder.side} supports (5pts)`)
     }
   }
 
-  // 8. Regime Alignment (15 points)
-  const regime = mlSignal.regime
-  if (regime) {
-    if ((mlDir === 'LONG' && regime.type === 'TRENDING_UP') ||
-        (mlDir === 'SHORT' && regime.type === 'TRENDING_DOWN')) {
-      confluenceScore += 15
-      factors.push(`Regime: ${regime.type}`)
-    } else if (regime.type === 'VOLATILE') {
-      confluenceScore -= 5
-      factors.push('Volatile regime')
-    }
-  }
+  // 7. PATTERN QUALITY SCORE (5 points max)
+  const patterns = mlSignal.patterns.length
+  const patternScore = Math.min(5, patterns * 2)
+  if (patterns > 0) factors.push(`Patterns: ${patterns} (${patternScore}pts)`)
 
-  // 9. Pattern Detection (5 points each, max 15)
-  const bullishPatterns = mlSignal.patterns.filter(p => p.expectedMove > 0).length
-  const bearishPatterns = mlSignal.patterns.filter(p => p.expectedMove < 0).length
-  if (mlDir === 'LONG' && bullishPatterns > 0) {
-    confluenceScore += Math.min(15, bullishPatterns * 5)
-    factors.push(`${bullishPatterns} bullish patterns`)
-  }
-  if (mlDir === 'SHORT' && bearishPatterns > 0) {
-    confluenceScore += Math.min(15, bearishPatterns * 5)
-    factors.push(`${bearishPatterns} bearish patterns`)
-  }
+  // TOTAL CONFLUENCE SCORE
+  let confluenceScore = signalCountScore + confidenceScore + regimeScore + sessionScore + momentumScore + orderFlowScore + patternScore
 
-  // 10. Traditional Signal Confidence (15 points)
-  if (traditionalSignal.confidence > 70) {
-    confluenceScore += 15
-    factors.push(`Trad conf: ${traditionalSignal.confidence.toFixed(0)}%`)
-  }
+  // CONSECUTIVE LOSS PENALTY - Require higher confluence after losses
+  const requiredConfluence = liveConsecutiveLosses >= LIVE_PROFIT_CONFIG.maxConsecutiveLosses
+    ? LIVE_PROFIT_CONFIG.minConfluenceScore + 10  // +10 after 2+ losses
+    : LIVE_PROFIT_CONFIG.minConfluenceScore
+
+  // TIME BETWEEN TRADES CHECK
+  const minutesSinceLastTrade = (Date.now() - liveLastTradeTime) / 60000
+  const canTradeTime = minutesSinceLastTrade >= LIVE_PROFIT_CONFIG.minTimeBetweenTrades ||
+                       liveLastTradeTime === 0
+
+  // DAILY TRADE COUNT CHECK
+  const canTradeDailyLimit = liveDailyTradeCount < LIVE_PROFIT_CONFIG.maxTradesPerDay
 
   state.signalConfluence = confluenceScore
   state.confluenceFactors = factors
 
-  console.log(`[CONFLUENCE] Score: ${confluenceScore} | Factors: ${factors.length}`)
+  console.log(`[CONFLUENCE] Score: ${confluenceScore.toFixed(0)} / 100 (need ${requiredConfluence})`)
+  console.log(`[RISK] Consecutive losses: ${liveConsecutiveLosses} | Daily trades: ${liveDailyTradeCount}/${LIVE_PROFIT_CONFIG.maxTradesPerDay}`)
+  console.log(`[TIME] Minutes since last trade: ${minutesSinceLastTrade.toFixed(0)} (need ${LIVE_PROFIT_CONFIG.minTimeBetweenTrades})`)
   factors.forEach(f => console.log(`  - ${f}`))
 
   // ==========================================================================
-  // STEP 8: DETERMINE FINAL DIRECTION
+  // STEP 9: DETERMINE FINAL DIRECTION (with strict live trading requirements)
   // ==========================================================================
-  console.log('[STEP 8] Determining final direction...')
+  console.log('[STEP 9] Determining final direction...')
 
   let finalDirection: 'LONG' | 'SHORT' | 'FLAT' = 'FLAT'
   let finalConfidence = 0
 
-  // Require minimum confluence of 50
-  if (confluenceScore >= 50) {
-    if (mlSignal.confidence > 0.60 && mlSignal.direction !== 'NEUTRAL') {
+  // LIVE TRADING GATE: All conditions must pass
+  const passesConfluence = confluenceScore >= requiredConfluence
+  const passesSignalCount = signalCount >= DYNAMIC_STRATEGY_SYSTEM.confluence.minStrategiesAgreeing
+  const passesMomentum = momentumScore >= 5
+  const passesRiskCheck = canTradeDailyLimit && canTradeTime
+
+  if (passesConfluence && passesSignalCount && passesMomentum && passesRiskCheck) {
+    if (mlSignal.confidence > 0.70 && mlSignal.direction !== 'NEUTRAL') {
       finalDirection = mlSignal.direction as 'LONG' | 'SHORT'
       finalConfidence = Math.min(95, (mlSignal.confidence * 100 + confluenceScore) / 2)
-    } else if (traditionalSignal.confidence > 65 && traditionalSignal.direction !== 'FLAT') {
+    } else if (traditionalSignal.confidence > 75 && traditionalSignal.direction !== 'FLAT') {
       finalDirection = traditionalSignal.direction as 'LONG' | 'SHORT'
       finalConfidence = Math.min(90, (traditionalSignal.confidence + confluenceScore) / 2)
     }
+  } else {
+    // Log why we're not trading
+    if (!passesConfluence) console.log(`[BLOCKED] Confluence ${confluenceScore.toFixed(0)} < ${requiredConfluence}`)
+    if (!passesSignalCount) console.log(`[BLOCKED] Signal count ${signalCount} < 2`)
+    if (!passesMomentum) console.log(`[BLOCKED] Momentum ${momentumScore} < 5`)
+    if (!canTradeDailyLimit) console.log(`[BLOCKED] Daily limit reached`)
+    if (!canTradeTime) console.log(`[BLOCKED] Need ${(LIVE_PROFIT_CONFIG.minTimeBetweenTrades - minutesSinceLastTrade).toFixed(0)} more minutes`)
   }
 
-  console.log(`[FINAL] Direction: ${finalDirection} | Confidence: ${finalConfidence.toFixed(0)}%`)
+  console.log(`[FINAL] Direction: ${finalDirection} | Confidence: ${finalConfidence.toFixed(0)}% | Regime: ${currentRegime}`)
 
   // ==========================================================================
   // STEP 9: POSITION MANAGEMENT
@@ -1071,14 +1176,30 @@ function recordTradeResult(exitPrice: number, pnl: number, slippage: number, rea
   state.todayTrades.push(trade)
   state.todayPnL += pnl
   state.totalTrades++
+
+  // CONSECUTIVE LOSS TRACKING - For dynamic risk management
   if (pnl > 0) {
     state.wins++
+    liveConsecutiveLosses = 0  // Reset on win
     if (state.currentBalance + pnl > state.highWaterMark) {
       state.highWaterMark = state.currentBalance + pnl
     }
   } else {
     state.losses++
+    liveConsecutiveLosses++  // Increment on loss
+    console.log(`[RISK] Consecutive losses: ${liveConsecutiveLosses}/${LIVE_PROFIT_CONFIG.maxConsecutiveLosses}`)
+
+    // If max consecutive losses hit, require cooling period
+    if (liveConsecutiveLosses >= LIVE_PROFIT_CONFIG.maxConsecutiveLosses) {
+      console.log(`[RISK] MAX CONSECUTIVE LOSSES HIT - Entering cooling period`)
+    }
   }
+
+  // Update live daily tracking
+  liveDailyPnL += pnl
+  liveDailyTradeCount++
+  liveLastTradeTime = Date.now()
+
   state.currentBalance += pnl
   state.position = null
 

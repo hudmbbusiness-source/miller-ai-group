@@ -2170,6 +2170,99 @@ export function generateMasterSignal(
 }
 
 // =============================================================================
+// GENERATE ALL SIGNALS - Returns ALL valid strategy signals, not just the best
+// Use this for confluence scoring across multiple strategies
+// =============================================================================
+
+export function generateAllWorldClassSignals(
+  candles1m: Candle[],
+  candles5m: Candle[],
+  candles15m: Candle[],
+  orbData: { high: number; low: number; formed: boolean },
+  sessionData: { asia: { high: number; low: number }; london: { high: number; low: number }; ny: { high: number; low: number } },
+  vwapData: { vwap: number; stdDev: number },
+  propFirmRisk: PropFirmRiskState
+): { signals: Array<{ signal: StrategySignal; quality: TradeQualityScore }>; regime: RegimeAnalysis; reason: string } {
+
+  // PROP FIRM CHECK FIRST
+  if (!propFirmRisk.canTrade) {
+    return { signals: [], regime: classifyMarketRegime(candles1m), reason: propFirmRisk.recommendation }
+  }
+
+  // Classify regime
+  const regime = classifyMarketRegime(candles1m)
+
+  // NO TRADE regimes - still return regime info for debugging
+  if (regime.tradingRecommendation === 'NO_TRADE') {
+    return { signals: [], regime, reason: `No trade: ${regime.current} regime` }
+  }
+
+  // Determine HTF bias from 15m
+  const htfBias = determineHTFBias(candles15m)
+
+  // Collect ALL valid signals
+  const allSignals: StrategySignal[] = []
+
+  // Try each strategy - collect ALL that trigger
+  const bosSignal = detectBOSSignal(candles1m, regime, htfBias)
+  if (bosSignal) allSignals.push(bosSignal)
+
+  const chochSignal = detectCHoCHSignal(candles1m, regime, htfBias)
+  if (chochSignal) allSignals.push(chochSignal)
+
+  const failedBreakout = detectFailedBreakoutSignal(candles1m, regime, htfBias)
+  if (failedBreakout) allSignals.push(failedBreakout)
+
+  const liquiditySweep = detectLiquiditySweepSignal(candles1m, regime, htfBias)
+  if (liquiditySweep) allSignals.push(liquiditySweep)
+
+  const sessionReversion = detectSessionReversionSignal(
+    candles1m, regime,
+    { asia: sessionData.asia.high, london: sessionData.london.high, ny: sessionData.ny.high },
+    { asia: sessionData.asia.low, london: sessionData.london.low, ny: sessionData.ny.low }
+  )
+  if (sessionReversion) allSignals.push(sessionReversion)
+
+  const trendPullback = detectTrendPullbackSignal(candles1m, regime, htfBias)
+  if (trendPullback) allSignals.push(trendPullback)
+
+  const volBreakout = detectVolatilityBreakoutSignal(candles1m, regime, htfBias)
+  if (volBreakout) allSignals.push(volBreakout)
+
+  const vwapReversion = detectVWAPReversionSignal(candles1m, regime, vwapData.vwap, vwapData.stdDev)
+  if (vwapReversion) allSignals.push(vwapReversion)
+
+  const rangeFade = detectRangeFadeSignal(candles1m, regime)
+  if (rangeFade) allSignals.push(rangeFade)
+
+  const orbSignal = detectORBSignal(candles1m, regime, htfBias, orbData.high, orbData.low, orbData.formed)
+  if (orbSignal) allSignals.push(orbSignal)
+
+  const killzoneReversal = detectKillZoneReversalSignal(candles1m, regime, htfBias)
+  if (killzoneReversal) allSignals.push(killzoneReversal)
+
+  // No signals generated
+  if (allSignals.length === 0) {
+    return { signals: [], regime, reason: 'No valid setups found' }
+  }
+
+  // Score each signal - return ALL that meet minimum quality
+  const scoredSignals = allSignals.map(sig => ({
+    signal: sig,
+    quality: calculateTradeQuality(sig, regime, htfBias)
+  })).filter(s => s.quality.recommendation !== 'NO_TRADE')  // Filter out NO_TRADE quality
+
+  // Sort by quality score (best first)
+  scoredSignals.sort((a, b) => b.quality.overall - a.quality.overall)
+
+  return {
+    signals: scoredSignals,
+    regime,
+    reason: `${scoredSignals.length} valid signals from ${allSignals.length} strategies`
+  }
+}
+
+// =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 

@@ -75,6 +75,7 @@ import {
 import {
   classifyMarketRegime as classifyWorldClassRegime,
   generateMasterSignal as generateWorldClassSignal,
+  generateAllWorldClassSignals,  // NEW: Returns ALL valid signals for confluence
   calculateTradeQuality,
   calculatePropFirmRisk,
   StrategySignal,
@@ -1008,6 +1009,216 @@ const PROFIT_CONFIG = {
 
   // STOP LOSS TIGHTENING
   maxStopATRMultiplier: 0.8,   // Even tighter stops: max 0.8 ATR (was 1.0)
+}
+
+// =============================================================================
+// ADAPTIVE CONFLUENCE THRESHOLDS - REGIME-BASED DYNAMIC REQUIREMENTS
+// Same as live trading - thresholds adapt to market conditions
+// =============================================================================
+
+interface RegimeThresholdAdjustment {
+  confluenceAdjust: number      // Add/subtract from base confluence requirement
+  confidenceAdjust: number      // Add/subtract from base confidence requirement
+  riskRewardAdjust: number      // Add/subtract from base R:R requirement
+}
+
+interface SessionThresholdAdjustment {
+  confluenceAdjust: number
+  confidenceAdjust: number
+}
+
+interface AdaptiveConfluenceConfig {
+  baseConfluence: number
+  baseConfidence: number
+  baseRiskReward: number
+  regimeAdjustments: Record<MarketRegimeType, RegimeThresholdAdjustment>
+  simpleRegimeMap: Record<MarketRegime, MarketRegimeType>  // Map simple regime to detailed
+  sessionAdjustments: {
+    RTH_OPEN: SessionThresholdAdjustment
+    RTH_MID: SessionThresholdAdjustment
+    RTH_CLOSE: SessionThresholdAdjustment
+    POWER_HOUR: SessionThresholdAdjustment
+    OVERNIGHT: SessionThresholdAdjustment
+    DEFAULT: SessionThresholdAdjustment
+  }
+  performanceAdjustments: {
+    afterLoss: { confluenceAdd: number, confidenceAdd: number }
+    afterWinStreak: { confluenceReduce: number, confidenceReduce: number }
+    maxConsecutiveLosses: number
+  }
+  timeOfDayAdjustments: {
+    POWER_HOUR: { confluenceReduce: number }     // 3-4 PM - best setups
+    OPENING_HOUR: { confluenceReduce: number }   // 9:30-10:30 - high volatility
+    MID_DAY: { confluenceAdd: number }           // 10:30-2 - lunch chop
+  }
+}
+
+const ADAPTIVE_CONFLUENCE: AdaptiveConfluenceConfig = {
+  // Base thresholds (conservative defaults)
+  baseConfluence: 60,
+  baseConfidence: 70,
+  baseRiskReward: 2.0,
+
+  // Map simple regime types to detailed types
+  simpleRegimeMap: {
+    'TRENDING_UP': 'TREND_STRONG_UP',
+    'TRENDING_DOWN': 'TREND_STRONG_DOWN',
+    'RANGING': 'RANGE_TIGHT',
+    'HIGH_VOLATILITY': 'HIGH_VOLATILITY',
+    'LOW_VOLATILITY': 'LOW_VOLATILITY',
+  },
+
+  // Regime-based threshold adjustments
+  // Negative = EASIER entry (take more trades)
+  // Positive = HARDER entry (be more selective)
+  regimeAdjustments: {
+    // TRENDING MARKETS - BE AGGRESSIVE (easier entries)
+    'TREND_STRONG_UP': { confluenceAdjust: -20, confidenceAdjust: -15, riskRewardAdjust: -0.5 },
+    'TREND_STRONG_DOWN': { confluenceAdjust: -20, confidenceAdjust: -15, riskRewardAdjust: -0.5 },
+    'TREND_WEAK_UP': { confluenceAdjust: -10, confidenceAdjust: -10, riskRewardAdjust: -0.25 },
+    'TREND_WEAK_DOWN': { confluenceAdjust: -10, confidenceAdjust: -10, riskRewardAdjust: -0.25 },
+
+    // RANGING MARKETS - BE SELECTIVE (harder entries)
+    'RANGE_TIGHT': { confluenceAdjust: +15, confidenceAdjust: +15, riskRewardAdjust: +0.5 },
+    'RANGE_WIDE': { confluenceAdjust: +10, confidenceAdjust: +10, riskRewardAdjust: +0.25 },
+
+    // VOLATILITY EXTREMES
+    'HIGH_VOLATILITY': { confluenceAdjust: -5, confidenceAdjust: -5, riskRewardAdjust: +0.25 },  // More trades but higher R:R
+    'LOW_VOLATILITY': { confluenceAdjust: +10, confidenceAdjust: +5, riskRewardAdjust: 0 },     // Fewer trades
+
+    // SPECIAL CONDITIONS
+    'NEWS_DRIVEN': { confluenceAdjust: +20, confidenceAdjust: +20, riskRewardAdjust: +0.5 },   // Very selective
+    'ILLIQUID': { confluenceAdjust: +50, confidenceAdjust: +50, riskRewardAdjust: +1.0 },      // Almost no trades
+  },
+
+  // Session-based adjustments
+  sessionAdjustments: {
+    RTH_OPEN: { confluenceAdjust: -10, confidenceAdjust: -5 },     // 9:30-10:30 - aggressive
+    RTH_MID: { confluenceAdjust: +15, confidenceAdjust: +10 },     // 10:30-2:00 - selective (lunch chop)
+    RTH_CLOSE: { confluenceAdjust: -5, confidenceAdjust: 0 },      // 3:00-4:00 - moderately aggressive
+    POWER_HOUR: { confluenceAdjust: -10, confidenceAdjust: -5 },   // 3:00-4:00 - aggressive
+    OVERNIGHT: { confluenceAdjust: +20, confidenceAdjust: +15 },   // After hours - very selective
+    DEFAULT: { confluenceAdjust: 0, confidenceAdjust: 0 },
+  },
+
+  // Performance-based adjustments
+  performanceAdjustments: {
+    afterLoss: { confluenceAdd: 10, confidenceAdd: 5 },            // +10 confluence, +5% confidence after loss
+    afterWinStreak: { confluenceReduce: 5, confidenceReduce: 3 },  // -5 confluence after 3+ wins
+    maxConsecutiveLosses: 2,                                        // Apply after 2 consecutive losses
+  },
+
+  // Time-of-day fine-tuning
+  timeOfDayAdjustments: {
+    POWER_HOUR: { confluenceReduce: 15 },    // 3-4 PM - best setups, be aggressive
+    OPENING_HOUR: { confluenceReduce: 10 },  // 9:30-10:30 - high volatility, good setups
+    MID_DAY: { confluenceAdd: 20 },          // 10:30-2:00 - lunch chop, be very selective
+  },
+}
+
+// Calculate adaptive thresholds based on regime, session, and performance
+function calculateAdaptiveThresholds(
+  regime: MarketRegime,
+  session: TradingSession,
+  consecutiveLosses: number,
+  consecutiveWins: number,
+  currentHour: number
+): {
+  requiredConfluence: number
+  requiredConfidence: number
+  requiredRiskReward: number
+  adjustmentFactors: {
+    regime: string
+    regimeAdjust: { confluence: number, confidence: number, rr: number }
+    sessionAdjust: { confluence: number, confidence: number }
+    performanceAdjust: { confluence: number, confidence: number }
+    timeAdjust: { confluence: number }
+  }
+} {
+  // Map simple regime to detailed regime type
+  const detailedRegime = ADAPTIVE_CONFLUENCE.simpleRegimeMap[regime] || 'RANGE_TIGHT'
+  const regimeAdj = ADAPTIVE_CONFLUENCE.regimeAdjustments[detailedRegime]
+
+  // Get session adjustment - map TradingSession to our adjustment keys
+  // TradingSession types: OVERNIGHT, PRE_MARKET, OPENING_DRIVE, MID_DAY, AFTERNOON, POWER_HOUR, CLOSE
+  const sessionKey =
+    session === 'POWER_HOUR' || session === 'CLOSE' ? 'POWER_HOUR'
+    : session === 'OPENING_DRIVE' ? 'RTH_OPEN'
+    : session === 'MID_DAY' ? 'RTH_MID'
+    : session === 'AFTERNOON' ? 'RTH_CLOSE'
+    : session === 'OVERNIGHT' || session === 'PRE_MARKET' ? 'OVERNIGHT'
+    : 'DEFAULT'
+  const sessionAdj = ADAPTIVE_CONFLUENCE.sessionAdjustments[sessionKey] || ADAPTIVE_CONFLUENCE.sessionAdjustments.DEFAULT
+
+  // Performance adjustment
+  let perfConfluenceAdj = 0
+  let perfConfidenceAdj = 0
+  if (consecutiveLosses >= ADAPTIVE_CONFLUENCE.performanceAdjustments.maxConsecutiveLosses) {
+    perfConfluenceAdj = ADAPTIVE_CONFLUENCE.performanceAdjustments.afterLoss.confluenceAdd
+    perfConfidenceAdj = ADAPTIVE_CONFLUENCE.performanceAdjustments.afterLoss.confidenceAdd
+  } else if (consecutiveWins >= 3) {
+    perfConfluenceAdj = -ADAPTIVE_CONFLUENCE.performanceAdjustments.afterWinStreak.confluenceReduce
+    perfConfidenceAdj = -ADAPTIVE_CONFLUENCE.performanceAdjustments.afterWinStreak.confidenceReduce
+  }
+
+  // Time-of-day adjustment
+  let timeConfluenceAdj = 0
+  if (currentHour >= 15 && currentHour < 16) {
+    // Power hour 3-4 PM
+    timeConfluenceAdj = -ADAPTIVE_CONFLUENCE.timeOfDayAdjustments.POWER_HOUR.confluenceReduce
+  } else if (currentHour >= 9.5 && currentHour < 10.5) {
+    // Opening hour 9:30-10:30
+    timeConfluenceAdj = -ADAPTIVE_CONFLUENCE.timeOfDayAdjustments.OPENING_HOUR.confluenceReduce
+  } else if (currentHour >= 10.5 && currentHour < 14) {
+    // Mid-day 10:30-2:00
+    timeConfluenceAdj = ADAPTIVE_CONFLUENCE.timeOfDayAdjustments.MID_DAY.confluenceAdd
+  }
+
+  // Calculate final thresholds
+  const requiredConfluence = Math.max(30, Math.min(95,
+    ADAPTIVE_CONFLUENCE.baseConfluence +
+    regimeAdj.confluenceAdjust +
+    sessionAdj.confluenceAdjust +
+    perfConfluenceAdj +
+    timeConfluenceAdj
+  ))
+
+  const requiredConfidence = Math.max(40, Math.min(95,
+    ADAPTIVE_CONFLUENCE.baseConfidence +
+    regimeAdj.confidenceAdjust +
+    sessionAdj.confidenceAdjust +
+    perfConfidenceAdj
+  ))
+
+  const requiredRiskReward = Math.max(1.2, Math.min(4.0,
+    ADAPTIVE_CONFLUENCE.baseRiskReward +
+    regimeAdj.riskRewardAdjust
+  ))
+
+  return {
+    requiredConfluence,
+    requiredConfidence,
+    requiredRiskReward,
+    adjustmentFactors: {
+      regime: detailedRegime,
+      regimeAdjust: {
+        confluence: regimeAdj.confluenceAdjust,
+        confidence: regimeAdj.confidenceAdjust,
+        rr: regimeAdj.riskRewardAdjust
+      },
+      sessionAdjust: {
+        confluence: sessionAdj.confluenceAdjust,
+        confidence: sessionAdj.confidenceAdjust
+      },
+      performanceAdjust: {
+        confluence: perfConfluenceAdj,
+        confidence: perfConfidenceAdj
+      },
+      timeAdjust: {
+        confluence: timeConfluenceAdj
+      },
+    },
+  }
 }
 
 // =============================================================================
@@ -2231,8 +2442,27 @@ async function processCandle(index: number): Promise<void> {
     vwapPrices.reduce((sum, p) => sum + Math.pow(p - currentDayData.vwap, 2), 0) / vwapPrices.length
   ) || indicators.atr
 
-  // Generate world-class signal with all 11 strategies
+  // Generate world-class signal with all 11 strategies (returns best only - legacy)
   const worldClassResult = generateWorldClassSignal(
+    candles1m,
+    candles5m.slice(-50),
+    candles15m.slice(-30),
+    {
+      high: currentDayData.orb.high,
+      low: currentDayData.orb.low === Infinity ? currentPrice - indicators.atr : currentDayData.orb.low,
+      formed: currentDayData.orb.formed
+    },
+    {
+      asia: { high: currentDayData.asia.high || currentPrice, low: currentDayData.asia.low === Infinity ? currentPrice : currentDayData.asia.low },
+      london: { high: currentDayData.london.high || currentPrice, low: currentDayData.london.low === Infinity ? currentPrice : currentDayData.london.low },
+      ny: { high: currentDayData.ny.high || currentPrice, low: currentDayData.ny.low === Infinity ? currentPrice : currentDayData.ny.low },
+    },
+    { vwap: currentDayData.vwap || currentPrice, stdDev: vwapStdDev },
+    propFirmRisk
+  )
+
+  // NEW: Generate ALL valid world-class signals for proper confluence scoring
+  const allWorldClassSignals = generateAllWorldClassSignals(
     candles1m,
     candles5m.slice(-50),
     candles15m.slice(-30),
@@ -2821,10 +3051,11 @@ async function processCandle(index: number): Promise<void> {
       })
     }
 
-    // 2. Collect from World-Class strategies
-    if (worldClassResult.signal && worldClassResult.quality) {
-      const wcSignal = worldClassResult.signal
-      const wcQuality = worldClassResult.quality
+    // 2. Collect from ALL World-Class strategies (not just the best one!)
+    // This enables proper confluence scoring across multiple strategies
+    for (const wcResult of allWorldClassSignals.signals) {
+      const wcSignal = wcResult.signal
+      const wcQuality = wcResult.quality
       const strategy = wcSignal.type
       const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
       const sessionBoost = getSessionBoost(strategy, currentSession)
@@ -2841,6 +3072,12 @@ async function processCandle(index: number): Promise<void> {
         regimeOptimal,
         sessionBoost,
       })
+    }
+
+    // Log how many world-class strategies triggered
+    if (allWorldClassSignals.signals.length > 0) {
+      const wcStrategies = allWorldClassSignals.signals.map(s => s.signal.type).join(', ')
+      // This info is available for debugging: `${allWorldClassSignals.signals.length} WC strategies: ${wcStrategies}`
     }
 
     // 3. Collect from Advanced strategies
@@ -2893,11 +3130,18 @@ async function processCandle(index: number): Promise<void> {
     const longSignals = candidateSignals.filter(s => s.direction === 'LONG' && s.regimeOptimal)
     const shortSignals = candidateSignals.filter(s => s.direction === 'SHORT' && s.regimeOptimal)
 
-    // Calculate comprehensive confluence scores
+    // Calculate comprehensive confluence scores with ADAPTIVE THRESHOLDS
     function calculateConfluenceScore(signals: CandidateSignal[], direction: 'LONG' | 'SHORT'): {
       score: number
       factors: Record<string, number>
       passes: boolean
+      adaptiveThresholds?: {
+        regime: string
+        regimeAdjust: { confluence: number, confidence: number, rr: number }
+        sessionAdjust: { confluence: number, confidence: number }
+        performanceAdjust: { confluence: number, confidence: number }
+        timeAdjust: { confluence: number }
+      }
     } {
       if (signals.length === 0) return { score: 0, factors: {}, passes: false }
 
@@ -2949,25 +3193,41 @@ async function processCandle(index: number): Promise<void> {
       // TOTAL SCORE (100 points max)
       const totalScore = Object.values(factors).reduce((sum, f) => sum + f, 0)
 
-      // PASS CRITERIA:
-      // - Total score >= 60 (out of 100)
-      // - At least 2 agreeing signals
-      // - Average confidence >= 65%
-      // - Momentum score >= 5 (some momentum confirmation)
-      // AFTER CONSECUTIVE LOSSES: Require HIGHER confluence score (70 -> 80)
-      const requiredConfluence = consecutiveLosses >= PROFIT_CONFIG.maxConsecutiveLosses
-        ? PROFIT_CONFIG.minConfluenceScore + 10  // +10 points after losses
-        : PROFIT_CONFIG.minConfluenceScore
-      const requiredConfidence = consecutiveLosses >= PROFIT_CONFIG.maxConsecutiveLosses
-        ? PROFIT_CONFIG.minConfidence + 5  // +5% after losses
-        : PROFIT_CONFIG.minConfidence
+      // PASS CRITERIA WITH ADAPTIVE THRESHOLDS:
+      // Thresholds now DYNAMICALLY adjust based on:
+      // - Market regime (trending = aggressive, ranging = selective)
+      // - Session (power hour = aggressive, mid-day = selective)
+      // - Performance (after losses = selective, win streaks = aggressive)
+      // - Time of day (opening hour = aggressive, lunch = selective)
+
+      // Extract current hour from candle timestamp for time-of-day adjustments
+      const candleDate = new Date(currentCandle.time)
+      const currentHour = candleDate.getHours() + candleDate.getMinutes() / 60
+
+      // Calculate DYNAMIC thresholds based on regime, session, and performance
+      const adaptiveThresholds = calculateAdaptiveThresholds(
+        regime,
+        session,
+        consecutiveLosses,
+        evalState.consecutiveWins,
+        currentHour
+      )
+
+      // Use ADAPTIVE thresholds instead of static PROFIT_CONFIG values
+      const requiredConfluence = adaptiveThresholds.requiredConfluence
+      const requiredConfidence = adaptiveThresholds.requiredConfidence
 
       const passes = totalScore >= requiredConfluence &&
                      signals.length >= DYNAMIC_STRATEGY_SYSTEM.confluence.minStrategiesAgreeing &&
                      avgConfidence >= requiredConfidence &&
                      momentumScore >= 5
 
-      return { score: totalScore, factors, passes }
+      return {
+        score: totalScore,
+        factors,
+        passes,
+        adaptiveThresholds: adaptiveThresholds.adjustmentFactors  // Include for debugging
+      }
     }
 
     const longConfluenceResult = calculateConfluenceScore(longSignals, 'LONG')

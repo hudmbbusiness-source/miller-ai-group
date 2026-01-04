@@ -94,6 +94,18 @@ import {
   Candle as LiquiditySweepCandle,
 } from '@/lib/stuntman/liquidity-sweep-strategy'
 
+// === SIMPLE ORB STRATEGY ===
+// PROVEN: 74.56% win rate, 2.512 profit factor (Trade That Swing backtest)
+// ONE TRADE PER DAY - Simple, mechanical, no discretion
+import {
+  generateORBSignal as generateSimpleORBSignal,
+  resetDayState as resetORBDayState,
+  isTradingWindow as isORBTradingWindow,
+  getORBStatus,
+  ORBSignal as SimpleORBSignal,
+  Candle as ORBCandle,
+} from '@/lib/stuntman/simple-orb-strategy'
+
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
 // =============================================================================
@@ -660,6 +672,7 @@ interface BacktestState {
     stopMultiplierUsed: number   // For adaptive learning
     targetMultiplierUsed: number // For adaptive learning
     strategy: string             // Strategy that generated signal
+    isPureORB: boolean           // True = use pure ORB logic (no partials, no trailing)
     // Entry analytics for analysis
     entryAnalytics: {
       strategy: string
@@ -2783,64 +2796,68 @@ async function processCandle(index: number): Promise<void> {
 
     // =========================================================================
     // TRAILING STOP & PARTIAL PROFIT SYSTEM
+    // DISABLED FOR PURE ORB TRADES - They use simple SL/TP only
     // =========================================================================
 
-    // Update highest/lowest price tracking
-    if (pos.direction === 'LONG') {
-      pos.highestPrice = Math.max(pos.highestPrice, currentPrice)
-    } else {
-      pos.lowestPrice = Math.min(pos.lowestPrice, currentPrice)
-    }
-
-    // Check Target 1 (1R) - Take 50% profit and activate trailing stop
-    if (!pos.target1Hit) {
-      const hitTarget1 = pos.direction === 'LONG'
-        ? currentPrice >= pos.target1
-        : currentPrice <= pos.target1
-
-      if (hitTarget1) {
-        pos.target1Hit = true
-        pos.trailingActive = true
-        // Move stop to breakeven
-        pos.stopLoss = pos.entryPrice
-        // Scale out 50% (reduce contracts)
-        const scaleOutContracts = Math.floor(pos.contracts * 0.5)
-        if (scaleOutContracts > 0) {
-          // Record partial exit (we'll count this in the final trade)
-          pos.contracts = pos.contracts - scaleOutContracts
-        }
-      }
-    }
-
-    // Check Target 2 (2R) - Take another 25% profit
-    if (pos.target1Hit && !pos.target2Hit) {
-      const hitTarget2 = pos.direction === 'LONG'
-        ? currentPrice >= pos.target2
-        : currentPrice <= pos.target2
-
-      if (hitTarget2) {
-        pos.target2Hit = true
-        // Scale out another 25% of original (half of remaining)
-        const scaleOutContracts = Math.floor(pos.contracts * 0.5)
-        if (scaleOutContracts > 0 && pos.contracts > 1) {
-          pos.contracts = pos.contracts - scaleOutContracts
-        }
-      }
-    }
-
-    // Update trailing stop if active
-    if (pos.trailingActive) {
+    // PURE ORB MODE: Skip all partials and trailing - just use SL/TP
+    if (!pos.isPureORB) {
+      // Update highest/lowest price tracking
       if (pos.direction === 'LONG') {
-        // Trail stop below highest price
-        const newTrailingStop = pos.highestPrice - pos.trailingDistance
-        if (newTrailingStop > pos.stopLoss) {
-          pos.stopLoss = newTrailingStop
-        }
+        pos.highestPrice = Math.max(pos.highestPrice, currentPrice)
       } else {
-        // Trail stop above lowest price
-        const newTrailingStop = pos.lowestPrice + pos.trailingDistance
-        if (newTrailingStop < pos.stopLoss) {
-          pos.stopLoss = newTrailingStop
+        pos.lowestPrice = Math.min(pos.lowestPrice, currentPrice)
+      }
+
+      // Check Target 1 (1R) - Take 50% profit and activate trailing stop
+      if (!pos.target1Hit) {
+        const hitTarget1 = pos.direction === 'LONG'
+          ? currentPrice >= pos.target1
+          : currentPrice <= pos.target1
+
+        if (hitTarget1) {
+          pos.target1Hit = true
+          pos.trailingActive = true
+          // Move stop to breakeven
+          pos.stopLoss = pos.entryPrice
+          // Scale out 50% (reduce contracts)
+          const scaleOutContracts = Math.floor(pos.contracts * 0.5)
+          if (scaleOutContracts > 0) {
+            // Record partial exit (we'll count this in the final trade)
+            pos.contracts = pos.contracts - scaleOutContracts
+          }
+        }
+      }
+
+      // Check Target 2 (2R) - Take another 25% profit
+      if (pos.target1Hit && !pos.target2Hit) {
+        const hitTarget2 = pos.direction === 'LONG'
+          ? currentPrice >= pos.target2
+          : currentPrice <= pos.target2
+
+        if (hitTarget2) {
+          pos.target2Hit = true
+          // Scale out another 25% of original (half of remaining)
+          const scaleOutContracts = Math.floor(pos.contracts * 0.5)
+          if (scaleOutContracts > 0 && pos.contracts > 1) {
+            pos.contracts = pos.contracts - scaleOutContracts
+          }
+        }
+      }
+
+      // Update trailing stop if active
+      if (pos.trailingActive) {
+        if (pos.direction === 'LONG') {
+          // Trail stop below highest price
+          const newTrailingStop = pos.highestPrice - pos.trailingDistance
+          if (newTrailingStop > pos.stopLoss) {
+            pos.stopLoss = newTrailingStop
+          }
+        } else {
+          // Trail stop above lowest price
+          const newTrailingStop = pos.lowestPrice + pos.trailingDistance
+          if (newTrailingStop < pos.stopLoss) {
+            pos.stopLoss = newTrailingStop
+          }
         }
       }
     }
@@ -2870,16 +2887,19 @@ async function processCandle(index: number): Promise<void> {
 
     // Reversal signal - ONLY exit if VERY high confidence AND we're already in profit
     // This prevents cutting winners short on weak reversal signals
-    const isInProfit = pos.direction === 'LONG'
-      ? currentPrice > pos.entryPrice
-      : currentPrice < pos.entryPrice
+    // DISABLED FOR PURE ORB - ORB trades only exit at SL or TP
+    if (!pos.isPureORB) {
+      const isInProfit = pos.direction === 'LONG'
+        ? currentPrice > pos.entryPrice
+        : currentPrice < pos.entryPrice
 
-    if (adaptiveSignal.confidence >= 85 &&
-        adaptiveSignal.direction !== 'FLAT' &&
-        adaptiveSignal.direction !== pos.direction &&
-        isInProfit) {
-      shouldExit = true
-      exitReason = 'Reversal Signal'
+      if (adaptiveSignal.confidence >= 85 &&
+          adaptiveSignal.direction !== 'FLAT' &&
+          adaptiveSignal.direction !== pos.direction &&
+          isInProfit) {
+        shouldExit = true
+        exitReason = 'Reversal Signal'
+      }
     }
 
     if (shouldExit) {
@@ -3115,378 +3135,73 @@ async function processCandle(index: number): Promise<void> {
     const currentRSI = indicators.rsi
     const macdHistogram = indicators.macdHistogram
 
-    // Determine which signal to use
+    // ==========================================================================
+    // SIMPLE ORB STRATEGY - PROVEN 74.56% WIN RATE, 2.512 PROFIT FACTOR
+    // From Trade That Swing backtests - mechanical, no discretion
+    // ONE TRADE PER DAY - Breakout of first 15 minutes (9:30-9:45 AM EST)
+    // ==========================================================================
+
+    // Convert candles to ORB format
+    const orbCandles: ORBCandle[] = candles1m.map(c => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }))
+
+    const currentOrbCandle: ORBCandle = {
+      time: currentCandle.time,
+      open: currentCandle.open,
+      high: currentCandle.high,
+      low: currentCandle.low,
+      close: currentCandle.close,
+      volume: currentCandle.volume,
+    }
+
+    // Generate ORB signal - simple, mechanical, one trade per day max
+    const orbSignal = generateSimpleORBSignal(orbCandles, currentOrbCandle)
+
+    // Get ORB status for logging
+    const orbStatus = getORBStatus(orbCandles, currentCandle.time)
+
+    // Only trade when ORB gives a clear signal (not 'NONE')
     let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number; qualityScore?: number; sizeFactor?: number } | null = null
 
-    // ==========================================================================
-    // DYNAMIC REGIME-ADAPTIVE STRATEGY SELECTION
-    // Collects ALL signals, filters by regime, requires confluence
-    // ==========================================================================
-
-    // Get current session for time-based strategy boosting
-    const currentSession = getLocalSession(currentCandle.time)
-
-    // Collect ALL available signals from all sources
-    type CandidateSignal = {
-      direction: 'LONG' | 'SHORT'
-      confidence: number
-      strategy: string
-      stopLoss: number
-      takeProfit: number
-      riskRewardRatio: number
-      qualityScore: number
-      source: string
-      regimeOptimal: boolean
-      sessionBoost: number
-    }
-
-    const candidateSignals: CandidateSignal[] = []
-
-    // 1. Collect from Liquidity Sweep
-    if (liquiditySweepBacktestSignal && liquiditySweepSignal) {
-      const strategy = 'LIQUIDITY_SWEEP_REVERSAL'
-      const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
-      const sessionBoost = getSessionBoost(strategy, currentSession)
-
-      candidateSignals.push({
-        direction: liquiditySweepBacktestSignal.direction,
-        confidence: calculateDynamicConfidence(liquiditySweepSignal.weights.total, strategy, regime, currentSession),
-        strategy,
-        stopLoss: liquiditySweepBacktestSignal.stopLoss,
-        takeProfit: liquiditySweepBacktestSignal.takeProfit,
-        riskRewardRatio: liquiditySweepBacktestSignal.riskRewardRatio,
-        qualityScore: liquiditySweepSignal.weights.total,
-        source: 'LIQUIDITY_SWEEP',
-        regimeOptimal,
-        sessionBoost,
-      })
-    }
-
-    // 2. Collect from ALL World-Class strategies (not just the best one!)
-    // This enables proper confluence scoring across multiple strategies
-    for (const wcResult of allWorldClassSignals.signals) {
-      const wcSignal = wcResult.signal
-      const wcQuality = wcResult.quality
-      const strategy = wcSignal.type
-      const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
-      const sessionBoost = getSessionBoost(strategy, currentSession)
-
-      candidateSignals.push({
-        direction: wcSignal.direction,
-        confidence: calculateDynamicConfidence(wcSignal.confidence, strategy, regime, currentSession),
-        strategy,
-        stopLoss: wcSignal.stopLoss.price,
-        takeProfit: wcSignal.targets.length > 0 ? wcSignal.targets[wcSignal.targets.length - 1].price : currentPrice,
-        riskRewardRatio: wcSignal.metadata.riskRewardRatio,
-        qualityScore: wcQuality.overall,
-        source: 'WORLD_CLASS',
-        regimeOptimal,
-        sessionBoost,
-      })
-    }
-
-    // Log how many world-class strategies triggered
-    if (allWorldClassSignals.signals.length > 0) {
-      const wcStrategies = allWorldClassSignals.signals.map(s => s.signal.type).join(', ')
-      // This info is available for debugging: `${allWorldClassSignals.signals.length} WC strategies: ${wcStrategies}`
-    }
-
-    // 3. Collect from Advanced strategies
-    if (advancedSignal && advancedSignal.direction !== 'FLAT') {
-      const strategy = advancedSignal.strategy || 'ADVANCED_SIGNAL'
-      const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
-      const sessionBoost = getSessionBoost(strategy, currentSession)
-
-      candidateSignals.push({
-        direction: advancedSignal.direction as 'LONG' | 'SHORT',
-        confidence: calculateDynamicConfidence(advancedSignal.confidence, strategy, regime, currentSession),
-        strategy,
-        stopLoss: advancedSignal.stopLoss,
-        takeProfit: advancedSignal.takeProfit,
-        riskRewardRatio: advancedSignal.riskRewardRatio,
-        qualityScore: advancedSignal.confidence,
-        source: 'ADVANCED',
-        regimeOptimal,
-        sessionBoost,
-      })
-    }
-
-    // 4. Collect from Master signal strategies
-    if (masterSignal.direction !== 'FLAT') {
-      for (const strat of masterSignal.strategies) {
-        if (strat.direction !== 'FLAT') {
-          const strategy = strat.strategy
-          const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
-          const sessionBoost = getSessionBoost(strategy, currentSession)
-
-          candidateSignals.push({
-            direction: strat.direction as 'LONG' | 'SHORT',
-            confidence: calculateDynamicConfidence(strat.confidence, strategy, regime, currentSession),
-            strategy,
-            stopLoss: masterSignal.stopLoss,
-            takeProfit: masterSignal.takeProfit,
-            riskRewardRatio: masterSignal.riskRewardRatio,
-            qualityScore: strat.confidence,
-            source: 'MASTER',
-            regimeOptimal,
-            sessionBoost,
-          })
-        }
-      }
-    }
-
-    // ==========================================================================
-    // ENHANCED CONFLUENCE ANALYSIS - Multi-factor scoring system
-    // ==========================================================================
-    // CRITICAL FIX: Respect requireRegimeMatch setting!
-    // When false, allow ALL signals through (not just regime-optimal ones)
-    const longSignals = DYNAMIC_STRATEGY_SYSTEM.confluence.requireRegimeMatch
-      ? candidateSignals.filter(s => s.direction === 'LONG' && s.regimeOptimal)
-      : candidateSignals.filter(s => s.direction === 'LONG')
-
-    const shortSignals = DYNAMIC_STRATEGY_SYSTEM.confluence.requireRegimeMatch
-      ? candidateSignals.filter(s => s.direction === 'SHORT' && s.regimeOptimal)
-      : candidateSignals.filter(s => s.direction === 'SHORT')
-
-    // Calculate comprehensive confluence scores with ADAPTIVE THRESHOLDS
-    function calculateConfluenceScore(signals: CandidateSignal[], direction: 'LONG' | 'SHORT'): {
-      score: number
-      factors: Record<string, number>
-      passes: boolean
-      adaptiveThresholds?: {
-        regime: string
-        regimeAdjust: { confluence: number, confidence: number, rr: number }
-        sessionAdjust: { confluence: number, confidence: number }
-        performanceAdjust: { confluence: number, confidence: number }
-        timeAdjust: { confluence: number }
-      }
-    } {
-      if (signals.length === 0) return { score: 0, factors: {}, passes: false }
-
-      const factors: Record<string, number> = {}
-
-      // 1. SIGNAL COUNT SCORE (20 points max)
-      // 2 signals = 10, 3 signals = 15, 4+ signals = 20
-      factors.signalCount = Math.min(20, signals.length * 5 + 5)
-
-      // 2. CONFIDENCE SCORE (25 points max)
-      const avgConfidence = signals.reduce((sum, s) => sum + s.confidence, 0) / signals.length
-      factors.confidence = (avgConfidence / 100) * 25
-
-      // 3. REGIME ALIGNMENT SCORE (15 points max)
-      const regimeOptimalCount = signals.filter(s => s.regimeOptimal).length
-      factors.regimeAlignment = (regimeOptimalCount / signals.length) * 15
-
-      // 4. SESSION ALIGNMENT SCORE (10 points max)
-      const avgSessionBoost = signals.reduce((sum, s) => sum + s.sessionBoost, 0) / signals.length
-      factors.sessionAlignment = Math.min(10, avgSessionBoost * 8)
-
-      // 5. MOMENTUM CONFIRMATION (15 points max)
-      const currentRSI = indicators.rsi
-      const macdHistogram = indicators.macdHistogram
-      let momentumScore = 0
-
-      if (direction === 'LONG') {
-        // For longs: RSI should be rising but not overbought, MACD positive or turning
-        if (currentRSI > 40 && currentRSI < 70) momentumScore += 8  // RSI in good zone
-        if (macdHistogram > 0) momentumScore += 7  // MACD bullish
-        else if (macdHistogram > -0.5) momentumScore += 3  // MACD neutral
-      } else {
-        // For shorts: RSI should be falling but not oversold, MACD negative or turning
-        if (currentRSI < 60 && currentRSI > 30) momentumScore += 8  // RSI in good zone
-        if (macdHistogram < 0) momentumScore += 7  // MACD bearish
-        else if (macdHistogram < 0.5) momentumScore += 3  // MACD neutral
-      }
-      factors.momentum = momentumScore
-
-      // 6. STRATEGY DIVERSITY SCORE (10 points max)
-      // More unique sources = more confidence
-      const uniqueSources = new Set(signals.map(s => s.source)).size
-      factors.diversity = Math.min(10, uniqueSources * 3)
-
-      // 7. QUALITY SCORE (5 points max)
-      const avgQuality = signals.reduce((sum, s) => sum + s.qualityScore, 0) / signals.length
-      factors.quality = (avgQuality / 100) * 5
-
-      // TOTAL SCORE (100 points max)
-      const totalScore = Object.values(factors).reduce((sum, f) => sum + f, 0)
-
-      // PASS CRITERIA WITH ADAPTIVE THRESHOLDS:
-      // Thresholds now DYNAMICALLY adjust based on:
-      // - Market regime (trending = aggressive, ranging = selective)
-      // - Session (power hour = aggressive, mid-day = selective)
-      // - Performance (after losses = selective, win streaks = aggressive)
-      // - Time of day (opening hour = aggressive, lunch = selective)
-
-      // Extract current hour from candle timestamp for time-of-day adjustments
-      const candleDate = new Date(currentCandle.time)
-      const currentHour = candleDate.getHours() + candleDate.getMinutes() / 60
-
-      // Calculate DYNAMIC thresholds based on regime, session, and performance
-      const adaptiveThresholds = calculateAdaptiveThresholds(
-        regime,
-        session,
-        consecutiveLosses,
-        evalState.consecutiveWins,
-        currentHour
-      )
-
-      // Use ADAPTIVE thresholds instead of static PROFIT_CONFIG values
-      const requiredConfluence = adaptiveThresholds.requiredConfluence
-      const requiredConfidence = adaptiveThresholds.requiredConfidence
-
-      const passes = totalScore >= requiredConfluence &&
-                     signals.length >= DYNAMIC_STRATEGY_SYSTEM.confluence.minStrategiesAgreeing &&
-                     avgConfidence >= requiredConfidence
-                     // Removed momentum >= 5 requirement - was blocking too many trades
-
-      return {
-        score: totalScore,
-        factors,
-        passes,
-        adaptiveThresholds: adaptiveThresholds.adjustmentFactors  // Include for debugging
-      }
-    }
-
-    const longConfluenceResult = calculateConfluenceScore(longSignals, 'LONG')
-    const shortConfluenceResult = calculateConfluenceScore(shortSignals, 'SHORT')
-
-    // Legacy values for backwards compatibility
-    const longConfluence = longSignals.length
-    const shortConfluence = shortSignals.length
-    const avgLongConfidence = longSignals.length > 0
-      ? longSignals.reduce((sum, s) => sum + s.confidence, 0) / longSignals.length
-      : 0
-    const avgShortConfidence = shortSignals.length > 0
-      ? shortSignals.reduce((sum, s) => sum + s.confidence, 0) / shortSignals.length
-      : 0
-
-    // ==========================================================================
-    // SELECT BEST SIGNAL BASED ON CONFLUENCE SCORE + TREND ALIGNMENT
-    // ==========================================================================
-    let selectedDirection: 'LONG' | 'SHORT' | null = null
-    let selectedSignals: CandidateSignal[] = []
-    let winningConfluenceScore = 0
-
-    // TREND FILTER: Determine bias based on EMA position
-    // If price > EMA50, prefer LONG. If price < EMA50, prefer SHORT.
-    const trendBias: 'LONG' | 'SHORT' | 'NEUTRAL' =
-      currentPrice > indicators.ema50 * 1.001 ? 'LONG' :   // 0.1% buffer
-      currentPrice < indicators.ema50 * 0.999 ? 'SHORT' :
-      'NEUTRAL'
-
-    // Apply trend filter to confluence results
-    // Counter-trend trades require 20% higher confluence score
-    const trendPenalty = 0.8  // 20% reduction for counter-trend
-    const adjustedLongScore = trendBias === 'SHORT'
-      ? longConfluenceResult.score * trendPenalty
-      : longConfluenceResult.score * (trendBias === 'LONG' ? 1.1 : 1.0)  // 10% bonus with trend
-    const adjustedShortScore = trendBias === 'LONG'
-      ? shortConfluenceResult.score * trendPenalty
-      : shortConfluenceResult.score * (trendBias === 'SHORT' ? 1.1 : 1.0)  // 10% bonus with trend
-
-    // Determine winning direction based on ADJUSTED confluence score
-    if (longConfluenceResult.passes && shortConfluenceResult.passes) {
-      // Both pass - take the higher ADJUSTED score (respects trend)
-      if (adjustedLongScore > adjustedShortScore) {
-        selectedDirection = 'LONG'
-        selectedSignals = longSignals
-        winningConfluenceScore = longConfluenceResult.score
-      } else {
-        selectedDirection = 'SHORT'
-        selectedSignals = shortSignals
-        winningConfluenceScore = shortConfluenceResult.score
-      }
-    } else if (longConfluenceResult.passes) {
-      selectedDirection = 'LONG'
-      selectedSignals = longSignals
-      winningConfluenceScore = longConfluenceResult.score
-    } else if (shortConfluenceResult.passes) {
-      selectedDirection = 'SHORT'
-      selectedSignals = shortSignals
-      winningConfluenceScore = shortConfluenceResult.score
-    }
-
-    // If we have confluence, select the BEST signal from agreeing strategies
-    if (selectedDirection && selectedSignals.length > 0) {
-      // Sort by: regime optimal (1st), confidence (2nd), session boost (3rd)
-      selectedSignals.sort((a, b) => {
-        // Regime optimal first
-        if (a.regimeOptimal !== b.regimeOptimal) return b.regimeOptimal ? 1 : -1
-        // Then by confidence
-        if (b.confidence !== a.confidence) return b.confidence - a.confidence
-        // Then by session boost
-        return b.sessionBoost - a.sessionBoost
-      })
-
-      const bestSignal = selectedSignals[0]
-
-      // Check Apex requirements
-      const meetsRR = bestSignal.riskRewardRatio >= DYNAMIC_STRATEGY_SYSTEM.apex150k.minRiskReward
-      const meetsConfidence = bestSignal.confidence >= DYNAMIC_STRATEGY_SYSTEM.apex150k.minWinProbability * 100
-
-      if (meetsRR && meetsConfidence) {
-        // Calculate size factor based on confluence strength
-        const confluenceBonus = Math.min(1.5, 1 + (selectedSignals.length - 2) * 0.25)  // +25% per extra signal
-        const sizeFactor = Math.min(1.0, (bestSignal.confidence / 100) * confluenceBonus)
-
-        signalToUse = {
-          direction: selectedDirection,
-          confidence: bestSignal.confidence,
-          strategy: `${bestSignal.strategy}+${selectedSignals.length}`,  // Show confluence count
-          stopLoss: bestSignal.stopLoss,
-          takeProfit: bestSignal.takeProfit,
-          riskRewardRatio: bestSignal.riskRewardRatio,
-          qualityScore: bestSignal.qualityScore,
-          sizeFactor,
-        }
-      }
-    }
-
-    // ==========================================================================
-    // FALLBACK: Single best signal if confluence not met
-    // Only take if signal is VERY high quality (90%+ confidence, regime optimal)
-    // ==========================================================================
-    if (!signalToUse && candidateSignals.length > 0) {
-      // Find the absolute best signal even without confluence
-      const allRegimeOptimal = candidateSignals.filter(s => s.regimeOptimal)
-
-      if (allRegimeOptimal.length > 0) {
-        // Sort by confidence
-        allRegimeOptimal.sort((a, b) => b.confidence - a.confidence)
-        const bestSingle = allRegimeOptimal[0]
-
-        // Only take if VERY high confidence (90%+) and meets Apex R/R
-        if (bestSingle.confidence >= 90 &&
-            bestSingle.riskRewardRatio >= DYNAMIC_STRATEGY_SYSTEM.apex150k.minRiskReward) {
-          signalToUse = {
-            direction: bestSingle.direction,
-            confidence: bestSingle.confidence,
-            strategy: `${bestSingle.strategy}(SOLO)`,  // Mark as solo signal
-            stopLoss: bestSingle.stopLoss,
-            takeProfit: bestSingle.takeProfit,
-            riskRewardRatio: bestSingle.riskRewardRatio,
-            qualityScore: bestSingle.qualityScore,
-            sizeFactor: 0.5,  // Half size for solo signals
-          }
-        }
+    if (orbSignal.direction !== 'NONE') {
+      signalToUse = {
+        direction: orbSignal.direction,
+        confidence: orbSignal.confidence,  // 85% - proven strategy
+        strategy: 'ORB_BREAKOUT',
+        stopLoss: orbSignal.stopLoss,
+        takeProfit: orbSignal.takeProfit,
+        riskRewardRatio: orbSignal.riskReward,
+        qualityScore: 85,  // High quality - research-backed
+        sizeFactor: 1.0,   // Full size - proven strategy
       }
     }
 
     const shouldEnter = signalToUse !== null
+    const isORBTrade = signalToUse?.strategy === 'ORB_BREAKOUT'
 
     if (shouldEnter && signalToUse) {
       let entryDir: 'LONG' | 'SHORT' = signalToUse.direction
 
-      // Apply inverse mode if enabled - flip LONG <-> SHORT
-      if (shouldInverseSignal()) {
+      // INVERSE MODE - DISABLED FOR ORB
+      // ORB is a proven mechanical strategy - NEVER flip its signals
+      if (!isORBTrade && shouldInverseSignal()) {
         entryDir = entryDir === 'LONG' ? 'SHORT' : 'LONG'
       }
 
-      // GOVERNANCE FIX: MTF FILTER now DEGRADES, not BLOCKS
-      // Counter-trend trades get 25% size, aligned trades get 100%
-      const mtfAligned = signalAlignedWithMTF(entryDir, mtfTrend)
-      const mtfMultiplier = mtfAligned ? 1.0 : 0.25  // 25% size for counter-trend
+      // MTF FILTER - DISABLED FOR ORB
+      // ORB is a breakout strategy, it doesn't care about higher timeframe trends
+      let mtfMultiplier = 1.0
+      let mtfAligned = true  // Default to aligned for ORB
+      if (!isORBTrade) {
+        mtfAligned = signalAlignedWithMTF(entryDir, mtfTrend)
+        mtfMultiplier = mtfAligned ? 1.0 : 0.25  // 25% size for counter-trend (non-ORB only)
+      }
 
       // PA ONE DIRECTION RULE: Check if we're violating the one direction rule
       // (Only applies in Performance Account mode)
@@ -3606,22 +3321,36 @@ async function processCandle(index: number): Promise<void> {
       }
 
       const baseContracts = qualityMultiplier
-      const riskAdjustedContracts = baseContracts
-        * degradedRiskMultiplier     // GOVERNANCE: danger zone = 0.1, not blocked
-        * sessionMultiplier          // GOVERNANCE: non-optimal session = 0.25, not blocked
-        * dailyLossMultiplier        // GOVERNANCE: daily loss = 0.1-1.0, not blocked
-        * tradeFrequencyMultiplier   // GOVERNANCE: high frequency = 0.1, not blocked
-        * timeMultiplier             // GOVERNANCE: quick succession = 0.25, not blocked
-        * mtfMultiplier              // GOVERNANCE: counter-trend = 0.25, not blocked
-        * consecutiveLossMultiplier  // RISK: consecutive losses = 0.1-1.0, with cooling
-        * propFirmRisk.positionSizeMultiplier
-        * gapMultiplier              // GAP PROTECTION: reduce size near gap times (0.25-1.0)
-        // EVAL MODE MULTIPLIERS
-        * evalStrategyWeight         // EVAL: Strategy priority (0.8-1.5)
-        * evalTimeAllocation         // EVAL: Time-of-day allocation (0.1-1.5)
-        * evalAggression             // EVAL: Aggression curve (0.6-1.56)
-        * evalSchedule               // EVAL: Behind/ahead schedule (0.5-1.5)
-        * evalDailyShape             // EVAL: Daily PnL shaping (0.3-1.0)
+
+      // PURE ORB MODE: Only apply essential Apex safety multipliers
+      // ORB is a proven mechanical strategy - don't degrade it with unnecessary filters
+      let riskAdjustedContracts: number
+
+      if (isORBTrade) {
+        // ORB TRADES: Only Apex safety limits (regulatory requirements)
+        riskAdjustedContracts = baseContracts
+          * degradedRiskMultiplier           // APEX SAFETY: Required - account protection
+          * propFirmRisk.positionSizeMultiplier  // APEX SAFETY: Required - prop firm rules
+        // NO other multipliers - ORB has its own timing/session logic built in
+      } else {
+        // NON-ORB TRADES: Apply all the filters
+        riskAdjustedContracts = baseContracts
+          * degradedRiskMultiplier     // GOVERNANCE: danger zone = 0.1, not blocked
+          * sessionMultiplier          // GOVERNANCE: non-optimal session = 0.25, not blocked
+          * dailyLossMultiplier        // GOVERNANCE: daily loss = 0.1-1.0, not blocked
+          * tradeFrequencyMultiplier   // GOVERNANCE: high frequency = 0.1, not blocked
+          * timeMultiplier             // GOVERNANCE: quick succession = 0.25, not blocked
+          * mtfMultiplier              // GOVERNANCE: counter-trend = 0.25, not blocked
+          * consecutiveLossMultiplier  // RISK: consecutive losses = 0.1-1.0, with cooling
+          * propFirmRisk.positionSizeMultiplier
+          * gapMultiplier              // GAP PROTECTION: reduce size near gap times (0.25-1.0)
+          // EVAL MODE MULTIPLIERS
+          * evalStrategyWeight         // EVAL: Strategy priority (0.8-1.5)
+          * evalTimeAllocation         // EVAL: Time-of-day allocation (0.1-1.5)
+          * evalAggression             // EVAL: Aggression curve (0.6-1.56)
+          * evalSchedule               // EVAL: Behind/ahead schedule (0.5-1.5)
+          * evalDailyShape             // EVAL: Daily PnL shaping (0.3-1.0)
+      }
 
       // APEX MAX CONTRACTS LIMIT - 17 contracts max for 150K account
       // Also apply PA contract scaling if in Performance Account
@@ -3665,7 +3394,7 @@ async function processCandle(index: number): Promise<void> {
         trailingDistance,
         highestPrice: entryPrice,
         lowestPrice: entryPrice,
-        confluenceScore: winningConfluenceScore || signalToUse.confidence,  // Use enhanced confluence score
+        confluenceScore: signalToUse.confidence,  // ORB confidence score (85% proven)
         mlConfidence: signalToUse.confidence / 100,
         vpinAtEntry: vpin.vpin,
         volatilityAtEntry: volatility,
@@ -3674,12 +3403,14 @@ async function processCandle(index: number): Promise<void> {
         stopMultiplierUsed: stopMultiplier,
         targetMultiplierUsed: targetMultiplier,
         strategy: finalStrategy,
+        // PURE ORB MODE: No partials, no trailing, just SL/TP
+        isPureORB: finalStrategy === 'ORB_BREAKOUT',
         entryAnalytics: {
           strategy: finalStrategy,
           rsiAtEntry: lastRsi,
           ema20Distance,
           ema50Distance,
-          regime: masterSignal.regime,
+          regime: 'ORB_TRADING',  // Using ORB strategy
           hourOfDay: entryHour,
           atrAtEntry: atr,
           trendStrength,
@@ -3747,6 +3478,9 @@ async function processBatch(): Promise<void> {
     if (state.currentIndex >= state.totalCandles - 1) {
       // Reset to beginning for continuous testing
       state.currentIndex = 50
+      // CRITICAL: Reset ORB day state when looping back
+      // Otherwise "Trade already taken today" persists incorrectly
+      resetORBDayState()
     }
 
     await processCandle(state.currentIndex)
@@ -4064,6 +3798,9 @@ export async function POST(request: NextRequest) {
       // Reset entry analytics
       resetEntryAnalytics()
 
+      // Reset ORB day state for fresh backtesting
+      resetORBDayState()
+
       // Simulation will process candles on each GET request (serverless compatible)
       return NextResponse.json({
         success: true,
@@ -4121,6 +3858,9 @@ export async function POST(request: NextRequest) {
           low: { correct: 0, total: 0 },
         }
       }
+
+      // CRITICAL: Reset ORB day state on reset
+      resetORBDayState()
 
       return NextResponse.json({
         success: true,

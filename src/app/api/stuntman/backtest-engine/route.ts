@@ -909,9 +909,9 @@ const DYNAMIC_STRATEGY_SYSTEM = {
   // CONFLUENCE REQUIREMENTS - Multiple signals must agree
   // =========================================================================
   confluence: {
-    minStrategiesAgreeing: 2,  // At least 2 strategies must signal same direction
-    minConfidenceAverage: 70,  // Average confidence must be 70%+
-    requireRegimeMatch: true,  // Strategy must be optimal for current regime
+    minStrategiesAgreeing: 1,  // LOWERED: At least 1 strategy can signal (was 2)
+    minConfidenceAverage: 45,  // LOWERED: Average confidence must be 45%+ (was 70)
+    requireRegimeMatch: false, // DISABLED: Strategy doesn't need to match regime
   },
 
   // =========================================================================
@@ -1073,10 +1073,10 @@ interface AdaptiveConfluenceConfig {
 }
 
 const ADAPTIVE_CONFLUENCE: AdaptiveConfluenceConfig = {
-  // Base thresholds (conservative defaults)
-  baseConfluence: 60,
-  baseConfidence: 70,
-  baseRiskReward: 2.0,
+  // Base thresholds (AGGRESSIVE for more trades)
+  baseConfluence: 35,    // LOWERED from 60
+  baseConfidence: 45,    // LOWERED from 70
+  baseRiskReward: 1.5,   // LOWERED from 2.0
 
   // Map simple regime types to detailed types
   simpleRegimeMap: {
@@ -1250,13 +1250,13 @@ const EVAL_MODE = {
   evalDays: 7,                    // 7 consecutive trading days
   dailyTarget: 1400,              // ~$1,400/day target (with buffer)
 
-  // RELAXED THRESHOLDS FOR EVAL (more trades, smaller size)
-  minConfluenceScore: 40,         // LOWERED from 70 - accept more setups
-  minConfidence: 50,              // LOWERED from 80 - accept more setups
-  minRiskReward: 1.5,             // LOWERED from 2.5 - faster profits
+  // AGGRESSIVE THRESHOLDS FOR MORE TRADES
+  minConfluenceScore: 25,         // LOWERED from 40 - accept more setups
+  minConfidence: 40,              // LOWERED from 50 - accept more setups
+  minRiskReward: 1.2,             // LOWERED from 1.5 - faster profits
 
   // TRADE FREQUENCY - HIGHER for eval
-  maxTradesPerDay: 12,            // INCREASED from 5 - need more opportunities
+  maxTradesPerDay: 20,            // INCREASED from 12 - need more opportunities
   minTimeBetweenTrades: 5,        // DECREASED from 20 - faster pace
 
   // STRATEGY PRIORITY WEIGHTS (higher = preferred)
@@ -3146,8 +3146,15 @@ async function processCandle(index: number): Promise<void> {
     // ==========================================================================
     // ENHANCED CONFLUENCE ANALYSIS - Multi-factor scoring system
     // ==========================================================================
-    const longSignals = candidateSignals.filter(s => s.direction === 'LONG' && s.regimeOptimal)
-    const shortSignals = candidateSignals.filter(s => s.direction === 'SHORT' && s.regimeOptimal)
+    // CRITICAL FIX: Respect requireRegimeMatch setting!
+    // When false, allow ALL signals through (not just regime-optimal ones)
+    const longSignals = DYNAMIC_STRATEGY_SYSTEM.confluence.requireRegimeMatch
+      ? candidateSignals.filter(s => s.direction === 'LONG' && s.regimeOptimal)
+      : candidateSignals.filter(s => s.direction === 'LONG')
+
+    const shortSignals = DYNAMIC_STRATEGY_SYSTEM.confluence.requireRegimeMatch
+      ? candidateSignals.filter(s => s.direction === 'SHORT' && s.regimeOptimal)
+      : candidateSignals.filter(s => s.direction === 'SHORT')
 
     // Calculate comprehensive confluence scores with ADAPTIVE THRESHOLDS
     function calculateConfluenceScore(signals: CandidateSignal[], direction: 'LONG' | 'SHORT'): {
@@ -3238,8 +3245,8 @@ async function processCandle(index: number): Promise<void> {
 
       const passes = totalScore >= requiredConfluence &&
                      signals.length >= DYNAMIC_STRATEGY_SYSTEM.confluence.minStrategiesAgreeing &&
-                     avgConfidence >= requiredConfidence &&
-                     momentumScore >= 5
+                     avgConfidence >= requiredConfidence
+                     // Removed momentum >= 5 requirement - was blocking too many trades
 
       return {
         score: totalScore,

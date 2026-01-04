@@ -134,6 +134,361 @@ let liveDailyTradeCount = 0
 let liveLastTradeTime = 0
 
 // =============================================================================
+// ADVANCED POSITION MANAGEMENT SYSTEM
+// =============================================================================
+// This system provides:
+// 1. Dynamic multi-contract scaling based on regime/confluence/volatility
+// 2. Partial take profits with ATR-based trailing stops
+// 3. Adaptive confluence thresholds based on market conditions
+
+// -------------------------------------------------------------------------
+// 1. MULTI-CONTRACT SCALING CONFIGURATION
+// -------------------------------------------------------------------------
+interface ContractScalingConfig {
+  // Base contracts by account size
+  baseContracts: number
+
+  // Regime multipliers (how many contracts for each regime)
+  regimeMultipliers: Record<string, number>
+
+  // Confluence bonuses (extra contracts for high confluence)
+  confluenceBonus: {
+    threshold: number  // Confluence score threshold
+    bonus: number      // Extra contracts if exceeded
+  }[]
+
+  // Win streak bonus (scale up after winning)
+  winStreakBonus: {
+    requiredWins: number  // Consecutive wins needed
+    maxBonus: number      // Max extra contracts
+  }
+
+  // Drawdown protection (scale down after losses)
+  drawdownProtection: {
+    thresholds: { drawdownPercent: number; multiplier: number }[]
+  }
+
+  // Volatility adjustment (scale based on ATR)
+  volatilityAdjustment: {
+    lowVolATRThreshold: number   // Below this = low vol
+    highVolATRThreshold: number  // Above this = high vol
+    lowVolMultiplier: number     // Scale up in low vol (safer)
+    highVolMultiplier: number    // Scale down in high vol (riskier)
+  }
+
+  // Hard limits
+  minContracts: number
+  maxContracts: number
+}
+
+const CONTRACT_SCALING: ContractScalingConfig = {
+  baseContracts: 1,
+
+  // REGIME MULTIPLIERS - Aggressive in trends, conservative in chop
+  regimeMultipliers: {
+    'TREND_STRONG_UP': 3,     // MAX aggression in strong trends
+    'TREND_STRONG_DOWN': 3,
+    'TREND_WEAK_UP': 2,       // Moderate in weak trends
+    'TREND_WEAK_DOWN': 2,
+    'RANGE_TIGHT': 1,         // Conservative in tight range (chop)
+    'RANGE_WIDE': 1,          // Conservative in wide range
+    'HIGH_VOLATILITY': 2,     // Can profit but risky
+    'LOW_VOLATILITY': 1,      // No edge, stay small
+    'NEWS_DRIVEN': 1,         // DANGER - stay small
+    'ILLIQUID': 0,            // NO TRADE
+  },
+
+  // CONFLUENCE BONUSES - Reward high-quality setups
+  confluenceBonus: [
+    { threshold: 90, bonus: 2 },  // 90+ confluence = +2 contracts
+    { threshold: 80, bonus: 1 },  // 80+ confluence = +1 contract
+    { threshold: 70, bonus: 0 },  // 70+ = base
+  ],
+
+  // WIN STREAK BONUS - Compound winners
+  winStreakBonus: {
+    requiredWins: 3,  // After 3 consecutive wins
+    maxBonus: 2,      // Add up to 2 extra contracts
+  },
+
+  // DRAWDOWN PROTECTION - Scale down when losing
+  drawdownProtection: {
+    thresholds: [
+      { drawdownPercent: 50, multiplier: 0.25 },  // 50% of max DD = 25% size
+      { drawdownPercent: 40, multiplier: 0.50 },  // 40% of max DD = 50% size
+      { drawdownPercent: 30, multiplier: 0.75 },  // 30% of max DD = 75% size
+      { drawdownPercent: 20, multiplier: 1.00 },  // Below 20% = full size
+    ]
+  },
+
+  // VOLATILITY ADJUSTMENT
+  volatilityAdjustment: {
+    lowVolATRThreshold: 3,    // ATR < 3 points = low vol
+    highVolATRThreshold: 8,   // ATR > 8 points = high vol
+    lowVolMultiplier: 1.5,    // Can trade slightly larger in calm
+    highVolMultiplier: 0.5,   // Cut size in volatility
+  },
+
+  // HARD LIMITS (Apex 150K = max 17 contracts)
+  minContracts: 1,
+  maxContracts: 5,  // Start conservative, can increase after validation
+}
+
+// -------------------------------------------------------------------------
+// 2. PARTIAL TAKE PROFIT & TRAILING STOP CONFIGURATION
+// -------------------------------------------------------------------------
+interface PartialTakeProfitConfig {
+  // Scale out levels (as ratio of full target distance)
+  scaleOutLevels: {
+    targetRatio: number      // e.g., 0.5 = 50% of target (1:1 R:R)
+    exitPercent: number      // e.g., 0.5 = exit 50% of position
+    moveStopTo: 'breakeven' | 'entry' | 'trail' | 'none'
+  }[]
+
+  // Trailing stop configuration
+  trailingStop: {
+    enabled: boolean
+    activationMultiple: number   // Activate after X * ATR profit
+    trailDistance: number        // Trail by this many ATR
+    trailStep: number            // Update trail every X ATR move
+    useATR: boolean              // Use ATR or fixed points
+    fixedPoints: number          // If not using ATR
+  }
+
+  // Dynamic target extension
+  targetExtension: {
+    enabled: boolean
+    regimeMultipliers: Record<string, number>  // Extend targets in trends
+    minExtension: number
+    maxExtension: number
+  }
+}
+
+const PARTIAL_TP_CONFIG: PartialTakeProfitConfig = {
+  // SCALE OUT LEVELS - Lock in profits while letting winners run
+  scaleOutLevels: [
+    {
+      targetRatio: 0.5,        // At 50% of target (1:1 R:R)
+      exitPercent: 0.5,        // Exit 50% of position
+      moveStopTo: 'breakeven', // Move stop to breakeven
+    },
+    {
+      targetRatio: 0.75,       // At 75% of target
+      exitPercent: 0.25,       // Exit another 25%
+      moveStopTo: 'trail',     // Start trailing
+    },
+    // Remaining 25% rides with trailing stop to full target or beyond
+  ],
+
+  // TRAILING STOP - Let winners run
+  trailingStop: {
+    enabled: true,
+    activationMultiple: 1.0,  // Activate after 1 ATR profit
+    trailDistance: 1.5,       // Trail 1.5 ATR behind
+    trailStep: 0.25,          // Update every 0.25 ATR move
+    useATR: true,
+    fixedPoints: 4,           // If ATR disabled, use 4 points
+  },
+
+  // TARGET EXTENSION - Extend targets in trending markets
+  targetExtension: {
+    enabled: true,
+    regimeMultipliers: {
+      'TREND_STRONG_UP': 1.5,    // Extend target 50% in strong trends
+      'TREND_STRONG_DOWN': 1.5,
+      'TREND_WEAK_UP': 1.25,     // Extend 25% in weak trends
+      'TREND_WEAK_DOWN': 1.25,
+      'RANGE_TIGHT': 0.8,        // REDUCE target in chop (take what you can)
+      'RANGE_WIDE': 0.9,
+      'HIGH_VOLATILITY': 1.2,    // Slight extension possible
+      'LOW_VOLATILITY': 1.0,     // Standard targets
+      'NEWS_DRIVEN': 0.75,       // Quick exits in news
+      'ILLIQUID': 0.5,           // GET OUT FAST
+    },
+    minExtension: 0.5,
+    maxExtension: 2.0,
+  }
+}
+
+// -------------------------------------------------------------------------
+// 3. ADAPTIVE CONFLUENCE THRESHOLDS
+// -------------------------------------------------------------------------
+interface AdaptiveConfluenceConfig {
+  // Base thresholds
+  baseConfluence: number
+  baseConfidence: number
+  baseRiskReward: number
+
+  // Regime adjustments (lower in trends, higher in chop)
+  regimeAdjustments: Record<string, {
+    confluenceAdjust: number   // Add/subtract from base
+    confidenceAdjust: number
+    riskRewardAdjust: number
+  }>
+
+  // Session adjustments (more aggressive in optimal sessions)
+  sessionAdjustments: Record<string, {
+    confluenceAdjust: number
+    confidenceAdjust: number
+  }>
+
+  // Performance-based adjustments
+  performanceAdjustments: {
+    // After wins, can be slightly more aggressive
+    afterWinStreak: { wins: number; confluenceAdjust: number; confidenceAdjust: number }[]
+    // After losses, must be more selective
+    afterLossStreak: { losses: number; confluenceAdjust: number; confidenceAdjust: number }[]
+  }
+
+  // Time-of-day adjustments
+  timeAdjustments: {
+    openingHour: { confluenceAdjust: number; confidenceAdjust: number }   // 9:30-10:30
+    midDay: { confluenceAdjust: number; confidenceAdjust: number }        // 10:30-2:00
+    afternoonPush: { confluenceAdjust: number; confidenceAdjust: number } // 2:00-3:00
+    powerHour: { confluenceAdjust: number; confidenceAdjust: number }     // 3:00-4:00
+  }
+
+  // Hard limits
+  minConfluence: number
+  maxConfluence: number
+  minConfidence: number
+  maxConfidence: number
+}
+
+const ADAPTIVE_CONFLUENCE: AdaptiveConfluenceConfig = {
+  baseConfluence: 60,     // Base required confluence
+  baseConfidence: 70,     // Base required confidence
+  baseRiskReward: 2.0,    // Base required R:R
+
+  // REGIME ADJUSTMENTS - This is the KEY differentiator
+  regimeAdjustments: {
+    'TREND_STRONG_UP': { confluenceAdjust: -20, confidenceAdjust: -15, riskRewardAdjust: -0.5 },
+    'TREND_STRONG_DOWN': { confluenceAdjust: -20, confidenceAdjust: -15, riskRewardAdjust: -0.5 },
+    // In STRONG TRENDS: Confluence 40, Confidence 55%, R:R 1.5 - BE AGGRESSIVE!
+
+    'TREND_WEAK_UP': { confluenceAdjust: -10, confidenceAdjust: -10, riskRewardAdjust: -0.25 },
+    'TREND_WEAK_DOWN': { confluenceAdjust: -10, confidenceAdjust: -10, riskRewardAdjust: -0.25 },
+    // In WEAK TRENDS: Confluence 50, Confidence 60%, R:R 1.75
+
+    'RANGE_TIGHT': { confluenceAdjust: +15, confidenceAdjust: +15, riskRewardAdjust: +0.5 },
+    // In TIGHT RANGE (CHOP): Confluence 75, Confidence 85%, R:R 2.5 - BE VERY SELECTIVE!
+
+    'RANGE_WIDE': { confluenceAdjust: +10, confidenceAdjust: +10, riskRewardAdjust: +0.25 },
+    // In WIDE RANGE: Confluence 70, Confidence 80%, R:R 2.25
+
+    'HIGH_VOLATILITY': { confluenceAdjust: +5, confidenceAdjust: +5, riskRewardAdjust: +0.5 },
+    // In HIGH VOL: Confluence 65, Confidence 75%, R:R 2.5 - Need better R:R for risk
+
+    'LOW_VOLATILITY': { confluenceAdjust: +10, confidenceAdjust: +10, riskRewardAdjust: +0.25 },
+    // In LOW VOL: Confluence 70, Confidence 80%, R:R 2.25 - Hard to profit, be selective
+
+    'NEWS_DRIVEN': { confluenceAdjust: +25, confidenceAdjust: +20, riskRewardAdjust: +1.0 },
+    // In NEWS: Confluence 85, Confidence 90%, R:R 3.0 - VERY selective or no trade
+
+    'ILLIQUID': { confluenceAdjust: +50, confidenceAdjust: +50, riskRewardAdjust: +2.0 },
+    // ILLIQUID: Effectively NO TRADE (impossible thresholds)
+  },
+
+  // SESSION ADJUSTMENTS - Optimal trading windows
+  sessionAdjustments: {
+    'RTH_OPEN': { confluenceAdjust: -10, confidenceAdjust: -5 },    // Opening range = good setups
+    'RTH_MID': { confluenceAdjust: +15, confidenceAdjust: +10 },    // Lunch = avoid
+    'RTH_AFTERNOON': { confluenceAdjust: -5, confidenceAdjust: -5 }, // Good momentum
+    'RTH_CLOSE': { confluenceAdjust: -10, confidenceAdjust: -5 },   // Power hour = good
+    'PRE': { confluenceAdjust: +20, confidenceAdjust: +15 },        // Pre-market = selective
+    'POST': { confluenceAdjust: +25, confidenceAdjust: +20 },       // After hours = very selective
+    'CLOSED': { confluenceAdjust: +100, confidenceAdjust: +100 },   // No trade
+  },
+
+  // PERFORMANCE ADJUSTMENTS
+  performanceAdjustments: {
+    afterWinStreak: [
+      { wins: 5, confluenceAdjust: -10, confidenceAdjust: -5 },  // 5+ wins = slightly aggressive
+      { wins: 3, confluenceAdjust: -5, confidenceAdjust: -3 },   // 3+ wins = tiny boost
+    ],
+    afterLossStreak: [
+      { losses: 3, confluenceAdjust: +20, confidenceAdjust: +15 }, // 3+ losses = very selective
+      { losses: 2, confluenceAdjust: +10, confidenceAdjust: +10 }, // 2 losses = more selective
+      { losses: 1, confluenceAdjust: +5, confidenceAdjust: +5 },   // 1 loss = slightly more careful
+    ],
+  },
+
+  // TIME ADJUSTMENTS
+  timeAdjustments: {
+    openingHour: { confluenceAdjust: -10, confidenceAdjust: -5 },    // 9:30-10:30 = good volatility
+    midDay: { confluenceAdjust: +20, confidenceAdjust: +15 },        // 10:30-2:00 = AVOID
+    afternoonPush: { confluenceAdjust: -5, confidenceAdjust: -3 },   // 2:00-3:00 = momentum builds
+    powerHour: { confluenceAdjust: -15, confidenceAdjust: -10 },     // 3:00-4:00 = BEST hour
+  },
+
+  // HARD LIMITS
+  minConfluence: 30,   // Never go below 30 confluence
+  maxConfluence: 95,   // Never require more than 95
+  minConfidence: 50,   // Never accept below 50% confidence
+  maxConfidence: 95,   // Never require more than 95%
+}
+
+// -------------------------------------------------------------------------
+// ADVANCED POSITION STATE - Tracks partial exits and trailing
+// -------------------------------------------------------------------------
+interface AdvancedPositionState {
+  // Original entry details
+  originalContracts: number
+  remainingContracts: number
+
+  // Partial exit tracking
+  partialExits: {
+    contracts: number
+    exitPrice: number
+    exitTime: number
+    pnl: number
+    reason: string
+  }[]
+
+  // Trailing stop state
+  trailingStopActive: boolean
+  trailingStopPrice: number | null
+  highestPriceSinceEntry: number  // For long
+  lowestPriceSinceEntry: number   // For short
+  lastTrailUpdate: number
+
+  // Scale out tracking
+  scaleOutLevelsHit: number[]  // Which levels have been hit
+  stopMovedToBreakeven: boolean
+
+  // ATR at entry (for trailing calculations)
+  entryATR: number
+
+  // Current R multiple (how many R's in profit)
+  currentRMultiple: number
+}
+
+let advancedPositionState: AdvancedPositionState | null = null
+
+// -------------------------------------------------------------------------
+// PERFORMANCE TRACKING - For adaptive adjustments
+// -------------------------------------------------------------------------
+interface PerformanceTracker {
+  consecutiveWins: number
+  consecutiveLosses: number
+  recentTrades: { pnl: number; regime: string; session: string; time: number }[]
+  winRateByRegime: Record<string, { wins: number; losses: number }>
+  winRateBySession: Record<string, { wins: number; losses: number }>
+  dailyPnL: number
+  currentDrawdownPercent: number
+}
+
+let performanceTracker: PerformanceTracker = {
+  consecutiveWins: 0,
+  consecutiveLosses: 0,
+  recentTrades: [],
+  winRateByRegime: {},
+  winRateBySession: {},
+  dailyPnL: 0,
+  currentDrawdownPercent: 0,
+}
+
+// =============================================================================
 // TYPES
 // =============================================================================
 
@@ -245,6 +600,537 @@ let state: AutoTraderState = {
   tradingDays: 0,
   dailyVaR: 0,
   stressTestsPassed: 0,
+}
+
+// =============================================================================
+// ADVANCED POSITION MANAGEMENT FUNCTIONS
+// =============================================================================
+
+/**
+ * Calculate dynamic contract size based on all factors
+ */
+function calculateDynamicContractSize(
+  regime: string,
+  confluenceScore: number,
+  currentATR: number,
+  session: string
+): { contracts: number; factors: string[] } {
+  const factors: string[] = []
+  let contracts = CONTRACT_SCALING.baseContracts
+
+  // 1. REGIME MULTIPLIER
+  const regimeMultiplier = CONTRACT_SCALING.regimeMultipliers[regime] ?? 1
+  if (regimeMultiplier === 0) {
+    return { contracts: 0, factors: ['BLOCKED: Illiquid market - no trading'] }
+  }
+  contracts = Math.floor(contracts * regimeMultiplier)
+  factors.push(`Regime ${regime}: ${regimeMultiplier}x`)
+
+  // 2. CONFLUENCE BONUS
+  for (const bonus of CONTRACT_SCALING.confluenceBonus) {
+    if (confluenceScore >= bonus.threshold) {
+      contracts += bonus.bonus
+      if (bonus.bonus > 0) {
+        factors.push(`Confluence ${confluenceScore}+: +${bonus.bonus} contracts`)
+      }
+      break // Only apply highest matching bonus
+    }
+  }
+
+  // 3. WIN STREAK BONUS
+  if (performanceTracker.consecutiveWins >= CONTRACT_SCALING.winStreakBonus.requiredWins) {
+    const streakBonus = Math.min(
+      CONTRACT_SCALING.winStreakBonus.maxBonus,
+      Math.floor((performanceTracker.consecutiveWins - CONTRACT_SCALING.winStreakBonus.requiredWins + 1) / 2) + 1
+    )
+    contracts += streakBonus
+    factors.push(`Win streak (${performanceTracker.consecutiveWins}): +${streakBonus} contracts`)
+  }
+
+  // 4. DRAWDOWN PROTECTION
+  for (const threshold of CONTRACT_SCALING.drawdownProtection.thresholds) {
+    if (performanceTracker.currentDrawdownPercent >= threshold.drawdownPercent) {
+      const oldContracts = contracts
+      contracts = Math.floor(contracts * threshold.multiplier)
+      factors.push(`Drawdown ${performanceTracker.currentDrawdownPercent.toFixed(0)}%: ${threshold.multiplier}x (${oldContracts} -> ${contracts})`)
+      break
+    }
+  }
+
+  // 5. VOLATILITY ADJUSTMENT
+  if (currentATR < CONTRACT_SCALING.volatilityAdjustment.lowVolATRThreshold) {
+    const oldContracts = contracts
+    contracts = Math.floor(contracts * CONTRACT_SCALING.volatilityAdjustment.lowVolMultiplier)
+    factors.push(`Low volatility (ATR ${currentATR.toFixed(1)}): ${CONTRACT_SCALING.volatilityAdjustment.lowVolMultiplier}x`)
+  } else if (currentATR > CONTRACT_SCALING.volatilityAdjustment.highVolATRThreshold) {
+    const oldContracts = contracts
+    contracts = Math.floor(contracts * CONTRACT_SCALING.volatilityAdjustment.highVolMultiplier)
+    factors.push(`High volatility (ATR ${currentATR.toFixed(1)}): ${CONTRACT_SCALING.volatilityAdjustment.highVolMultiplier}x`)
+  }
+
+  // 6. CONSECUTIVE LOSS REDUCTION
+  if (performanceTracker.consecutiveLosses > 0) {
+    const lossReduction = Math.max(0.5, 1 - (performanceTracker.consecutiveLosses * 0.25))
+    const oldContracts = contracts
+    contracts = Math.max(1, Math.floor(contracts * lossReduction))
+    factors.push(`Consecutive losses (${performanceTracker.consecutiveLosses}): ${lossReduction.toFixed(2)}x`)
+  }
+
+  // 7. ENFORCE HARD LIMITS
+  contracts = Math.max(CONTRACT_SCALING.minContracts, Math.min(CONTRACT_SCALING.maxContracts, contracts))
+  factors.push(`Final: ${contracts} contracts (limits: ${CONTRACT_SCALING.minContracts}-${CONTRACT_SCALING.maxContracts})`)
+
+  return { contracts, factors }
+}
+
+/**
+ * Calculate adaptive confluence thresholds based on all factors
+ */
+function calculateAdaptiveThresholds(
+  regime: string,
+  session: string
+): {
+  requiredConfluence: number
+  requiredConfidence: number
+  requiredRiskReward: number
+  factors: string[]
+} {
+  const factors: string[] = []
+
+  let confluence = ADAPTIVE_CONFLUENCE.baseConfluence
+  let confidence = ADAPTIVE_CONFLUENCE.baseConfidence
+  let riskReward = ADAPTIVE_CONFLUENCE.baseRiskReward
+
+  factors.push(`Base: Confluence ${confluence}, Confidence ${confidence}%, R:R ${riskReward}`)
+
+  // 1. REGIME ADJUSTMENT (MOST IMPORTANT)
+  const regimeAdj = ADAPTIVE_CONFLUENCE.regimeAdjustments[regime]
+  if (regimeAdj) {
+    confluence += regimeAdj.confluenceAdjust
+    confidence += regimeAdj.confidenceAdjust
+    riskReward += regimeAdj.riskRewardAdjust
+    factors.push(`Regime ${regime}: Confluence ${regimeAdj.confluenceAdjust > 0 ? '+' : ''}${regimeAdj.confluenceAdjust}, Confidence ${regimeAdj.confidenceAdjust > 0 ? '+' : ''}${regimeAdj.confidenceAdjust}%`)
+  }
+
+  // 2. SESSION ADJUSTMENT
+  const sessionAdj = ADAPTIVE_CONFLUENCE.sessionAdjustments[session]
+  if (sessionAdj) {
+    confluence += sessionAdj.confluenceAdjust
+    confidence += sessionAdj.confidenceAdjust
+    factors.push(`Session ${session}: Confluence ${sessionAdj.confluenceAdjust > 0 ? '+' : ''}${sessionAdj.confluenceAdjust}`)
+  }
+
+  // 3. TIME-OF-DAY ADJUSTMENT
+  const now = new Date()
+  const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const hour = etTime.getHours()
+  const minute = etTime.getMinutes()
+  const timeMinutes = hour * 60 + minute
+
+  let timeAdj: { confluenceAdjust: number; confidenceAdjust: number } | null = null
+  let timePeriod = ''
+
+  if (timeMinutes >= 9 * 60 + 30 && timeMinutes < 10 * 60 + 30) {
+    timeAdj = ADAPTIVE_CONFLUENCE.timeAdjustments.openingHour
+    timePeriod = 'Opening Hour'
+  } else if (timeMinutes >= 10 * 60 + 30 && timeMinutes < 14 * 60) {
+    timeAdj = ADAPTIVE_CONFLUENCE.timeAdjustments.midDay
+    timePeriod = 'Mid-Day'
+  } else if (timeMinutes >= 14 * 60 && timeMinutes < 15 * 60) {
+    timeAdj = ADAPTIVE_CONFLUENCE.timeAdjustments.afternoonPush
+    timePeriod = 'Afternoon Push'
+  } else if (timeMinutes >= 15 * 60 && timeMinutes < 16 * 60) {
+    timeAdj = ADAPTIVE_CONFLUENCE.timeAdjustments.powerHour
+    timePeriod = 'Power Hour'
+  }
+
+  if (timeAdj) {
+    confluence += timeAdj.confluenceAdjust
+    confidence += timeAdj.confidenceAdjust
+    factors.push(`${timePeriod}: Confluence ${timeAdj.confluenceAdjust > 0 ? '+' : ''}${timeAdj.confluenceAdjust}`)
+  }
+
+  // 4. PERFORMANCE ADJUSTMENT
+  // Check win streak
+  for (const winAdj of ADAPTIVE_CONFLUENCE.performanceAdjustments.afterWinStreak) {
+    if (performanceTracker.consecutiveWins >= winAdj.wins) {
+      confluence += winAdj.confluenceAdjust
+      confidence += winAdj.confidenceAdjust
+      factors.push(`Win streak (${performanceTracker.consecutiveWins}): Confluence ${winAdj.confluenceAdjust}`)
+      break
+    }
+  }
+
+  // Check loss streak
+  for (const lossAdj of ADAPTIVE_CONFLUENCE.performanceAdjustments.afterLossStreak) {
+    if (performanceTracker.consecutiveLosses >= lossAdj.losses) {
+      confluence += lossAdj.confluenceAdjust
+      confidence += lossAdj.confidenceAdjust
+      factors.push(`Loss streak (${performanceTracker.consecutiveLosses}): Confluence +${lossAdj.confluenceAdjust}`)
+      break
+    }
+  }
+
+  // 5. ENFORCE HARD LIMITS
+  confluence = Math.max(ADAPTIVE_CONFLUENCE.minConfluence, Math.min(ADAPTIVE_CONFLUENCE.maxConfluence, confluence))
+  confidence = Math.max(ADAPTIVE_CONFLUENCE.minConfidence, Math.min(ADAPTIVE_CONFLUENCE.maxConfidence, confidence))
+  riskReward = Math.max(1.0, Math.min(5.0, riskReward))
+
+  factors.push(`FINAL: Confluence ${confluence}, Confidence ${confidence}%, R:R ${riskReward.toFixed(2)}`)
+
+  return {
+    requiredConfluence: confluence,
+    requiredConfidence: confidence,
+    requiredRiskReward: riskReward,
+    factors
+  }
+}
+
+/**
+ * Calculate adjusted take profit target based on regime
+ */
+function calculateAdjustedTarget(
+  entryPrice: number,
+  originalTarget: number,
+  stopLoss: number,
+  regime: string,
+  direction: 'LONG' | 'SHORT'
+): { adjustedTarget: number; extension: number; reason: string } {
+  if (!PARTIAL_TP_CONFIG.targetExtension.enabled) {
+    return { adjustedTarget: originalTarget, extension: 1.0, reason: 'Target extension disabled' }
+  }
+
+  const multiplier = PARTIAL_TP_CONFIG.targetExtension.regimeMultipliers[regime] ?? 1.0
+  const clampedMultiplier = Math.max(
+    PARTIAL_TP_CONFIG.targetExtension.minExtension,
+    Math.min(PARTIAL_TP_CONFIG.targetExtension.maxExtension, multiplier)
+  )
+
+  const originalDistance = Math.abs(originalTarget - entryPrice)
+  const adjustedDistance = originalDistance * clampedMultiplier
+
+  let adjustedTarget: number
+  if (direction === 'LONG') {
+    adjustedTarget = entryPrice + adjustedDistance
+  } else {
+    adjustedTarget = entryPrice - adjustedDistance
+  }
+
+  const reason = clampedMultiplier > 1
+    ? `Extended ${((clampedMultiplier - 1) * 100).toFixed(0)}% for ${regime}`
+    : clampedMultiplier < 1
+      ? `Reduced ${((1 - clampedMultiplier) * 100).toFixed(0)}% for ${regime}`
+      : `Standard target for ${regime}`
+
+  return { adjustedTarget, extension: clampedMultiplier, reason }
+}
+
+/**
+ * Initialize advanced position state when entering a trade
+ */
+function initializeAdvancedPosition(
+  contracts: number,
+  entryPrice: number,
+  stopLoss: number,
+  takeProfit: number,
+  currentATR: number,
+  direction: 'LONG' | 'SHORT'
+): void {
+  advancedPositionState = {
+    originalContracts: contracts,
+    remainingContracts: contracts,
+    partialExits: [],
+    trailingStopActive: false,
+    trailingStopPrice: null,
+    highestPriceSinceEntry: entryPrice,
+    lowestPriceSinceEntry: entryPrice,
+    lastTrailUpdate: Date.now(),
+    scaleOutLevelsHit: [],
+    stopMovedToBreakeven: false,
+    entryATR: currentATR,
+    currentRMultiple: 0,
+  }
+
+  console.log(`[ADVANCED] Position initialized: ${contracts} contracts, ATR: ${currentATR.toFixed(2)}`)
+}
+
+/**
+ * Check and execute partial take profits and trailing stop updates
+ * Returns: { action: 'none' | 'partial_exit' | 'full_exit' | 'update_stop', details: ... }
+ */
+function checkAdvancedExitConditions(
+  currentPrice: number,
+  direction: 'LONG' | 'SHORT',
+  entryPrice: number,
+  originalStop: number,
+  originalTarget: number
+): {
+  action: 'none' | 'partial_exit' | 'full_exit' | 'update_stop'
+  contractsToExit?: number
+  newStopLoss?: number
+  reason?: string
+  pnlPoints?: number
+} {
+  if (!advancedPositionState || advancedPositionState.remainingContracts <= 0) {
+    return { action: 'none' }
+  }
+
+  const pos = advancedPositionState
+  const stopDistance = Math.abs(entryPrice - originalStop)
+  const targetDistance = Math.abs(originalTarget - entryPrice)
+
+  // Calculate current profit in points
+  let currentProfitPoints: number
+  if (direction === 'LONG') {
+    currentProfitPoints = currentPrice - entryPrice
+    pos.highestPriceSinceEntry = Math.max(pos.highestPriceSinceEntry, currentPrice)
+  } else {
+    currentProfitPoints = entryPrice - currentPrice
+    pos.lowestPriceSinceEntry = Math.min(pos.lowestPriceSinceEntry, currentPrice)
+  }
+
+  // Calculate R multiple
+  pos.currentRMultiple = currentProfitPoints / stopDistance
+
+  // =========================================================================
+  // CHECK SCALE OUT LEVELS
+  // =========================================================================
+  for (let i = 0; i < PARTIAL_TP_CONFIG.scaleOutLevels.length; i++) {
+    if (pos.scaleOutLevelsHit.includes(i)) continue // Already hit this level
+
+    const level = PARTIAL_TP_CONFIG.scaleOutLevels[i]
+    const targetAtLevel = targetDistance * level.targetRatio
+
+    if (currentProfitPoints >= targetAtLevel) {
+      // Hit this scale out level!
+      const contractsToExit = Math.floor(pos.originalContracts * level.exitPercent)
+
+      if (contractsToExit > 0 && contractsToExit <= pos.remainingContracts) {
+        pos.scaleOutLevelsHit.push(i)
+
+        // Determine new stop based on moveStopTo
+        let newStop = originalStop
+        if (level.moveStopTo === 'breakeven') {
+          newStop = entryPrice
+          pos.stopMovedToBreakeven = true
+        } else if (level.moveStopTo === 'entry') {
+          newStop = entryPrice
+        } else if (level.moveStopTo === 'trail') {
+          pos.trailingStopActive = true
+          // Calculate initial trail position
+          const trailDistance = PARTIAL_TP_CONFIG.trailingStop.useATR
+            ? pos.entryATR * PARTIAL_TP_CONFIG.trailingStop.trailDistance
+            : PARTIAL_TP_CONFIG.trailingStop.fixedPoints
+
+          if (direction === 'LONG') {
+            newStop = currentPrice - trailDistance
+          } else {
+            newStop = currentPrice + trailDistance
+          }
+          pos.trailingStopPrice = newStop
+        }
+
+        return {
+          action: 'partial_exit',
+          contractsToExit,
+          newStopLoss: newStop,
+          reason: `Scale out level ${i + 1}: ${(level.targetRatio * 100).toFixed(0)}% of target (${level.exitPercent * 100}% position)`,
+          pnlPoints: currentProfitPoints,
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // CHECK TRAILING STOP
+  // =========================================================================
+  if (pos.trailingStopActive && PARTIAL_TP_CONFIG.trailingStop.enabled) {
+    const trailDistance = PARTIAL_TP_CONFIG.trailingStop.useATR
+      ? pos.entryATR * PARTIAL_TP_CONFIG.trailingStop.trailDistance
+      : PARTIAL_TP_CONFIG.trailingStop.fixedPoints
+
+    const trailStep = PARTIAL_TP_CONFIG.trailingStop.useATR
+      ? pos.entryATR * PARTIAL_TP_CONFIG.trailingStop.trailStep
+      : 1
+
+    let newTrailStop: number
+    if (direction === 'LONG') {
+      newTrailStop = pos.highestPriceSinceEntry - trailDistance
+      // Only update if moved up by at least trailStep
+      if (pos.trailingStopPrice && newTrailStop > pos.trailingStopPrice + trailStep) {
+        pos.trailingStopPrice = newTrailStop
+        pos.lastTrailUpdate = Date.now()
+        return {
+          action: 'update_stop',
+          newStopLoss: newTrailStop,
+          reason: `Trailing stop updated: ${newTrailStop.toFixed(2)} (${trailDistance.toFixed(1)} points behind high)`,
+        }
+      }
+    } else {
+      newTrailStop = pos.lowestPriceSinceEntry + trailDistance
+      // Only update if moved down by at least trailStep
+      if (pos.trailingStopPrice && newTrailStop < pos.trailingStopPrice - trailStep) {
+        pos.trailingStopPrice = newTrailStop
+        pos.lastTrailUpdate = Date.now()
+        return {
+          action: 'update_stop',
+          newStopLoss: newTrailStop,
+          reason: `Trailing stop updated: ${newTrailStop.toFixed(2)} (${trailDistance.toFixed(1)} points behind low)`,
+        }
+      }
+    }
+
+    // Check if trailing stop hit
+    if (pos.trailingStopPrice) {
+      const trailHit = direction === 'LONG'
+        ? currentPrice <= pos.trailingStopPrice
+        : currentPrice >= pos.trailingStopPrice
+
+      if (trailHit) {
+        return {
+          action: 'full_exit',
+          contractsToExit: pos.remainingContracts,
+          reason: `Trailing stop hit at ${pos.trailingStopPrice.toFixed(2)}`,
+          pnlPoints: currentProfitPoints,
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // CHECK IF PROFIT > ACTIVATION THRESHOLD FOR TRAILING
+  // =========================================================================
+  if (!pos.trailingStopActive && PARTIAL_TP_CONFIG.trailingStop.enabled) {
+    const activationDistance = pos.entryATR * PARTIAL_TP_CONFIG.trailingStop.activationMultiple
+
+    if (currentProfitPoints >= activationDistance) {
+      pos.trailingStopActive = true
+      const trailDistance = PARTIAL_TP_CONFIG.trailingStop.useATR
+        ? pos.entryATR * PARTIAL_TP_CONFIG.trailingStop.trailDistance
+        : PARTIAL_TP_CONFIG.trailingStop.fixedPoints
+
+      if (direction === 'LONG') {
+        pos.trailingStopPrice = currentPrice - trailDistance
+      } else {
+        pos.trailingStopPrice = currentPrice + trailDistance
+      }
+
+      console.log(`[TRAIL] Trailing stop activated at ${pos.trailingStopPrice?.toFixed(2)} (${currentProfitPoints.toFixed(1)} points profit)`)
+    }
+  }
+
+  return { action: 'none' }
+}
+
+/**
+ * Record a partial exit
+ */
+function recordPartialExit(
+  contracts: number,
+  exitPrice: number,
+  pnl: number,
+  reason: string
+): void {
+  if (!advancedPositionState) return
+
+  advancedPositionState.partialExits.push({
+    contracts,
+    exitPrice,
+    exitTime: Date.now(),
+    pnl,
+    reason,
+  })
+
+  advancedPositionState.remainingContracts -= contracts
+
+  console.log(`[PARTIAL] Exited ${contracts} contracts @ ${exitPrice.toFixed(2)} | P&L: $${pnl.toFixed(2)} | Remaining: ${advancedPositionState.remainingContracts}`)
+}
+
+/**
+ * Update performance tracker after a trade
+ */
+function updatePerformanceTracker(
+  pnl: number,
+  regime: string,
+  session: string
+): void {
+  // Update consecutive wins/losses
+  if (pnl > 0) {
+    performanceTracker.consecutiveWins++
+    performanceTracker.consecutiveLosses = 0
+  } else {
+    performanceTracker.consecutiveLosses++
+    performanceTracker.consecutiveWins = 0
+  }
+
+  // Update daily P&L
+  performanceTracker.dailyPnL += pnl
+
+  // Update drawdown
+  if (performanceTracker.dailyPnL < 0) {
+    performanceTracker.currentDrawdownPercent = Math.abs(performanceTracker.dailyPnL) / APEX_RULES.maxTrailingDrawdown * 100
+  } else {
+    performanceTracker.currentDrawdownPercent = 0
+  }
+
+  // Track by regime
+  if (!performanceTracker.winRateByRegime[regime]) {
+    performanceTracker.winRateByRegime[regime] = { wins: 0, losses: 0 }
+  }
+  if (pnl > 0) {
+    performanceTracker.winRateByRegime[regime].wins++
+  } else {
+    performanceTracker.winRateByRegime[regime].losses++
+  }
+
+  // Track by session
+  if (!performanceTracker.winRateBySession[session]) {
+    performanceTracker.winRateBySession[session] = { wins: 0, losses: 0 }
+  }
+  if (pnl > 0) {
+    performanceTracker.winRateBySession[session].wins++
+  } else {
+    performanceTracker.winRateBySession[session].losses++
+  }
+
+  // Add to recent trades (keep last 20)
+  performanceTracker.recentTrades.push({ pnl, regime, session, time: Date.now() })
+  if (performanceTracker.recentTrades.length > 20) {
+    performanceTracker.recentTrades.shift()
+  }
+
+  console.log(`[PERF] Wins: ${performanceTracker.consecutiveWins} | Losses: ${performanceTracker.consecutiveLosses} | Daily P&L: $${performanceTracker.dailyPnL.toFixed(2)} | DD: ${performanceTracker.currentDrawdownPercent.toFixed(1)}%`)
+}
+
+/**
+ * Reset daily performance tracking (call at start of each day)
+ */
+function resetDailyPerformance(): void {
+  performanceTracker.dailyPnL = 0
+  performanceTracker.currentDrawdownPercent = 0
+  console.log('[PERF] Daily performance reset')
+}
+
+/**
+ * Calculate ATR from candles
+ */
+function calculateATR(candles: Candle[], period: number = 14): number {
+  if (candles.length < period + 1) return 5 // Default ATR if not enough data
+
+  const trs: number[] = []
+  for (let i = 1; i < candles.length && trs.length < period; i++) {
+    const high = candles[i].high
+    const low = candles[i].low
+    const prevClose = candles[i - 1].close
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    )
+    trs.push(tr)
+  }
+
+  return trs.reduce((sum, tr) => sum + tr, 0) / trs.length
 }
 
 // =============================================================================
@@ -882,10 +1768,17 @@ async function runAutoTrader(): Promise<void> {
   // TOTAL CONFLUENCE SCORE
   let confluenceScore = signalCountScore + confidenceScore + regimeScore + sessionScore + momentumScore + orderFlowScore + patternScore
 
-  // CONSECUTIVE LOSS PENALTY - Require higher confluence after losses
-  const requiredConfluence = liveConsecutiveLosses >= LIVE_PROFIT_CONFIG.maxConsecutiveLosses
-    ? LIVE_PROFIT_CONFIG.minConfluenceScore + 10  // +10 after 2+ losses
-    : LIVE_PROFIT_CONFIG.minConfluenceScore
+  // ==========================================================================
+  // ADAPTIVE THRESHOLDS - Dynamic based on regime, session, and performance
+  // ==========================================================================
+  const adaptiveThresholds = calculateAdaptiveThresholds(currentRegime, session)
+
+  console.log('[ADAPTIVE] Calculating dynamic thresholds...')
+  adaptiveThresholds.factors.forEach(f => console.log(`  - ${f}`))
+
+  const requiredConfluence = adaptiveThresholds.requiredConfluence
+  const requiredConfidence = adaptiveThresholds.requiredConfidence
+  const requiredRiskReward = adaptiveThresholds.requiredRiskReward
 
   // TIME BETWEEN TRADES CHECK
   const minutesSinceLastTrade = (Date.now() - liveLastTradeTime) / 60000
@@ -895,10 +1788,21 @@ async function runAutoTrader(): Promise<void> {
   // DAILY TRADE COUNT CHECK
   const canTradeDailyLimit = liveDailyTradeCount < LIVE_PROFIT_CONFIG.maxTradesPerDay
 
+  // ==========================================================================
+  // DYNAMIC CONTRACT SIZING - Based on regime, confluence, volatility
+  // ==========================================================================
+  const currentATR = calculateATR(candles1m, 14)
+  const dynamicSize = calculateDynamicContractSize(currentRegime, confluenceScore, currentATR, session)
+
+  console.log('[SIZING] Dynamic contract calculation:')
+  dynamicSize.factors.forEach(f => console.log(`  - ${f}`))
+
   state.signalConfluence = confluenceScore
   state.confluenceFactors = factors
 
-  console.log(`[CONFLUENCE] Score: ${confluenceScore.toFixed(0)} / 100 (need ${requiredConfluence})`)
+  console.log(`[CONFLUENCE] Score: ${confluenceScore.toFixed(0)} / 100 (need ${requiredConfluence} for ${currentRegime})`)
+  console.log(`[ADAPTIVE] Confidence need: ${requiredConfidence}% | R:R need: ${requiredRiskReward.toFixed(2)}`)
+  console.log(`[SIZING] Contracts: ${dynamicSize.contracts} | ATR: ${currentATR.toFixed(2)}`)
   console.log(`[RISK] Consecutive losses: ${liveConsecutiveLosses} | Daily trades: ${liveDailyTradeCount}/${LIVE_PROFIT_CONFIG.maxTradesPerDay}`)
   console.log(`[TIME] Minutes since last trade: ${minutesSinceLastTrade.toFixed(0)} (need ${LIVE_PROFIT_CONFIG.minTimeBetweenTrades})`)
   factors.forEach(f => console.log(`  - ${f}`))
@@ -911,77 +1815,148 @@ async function runAutoTrader(): Promise<void> {
   let finalDirection: 'LONG' | 'SHORT' | 'FLAT' = 'FLAT'
   let finalConfidence = 0
 
-  // LIVE TRADING GATE: All conditions must pass
+  // LIVE TRADING GATE: All conditions must pass (NOW USING ADAPTIVE THRESHOLDS)
   const passesConfluence = confluenceScore >= requiredConfluence
   const passesSignalCount = signalCount >= DYNAMIC_STRATEGY_SYSTEM.confluence.minStrategiesAgreeing
   const passesMomentum = momentumScore >= 5
   const passesRiskCheck = canTradeDailyLimit && canTradeTime
+  const passesContractSize = dynamicSize.contracts > 0  // Illiquid markets will have 0 contracts
 
-  if (passesConfluence && passesSignalCount && passesMomentum && passesRiskCheck) {
-    if (mlSignal.confidence > 0.70 && mlSignal.direction !== 'NEUTRAL') {
+  // Adaptive confidence check - use dynamic threshold instead of fixed 70%
+  const mlConfidencePercent = mlSignal.confidence * 100
+  const tradConfidence = traditionalSignal.confidence
+  const passesConfidenceML = mlConfidencePercent >= requiredConfidence && mlSignal.direction !== 'NEUTRAL'
+  const passesConfidenceTrad = tradConfidence >= requiredConfidence && traditionalSignal.direction !== 'FLAT'
+
+  if (passesConfluence && passesSignalCount && passesMomentum && passesRiskCheck && passesContractSize) {
+    if (passesConfidenceML) {
       finalDirection = mlSignal.direction as 'LONG' | 'SHORT'
-      finalConfidence = Math.min(95, (mlSignal.confidence * 100 + confluenceScore) / 2)
-    } else if (traditionalSignal.confidence > 75 && traditionalSignal.direction !== 'FLAT') {
+      finalConfidence = Math.min(95, (mlConfidencePercent + confluenceScore) / 2)
+    } else if (passesConfidenceTrad) {
       finalDirection = traditionalSignal.direction as 'LONG' | 'SHORT'
-      finalConfidence = Math.min(90, (traditionalSignal.confidence + confluenceScore) / 2)
+      finalConfidence = Math.min(90, (tradConfidence + confluenceScore) / 2)
     }
   } else {
     // Log why we're not trading
-    if (!passesConfluence) console.log(`[BLOCKED] Confluence ${confluenceScore.toFixed(0)} < ${requiredConfluence}`)
+    if (!passesConfluence) console.log(`[BLOCKED] Confluence ${confluenceScore.toFixed(0)} < ${requiredConfluence} (adaptive for ${currentRegime})`)
     if (!passesSignalCount) console.log(`[BLOCKED] Signal count ${signalCount} < 2`)
     if (!passesMomentum) console.log(`[BLOCKED] Momentum ${momentumScore} < 5`)
     if (!canTradeDailyLimit) console.log(`[BLOCKED] Daily limit reached`)
     if (!canTradeTime) console.log(`[BLOCKED] Need ${(LIVE_PROFIT_CONFIG.minTimeBetweenTrades - minutesSinceLastTrade).toFixed(0)} more minutes`)
+    if (!passesContractSize) console.log(`[BLOCKED] Contract size is 0 - market conditions unfavorable`)
+    if (!passesConfidenceML && !passesConfidenceTrad) console.log(`[BLOCKED] Confidence below adaptive threshold ${requiredConfidence}%`)
   }
 
-  console.log(`[FINAL] Direction: ${finalDirection} | Confidence: ${finalConfidence.toFixed(0)}% | Regime: ${currentRegime}`)
+  console.log(`[FINAL] Direction: ${finalDirection} | Confidence: ${finalConfidence.toFixed(0)}% | Regime: ${currentRegime} | Contracts: ${dynamicSize.contracts}`)
 
   // ==========================================================================
-  // STEP 9: POSITION MANAGEMENT
+  // STEP 10: ADVANCED POSITION MANAGEMENT WITH PARTIAL EXITS & TRAILING
   // ==========================================================================
-  console.log('[STEP 9] Managing position...')
+  console.log('[STEP 10] Advanced position management...')
 
   if (state.position) {
-    // Check stop loss
-    if (state.position.direction === 'LONG' && currentPrice <= state.position.stopLoss) {
-      console.log('[EXIT] Stop loss hit')
+    // ========================================================================
+    // CHECK ADVANCED EXIT CONDITIONS (Partial profits, trailing stops)
+    // ========================================================================
+    const advancedExit = checkAdvancedExitConditions(
+      currentPrice,
+      state.position.direction,
+      state.position.entryPrice,
+      state.position.stopLoss,
+      state.position.takeProfit
+    )
+
+    if (advancedExit.action === 'partial_exit' && advancedExit.contractsToExit) {
+      console.log(`[PARTIAL EXIT] ${advancedExit.reason}`)
+
+      // Calculate P&L for partial exit
+      const pointValue = state.instrument === 'ES' ? ES_POINT_VALUE : NQ_POINT_VALUE
+      const pnlPoints = advancedExit.pnlPoints || 0
+      const partialPnL = pnlPoints * pointValue * advancedExit.contractsToExit
+
+      // Record partial exit
+      recordPartialExit(advancedExit.contractsToExit, currentPrice, partialPnL, advancedExit.reason || '')
+
+      // Update stop loss if specified
+      if (advancedExit.newStopLoss) {
+        state.position.stopLoss = advancedExit.newStopLoss
+        console.log(`[STOP MOVED] New stop: ${advancedExit.newStopLoss.toFixed(2)}`)
+      }
+
+      // Update position contracts
+      state.position.contracts = advancedPositionState?.remainingContracts || state.position.contracts - advancedExit.contractsToExit
+
+      // Update balance with partial profit
+      state.currentBalance += partialPnL
+      state.todayPnL += partialPnL
+
+      // If no contracts remaining, close position fully
+      if (state.position.contracts <= 0) {
+        console.log('[FULL EXIT] All contracts exited via partial exits')
+        updatePerformanceTracker(partialPnL, currentRegime, session)
+        state.position = null
+        advancedPositionState = null
+        return
+      }
+    } else if (advancedExit.action === 'update_stop' && advancedExit.newStopLoss) {
+      console.log(`[TRAIL UPDATE] ${advancedExit.reason}`)
+      state.position.stopLoss = advancedExit.newStopLoss
+    } else if (advancedExit.action === 'full_exit') {
+      console.log(`[TRAIL EXIT] ${advancedExit.reason}`)
+      await executeExitAdvanced(advancedExit.reason || 'Trailing Stop', currentPrice, conditions)
+      return
+    }
+
+    // ========================================================================
+    // STANDARD STOP LOSS CHECK (after any trailing stop updates)
+    // ========================================================================
+    const effectiveStop = advancedPositionState?.trailingStopPrice || state.position.stopLoss
+
+    if (state.position.direction === 'LONG' && currentPrice <= effectiveStop) {
+      console.log(`[EXIT] Stop loss hit at ${effectiveStop.toFixed(2)}`)
       await executeExitAdvanced('Stop Loss Hit', currentPrice, conditions)
       return
     }
-    if (state.position.direction === 'SHORT' && currentPrice >= state.position.stopLoss) {
-      console.log('[EXIT] Stop loss hit')
+    if (state.position.direction === 'SHORT' && currentPrice >= effectiveStop) {
+      console.log(`[EXIT] Stop loss hit at ${effectiveStop.toFixed(2)}`)
       await executeExitAdvanced('Stop Loss Hit', currentPrice, conditions)
       return
     }
 
-    // Check take profit
+    // ========================================================================
+    // FULL TAKE PROFIT CHECK (for remaining contracts)
+    // ========================================================================
     if (state.position.direction === 'LONG' && currentPrice >= state.position.takeProfit) {
-      console.log('[EXIT] Take profit hit')
+      console.log('[EXIT] Full take profit hit')
       await executeExitAdvanced('Take Profit Hit', currentPrice, conditions)
       return
     }
     if (state.position.direction === 'SHORT' && currentPrice <= state.position.takeProfit) {
-      console.log('[EXIT] Take profit hit')
+      console.log('[EXIT] Full take profit hit')
       await executeExitAdvanced('Take Profit Hit', currentPrice, conditions)
       return
     }
 
-    // Check for reversal with HIGH confluence
+    // ========================================================================
+    // REVERSAL CHECK (only for high confluence reversals)
+    // ========================================================================
     if (finalDirection !== 'FLAT' &&
         finalDirection !== state.position.direction &&
         finalConfidence > 75 &&
-        confluenceScore >= 65) {
-      console.log('[REVERSAL] High confluence reversal signal')
+        confluenceScore >= requiredConfluence + 10) {  // Need EXTRA confluence for reversal
+      console.log('[REVERSAL] High confluence reversal signal detected')
       await executeExitAdvanced('Reversal Signal', currentPrice, conditions)
-      await executeEntryAdvanced(finalDirection, finalConfidence, mlSignal, traditionalSignal, conditions)
+      await executeEntryAdvancedWithDynamicSize(finalDirection, finalConfidence, mlSignal, traditionalSignal, conditions, dynamicSize.contracts, currentATR, currentRegime)
     }
   } else {
-    // No position - look for entry
-    if (finalDirection !== 'FLAT' && finalConfidence >= 60 && confluenceScore >= 50) {
-      console.log('[ENTRY] Strong confluence entry signal')
-      await executeEntryAdvanced(finalDirection, finalConfidence, mlSignal, traditionalSignal, conditions)
+    // ========================================================================
+    // NO POSITION - LOOK FOR ENTRY WITH DYNAMIC SIZING
+    // ========================================================================
+    if (finalDirection !== 'FLAT' && passesConfluence && (passesConfidenceML || passesConfidenceTrad)) {
+      console.log(`[ENTRY] Adaptive entry - ${currentRegime} regime with ${dynamicSize.contracts} contracts`)
+      await executeEntryAdvancedWithDynamicSize(finalDirection, finalConfidence, mlSignal, traditionalSignal, conditions, dynamicSize.contracts, currentATR, currentRegime)
     } else {
-      console.log('[WAIT] No valid entry signal')
+      console.log('[WAIT] No valid entry signal (adaptive thresholds not met)')
     }
   }
 
@@ -1112,6 +2087,151 @@ async function executeEntryAdvanced(
 }
 
 // =============================================================================
+// ADVANCED ENTRY WITH DYNAMIC SIZING, PARTIAL TP, AND TRAILING STOPS
+// =============================================================================
+
+async function executeEntryAdvancedWithDynamicSize(
+  direction: 'LONG' | 'SHORT',
+  confidence: number,
+  mlSignal: MLSignal,
+  tradSignal: Signal,
+  conditions: MarketConditions,
+  dynamicContracts: number,
+  currentATR: number,
+  currentRegime: string
+): Promise<boolean> {
+  const riskStatus = state.lastRiskStatus
+  if (!riskStatus || !riskStatus.canTrade) {
+    console.log('[EXEC] Risk status blocking trade')
+    return false
+  }
+
+  if (dynamicContracts <= 0) {
+    console.log('[EXEC] Dynamic contract size is 0 - no trade')
+    return false
+  }
+
+  // Select optimal execution algorithm
+  const algorithm = selectExecutionAlgorithm(direction, dynamicContracts, conditions, confidence / 100)
+  state.executionAlgorithm = algorithm
+  console.log(`[EXEC] Using ${algorithm} algorithm with ${dynamicContracts} contracts`)
+
+  const symbol = getCurrentContractSymbol(state.instrument)
+  const pointValue = state.instrument === 'ES' ? ES_POINT_VALUE : NQ_POINT_VALUE
+
+  // Use ML signal levels
+  const entry = mlSignal.entry || tradSignal.entry
+  let stopLoss = mlSignal.stopLoss || tradSignal.stopLoss
+  let takeProfit = mlSignal.takeProfit || tradSignal.takeProfit
+
+  // ==========================================================================
+  // ADJUST TARGET BASED ON REGIME (Extend in trends, reduce in chop)
+  // ==========================================================================
+  const targetAdjustment = calculateAdjustedTarget(entry, takeProfit, stopLoss, currentRegime, direction)
+  takeProfit = targetAdjustment.adjustedTarget
+  console.log(`[TARGET] ${targetAdjustment.reason} | New target: ${takeProfit.toFixed(2)}`)
+
+  const stopDistance = Math.abs(entry - stopLoss)
+  const targetDistance = Math.abs(takeProfit - entry)
+  const riskReward = targetDistance / stopDistance
+
+  console.log(`[R:R] ${riskReward.toFixed(2)} (Stop: ${stopDistance.toFixed(2)} pts, Target: ${targetDistance.toFixed(2)} pts)`)
+
+  // Calculate dollar amounts
+  const dollarStop = stopDistance * pointValue * dynamicContracts
+  const dollarTarget = targetDistance * pointValue * dynamicContracts
+
+  // Create execution plan
+  const order = executionEngine.createOrder(
+    symbol,
+    direction === 'LONG' ? 'BUY' : 'SELL',
+    dynamicContracts,
+    algorithm,
+    entry,
+    { urgency: confidence / 100, maxSlippage: 0.002 }
+  )
+
+  const executionPlan = executionEngine.generatePlan(order, conditions)
+
+  console.log(`[EXEC] Entry: ${entry.toFixed(2)} | Stop: ${stopLoss.toFixed(2)} | Target: ${takeProfit.toFixed(2)}`)
+  console.log(`[EXEC] Contracts: ${dynamicContracts} | Stop$: $${dollarStop.toFixed(0)} | Target$: $${dollarTarget.toFixed(0)}`)
+  console.log(`[EXEC] Est. Slippage: ${(executionPlan.estimatedSlippage * 100).toFixed(3)}% | Est. Cost: $${executionPlan.estimatedCost.toFixed(2)}`)
+
+  // ==========================================================================
+  // INITIALIZE ADVANCED POSITION STATE FOR PARTIAL EXITS
+  // ==========================================================================
+  initializeAdvancedPosition(dynamicContracts, entry, stopLoss, takeProfit, currentATR, direction)
+
+  // Log scale out levels
+  console.log('[SCALE OUT] Levels configured:')
+  PARTIAL_TP_CONFIG.scaleOutLevels.forEach((level, i) => {
+    const levelPrice = direction === 'LONG'
+      ? entry + (targetDistance * level.targetRatio)
+      : entry - (targetDistance * level.targetRatio)
+    const contractsToExit = Math.floor(dynamicContracts * level.exitPercent)
+    console.log(`  Level ${i + 1}: ${levelPrice.toFixed(2)} (${(level.targetRatio * 100).toFixed(0)}% target) -> Exit ${contractsToExit} contracts, ${level.moveStopTo}`)
+  })
+
+  // ==========================================================================
+  // PAPER MODE: Simulate trade without real execution
+  // ==========================================================================
+  if (state.paperMode) {
+    console.log(`[PAPER] SIMULATED ${direction} ${dynamicContracts}x ${symbol} @ ${entry.toFixed(2)}`)
+    state.position = {
+      instrument: state.instrument,
+      direction,
+      entryPrice: entry,
+      contracts: dynamicContracts,
+      stopLoss,
+      takeProfit,
+      entryTime: Date.now(),
+      signal: tradSignal,
+      executionPlan,
+    }
+    return true
+  }
+
+  // ==========================================================================
+  // LIVE MODE: Execute via PickMyTrade
+  // ==========================================================================
+  const pmt = getClient()
+  if (!pmt || !pmt.isEnabled) {
+    console.log('[EXEC] PickMyTrade not available - enable live trading first')
+    return false
+  }
+
+  const result = await pmt.executeSignal({
+    action: direction === 'LONG' ? 'BUY' : 'SELL',
+    symbol,
+    quantity: dynamicContracts,
+    orderType: 'MKT',
+    dollarStopLoss: dollarStop,
+    dollarTakeProfit: dollarTarget,
+    reason: `${algorithm}|${currentRegime}|${dynamicContracts}x|Conf:${confidence.toFixed(0)}%|Score:${state.signalConfluence}`,
+  })
+
+  if (result.success) {
+    state.position = {
+      instrument: state.instrument,
+      direction,
+      entryPrice: entry,
+      contracts: dynamicContracts,
+      stopLoss,
+      takeProfit,
+      entryTime: Date.now(),
+      signal: tradSignal,
+      executionPlan,
+    }
+    console.log(`[EXEC] SUCCESS: Opened ${direction} ${dynamicContracts}x ${symbol} in ${currentRegime} regime`)
+    return true
+  }
+
+  console.error('[EXEC] FAILED:', result.message)
+  advancedPositionState = null  // Clean up on failure
+  return false
+}
+
+// =============================================================================
 // ADVANCED EXIT
 // =============================================================================
 
@@ -1201,13 +2321,37 @@ function recordTradeResult(exitPrice: number, pnl: number, slippage: number, rea
   liveLastTradeTime = Date.now()
 
   state.currentBalance += pnl
+
+  // ==========================================================================
+  // UPDATE PERFORMANCE TRACKER FOR ADAPTIVE SYSTEM
+  // ==========================================================================
+  const currentSession = getCurrentSession()
+  const currentRegime = state.marketRegime?.type || 'UNKNOWN'
+  updatePerformanceTracker(pnl, currentRegime, currentSession)
+
+  // Include partial exits P&L in total
+  let totalTradePnL = pnl
+  if (advancedPositionState && advancedPositionState.partialExits.length > 0) {
+    const partialPnL = advancedPositionState.partialExits.reduce((sum, exit) => sum + exit.pnl, 0)
+    totalTradePnL += partialPnL
+    console.log(`[PARTIAL SUMMARY] ${advancedPositionState.partialExits.length} partial exits | Partial P&L: $${partialPnL.toFixed(2)} | Total: $${totalTradePnL.toFixed(2)}`)
+
+    // Log R-multiple achieved
+    if (advancedPositionState.currentRMultiple) {
+      console.log(`[R-MULTIPLE] Achieved ${advancedPositionState.currentRMultiple.toFixed(2)}R`)
+    }
+  }
+
+  // Clean up advanced position state
+  advancedPositionState = null
   state.position = null
 
   // APEX RULE: Track unique trading days (need 7 minimum)
   state.tradingDays = recordTradingDay()
 
-  console.log(`[EXIT] ${reason} | P&L: $${pnl.toFixed(2)} | Slippage: $${slippage.toFixed(2)}`)
+  console.log(`[EXIT] ${reason} | P&L: $${pnl.toFixed(2)} | Total Trade P&L: $${totalTradePnL.toFixed(2)} | Slippage: $${slippage.toFixed(2)}`)
   console.log(`[APEX] Trading days: ${state.tradingDays}/${APEX_RULES.minTradingDays} (need ${Math.max(0, APEX_RULES.minTradingDays - state.tradingDays)} more)`)
+  console.log(`[PERFORMANCE] Daily P&L: $${performanceTracker.dailyPnL.toFixed(2)} | Drawdown: ${performanceTracker.currentDrawdownPercent.toFixed(1)}% | Win Streak: ${performanceTracker.consecutiveWins} | Loss Streak: ${performanceTracker.consecutiveLosses}`)
 }
 
 // =============================================================================

@@ -193,11 +193,12 @@ export function classifyMarketRegime(
   let trendStrength = 0
 
   // Check for news-driven/illiquid first (priority)
-  if (volumeRatio > 3 && atrRatio > 2) {
+  // LOOSENED: Only extreme conditions trigger these regimes
+  if (volumeRatio > 4 && atrRatio > 2.5) {  // Was 3 and 2
     regime = 'NEWS_DRIVEN'
     confidence = 90
   }
-  else if (volumeRatio < 0.3 || avgVolume < 1000) {
+  else if (volumeRatio < 0.1 || avgVolume < 100) {  // Was 0.3 and 1000
     regime = 'ILLIQUID'
     confidence = 85
   }
@@ -242,12 +243,12 @@ export function classifyMarketRegime(
   }
 
   // Determine trading recommendation
+  // CHANGED: NEWS_DRIVEN and ILLIQUID now DEFENSIVE instead of NO_TRADE
+  // This allows trading with reduced size instead of blocking completely
   let tradingRecommendation: 'AGGRESSIVE' | 'NORMAL' | 'DEFENSIVE' | 'NO_TRADE'
 
-  if (regime === 'NEWS_DRIVEN' || regime === 'ILLIQUID') {
-    tradingRecommendation = 'NO_TRADE'
-  }
-  else if (regime === 'HIGH_VOLATILITY' || volatilityPercentile > 90) {
+  if (regime === 'NEWS_DRIVEN' || regime === 'ILLIQUID' ||
+      regime === 'HIGH_VOLATILITY' || volatilityPercentile > 90) {
     tradingRecommendation = 'DEFENSIVE'
   }
   else if (regime.startsWith('TREND_STRONG') && confidence > 75) {
@@ -730,9 +731,7 @@ export function detectLiquiditySweepSignal(
   regime: RegimeAnalysis,
   htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): StrategySignal | null {
-  if (regime.current === 'NEWS_DRIVEN' || regime.current === 'ILLIQUID') {
-    return null
-  }
+  // REMOVED: NEWS_DRIVEN/ILLIQUID block - handled by DEFENSIVE mode
 
   const atr = calculateATR(candles.slice(-20), 14)
   const current = candles[candles.length - 1]
@@ -1592,9 +1591,7 @@ export function detectORBSignal(
     return null // ORB still forming
   }
 
-  if (regime.current === 'NEWS_DRIVEN' || regime.current === 'ILLIQUID') {
-    return null
-  }
+  // REMOVED: NEWS_DRIVEN/ILLIQUID block - handled by DEFENSIVE mode
 
   const current = candles[candles.length - 1]
   const atr = calculateATR(candles.slice(-20), 14)
@@ -1975,15 +1972,16 @@ export function calculateTradeQuality(
   const overall = Object.values(breakdown).reduce((s, v) => s + v, 0)
 
   // Determine recommendation
+  // LOWERED THRESHOLDS: More signals = more learning opportunities
   let recommendation: 'FULL_SIZE' | 'HALF_SIZE' | 'QUARTER_SIZE' | 'NO_TRADE'
-  if (overall >= 80) {
-    recommendation = 'FULL_SIZE'
-  } else if (overall >= 60) {
-    recommendation = 'HALF_SIZE'
-  } else if (overall >= 40) {
-    recommendation = 'QUARTER_SIZE'
+  if (overall >= 70) {
+    recommendation = 'FULL_SIZE'      // Was 80
+  } else if (overall >= 50) {
+    recommendation = 'HALF_SIZE'      // Was 60
+  } else if (overall >= 25) {
+    recommendation = 'QUARTER_SIZE'   // Was 40
   } else {
-    recommendation = 'NO_TRADE'
+    recommendation = 'NO_TRADE'       // Only truly bad signals blocked
   }
 
   return { overall, breakdown, recommendation, reasons }
@@ -2116,10 +2114,7 @@ export function generateMasterSignal(
   // Classify regime
   const regime = classifyMarketRegime(candles1m)
 
-  // NO TRADE regimes
-  if (regime.tradingRecommendation === 'NO_TRADE') {
-    return { signal: null, quality: null, reason: `No trade: ${regime.current} regime` }
-  }
+  // REMOVED: NO_TRADE regime block - handled by DEFENSIVE mode and position sizing
 
   // Determine HTF bias from 15m
   const htfBias = determineHTFBias(candles15m)
@@ -2218,10 +2213,8 @@ export function generateAllWorldClassSignals(
   // Classify regime
   const regime = classifyMarketRegime(candles1m)
 
-  // NO TRADE regimes - still return regime info for debugging
-  if (regime.tradingRecommendation === 'NO_TRADE') {
-    return { signals: [], regime, reason: `No trade: ${regime.current} regime` }
-  }
+  // REMOVED: NO_TRADE regime block - we now allow DEFENSIVE trading in all regimes
+  // This is controlled by position sizing instead of blocking signals
 
   // Determine HTF bias from 15m
   const htfBias = determineHTFBias(candles15m)

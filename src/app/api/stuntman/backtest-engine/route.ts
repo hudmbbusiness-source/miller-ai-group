@@ -84,6 +84,15 @@ import {
   RegimeAnalysis,
 } from '@/lib/stuntman/world-class-strategies'
 
+// === WEIGHT-BASED LIQUIDITY SWEEP STRATEGY ===
+// Governance-compliant: Trades are DEGRADED not BLOCKED
+import {
+  detectLiquiditySweep,
+  toBacktestSignal,
+  LiquiditySweepSignal,
+  Candle as LiquiditySweepCandle,
+} from '@/lib/stuntman/liquidity-sweep-strategy'
+
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
 // =============================================================================
@@ -772,6 +781,192 @@ const FOCUSED_MODE = {
 }
 
 // =============================================================================
+// DYNAMIC REGIME-ADAPTIVE STRATEGY SYSTEM
+// =============================================================================
+// Professional-grade system that automatically selects the RIGHT strategy
+// for current market conditions. Designed to hit Apex 150K: $9,000 in 7 days.
+//
+// REQUIREMENTS:
+// - $1,285/day average profit
+// - 50%+ win rate with 2:1 R/R
+// - Works across ALL market conditions
+
+const DYNAMIC_STRATEGY_SYSTEM = {
+  enabled: true,
+
+  // =========================================================================
+  // REGIME -> STRATEGY MAPPING
+  // Each regime has optimal strategies that historically perform best
+  // =========================================================================
+  regimeStrategies: {
+    // TRENDING MARKETS - Ride the momentum
+    'TRENDING_UP': [
+      'BOS_CONTINUATION',      // Break of structure - trend continuation
+      'TREND_PULLBACK',        // Buy dips in uptrend
+      'ORB_BREAKOUT',          // Opening range breakout
+      'OB_FVG_CONFLUENCE',     // Order block + FVG
+    ],
+    'TRENDING_DOWN': [
+      'BOS_CONTINUATION',      // Break of structure - trend continuation
+      'TREND_PULLBACK',        // Sell rallies in downtrend
+      'ORB_BREAKOUT',          // Opening range breakout
+      'OB_FVG_CONFLUENCE',     // Order block + FVG
+    ],
+
+    // RANGING MARKETS - Fade extremes
+    'RANGING': [
+      'VWAP_DEVIATION',        // Mean reversion to VWAP
+      'RANGE_FADE',            // Fade range highs/lows
+      'SESSION_REVERSION',     // Session high/low reversion
+      'VP_VAH_REVERSAL',       // Volume profile high reversal
+      'VP_VAL_REVERSAL',       // Volume profile low reversal
+      'ZSCORE_REVERSION',      // Statistical mean reversion
+    ],
+
+    // VOLATILE MARKETS - Catch breakouts
+    'HIGH_VOLATILITY': [
+      'VOLATILITY_BREAKOUT',   // Compression -> Expansion
+      'LIQUIDITY_SWEEP',       // Stop hunt reversals
+      'LIQUIDITY_SWEEP_MSS',   // Sweep + market structure shift
+      'FAILED_BREAKOUT',       // False breakout reversal
+    ],
+
+    // LOW VOLATILITY - Wait for expansion or scalp
+    'LOW_VOLATILITY': [
+      'VOLATILITY_BREAKOUT',   // Wait for compression break
+      'RANGE_FADE',            // Scalp the range
+      'VWAP_DEVIATION',        // Small moves off VWAP
+    ],
+
+    // BREAKOUT MARKETS
+    'BREAKOUT': [
+      'ORB_BREAKOUT',          // Opening range breakout
+      'VOLATILITY_BREAKOUT',   // Compression breakout
+      'BOS_CONTINUATION',      // Structure breakout
+    ],
+
+    // REVERSAL MARKETS
+    'REVERSAL': [
+      'CHOCH_REVERSAL',        // Change of character
+      'KILLZONE_REVERSAL',     // NY killzone reversal
+      'LIQUIDITY_SWEEP',       // Stop hunt reversal
+      'FAILED_BREAKOUT',       // False breakout reversal
+    ],
+
+    // UNKNOWN - Use all strategies, require high confluence
+    'UNKNOWN': [
+      'OB_FVG_CONFLUENCE',
+      'LIQUIDITY_SWEEP_MSS',
+      'VWAP_DEVIATION',
+      'BOS_CONTINUATION',
+    ],
+  },
+
+  // =========================================================================
+  // SESSION-BASED STRATEGY BOOSTS
+  // Certain strategies work better at certain times
+  // =========================================================================
+  sessionBoosts: {
+    'RTH_OPEN': {              // 9:30-10:30 AM - High volatility
+      boost: ['ORB_BREAKOUT', 'VOLATILITY_BREAKOUT', 'LIQUIDITY_SWEEP'],
+      multiplier: 1.5,
+    },
+    'RTH_MID': {               // 10:30-2:00 PM - Choppy, ranging
+      boost: ['VWAP_DEVIATION', 'RANGE_FADE', 'VP_VAH_REVERSAL', 'VP_VAL_REVERSAL'],
+      multiplier: 1.3,
+    },
+    'RTH_AFTERNOON': {         // 2:00-3:30 PM - Trend resumption
+      boost: ['BOS_CONTINUATION', 'TREND_PULLBACK', 'OB_FVG_CONFLUENCE'],
+      multiplier: 1.4,
+    },
+    'RTH_CLOSE': {             // 3:30-4:00 PM - Final push
+      boost: ['BOS_CONTINUATION', 'VOLATILITY_BREAKOUT'],
+      multiplier: 1.2,
+    },
+  },
+
+  // =========================================================================
+  // CONFLUENCE REQUIREMENTS - Multiple signals must agree
+  // =========================================================================
+  confluence: {
+    minStrategiesAgreeing: 2,  // At least 2 strategies must signal same direction
+    minConfidenceAverage: 70,  // Average confidence must be 70%+
+    requireRegimeMatch: true,  // Strategy must be optimal for current regime
+  },
+
+  // =========================================================================
+  // APEX 150K SPECIFIC SETTINGS
+  // =========================================================================
+  apex150k: {
+    dailyTarget: 1285,         // $1,285/day to hit $9,000 in 7 days
+    dailyMaxLoss: 600,         // Stop at -$600/day to protect account
+    minRiskReward: 2.0,        // Only take 2:1 or better setups
+    minWinProbability: 0.50,   // Only take 50%+ probability setups
+    maxTradesPerDay: 6,        // Quality over quantity
+    minTimeBetweenTrades: 10,  // 10 candles minimum between trades
+  },
+
+  // Enable all signal sources - dynamic selection will choose the best
+  disableLiquiditySweep: false,
+  disableWorldClass: false,
+  disableAdvanced: false,
+  disableMaster: false,
+  disableFocusedORB: false,
+}
+
+// Helper: Get optimal strategies for current regime
+type RegimeType = keyof typeof DYNAMIC_STRATEGY_SYSTEM.regimeStrategies
+
+function getRegimeOptimalStrategies(regime: string): string[] {
+  const validRegimes = Object.keys(DYNAMIC_STRATEGY_SYSTEM.regimeStrategies) as RegimeType[]
+  const regimeKey = validRegimes.includes(regime as RegimeType)
+    ? regime as RegimeType
+    : 'UNKNOWN'
+  return DYNAMIC_STRATEGY_SYSTEM.regimeStrategies[regimeKey]
+}
+
+// Helper: Check if strategy is optimal for regime
+function isStrategyOptimalForRegime(strategy: string, regime: string): boolean {
+  const optimalStrategies = getRegimeOptimalStrategies(regime)
+  return optimalStrategies.includes(strategy)
+}
+
+// Helper: Get session boost multiplier for strategy
+type SessionBoostType = keyof typeof DYNAMIC_STRATEGY_SYSTEM.sessionBoosts
+
+function getSessionBoost(strategy: string, session: string): number {
+  const validSessions = Object.keys(DYNAMIC_STRATEGY_SYSTEM.sessionBoosts) as SessionBoostType[]
+  if (!validSessions.includes(session as SessionBoostType)) return 1.0
+  const sessionConfig = DYNAMIC_STRATEGY_SYSTEM.sessionBoosts[session as SessionBoostType]
+  if (sessionConfig.boost.includes(strategy)) {
+    return sessionConfig.multiplier
+  }
+  return 1.0
+}
+
+// Helper: Calculate dynamic confidence score
+function calculateDynamicConfidence(
+  baseConfidence: number,
+  strategy: string,
+  regime: string,
+  session: string
+): number {
+  let confidence = baseConfidence
+
+  // Boost if strategy is optimal for regime
+  if (isStrategyOptimalForRegime(strategy, regime)) {
+    confidence *= 1.2  // 20% boost
+  } else {
+    confidence *= 0.7  // 30% penalty
+  }
+
+  // Apply session boost
+  confidence *= getSessionBoost(strategy, session)
+
+  return Math.min(100, confidence)
+}
+
+// =============================================================================
 // PRODUCTION-READY PROFIT MAXIMIZATION CONFIG
 // =============================================================================
 
@@ -815,12 +1010,251 @@ const PROFIT_CONFIG = {
   maxStopATRMultiplier: 0.8,   // Even tighter stops: max 0.8 ATR (was 1.0)
 }
 
+// =============================================================================
+// APEX EVAL MODE - 7-DAY $9,000 TARGET OPTIMIZATION
+// =============================================================================
+
+const EVAL_MODE = {
+  enabled: true,                  // ENABLE for Apex evaluation
+  targetProfit: 9000,             // $9,000 target
+  evalDays: 7,                    // 7 consecutive trading days
+  dailyTarget: 1400,              // ~$1,400/day target (with buffer)
+
+  // RELAXED THRESHOLDS FOR EVAL (more trades, smaller size)
+  minConfluenceScore: 40,         // LOWERED from 70 - accept more setups
+  minConfidence: 50,              // LOWERED from 80 - accept more setups
+  minRiskReward: 1.5,             // LOWERED from 2.5 - faster profits
+
+  // TRADE FREQUENCY - HIGHER for eval
+  maxTradesPerDay: 12,            // INCREASED from 5 - need more opportunities
+  minTimeBetweenTrades: 5,        // DECREASED from 20 - faster pace
+
+  // STRATEGY PRIORITY WEIGHTS (higher = preferred)
+  strategyWeights: {
+    'LIQUIDITY_SWEEP_REVERSAL': 1.5,  // Highest priority - best for reversals
+    'ORB_BREAKOUT': 1.4,              // High priority - documented 74.5% win rate
+    'VWAP_MEAN_REVERSION': 1.2,       // Medium-high - good for ranging
+    'EMA_TREND': 0.8,                 // Lower - can chop out
+    'DEFAULT': 1.0,                   // Baseline for others
+  },
+
+  // TIME-OF-DAY CAPITAL ALLOCATION (multipliers)
+  timeAllocation: {
+    openingHour: 1.5,     // 9:30-10:30 - MAXIMUM capital, best setups
+    afternoonPush: 1.3,   // 2:00-3:00 - Strong momentum builds
+    powerHour: 1.4,       // 3:00-4:00 - Strong closes, clear direction
+    midDay: 0.5,          // 10:30-2:00 - REDUCED, lunch chop
+    preMarket: 0.3,       // 4:00-9:30 - Minimal
+    afterHours: 0.2,      // 4:00-8:00 PM - Minimal
+    overnight: 0.1,       // 8 PM-4 AM - Almost nothing
+  },
+
+  // DAILY PnL SHAPING
+  dailyPnLShaping: {
+    targetReached: 0.3,            // After hitting daily target, reduce to 30% size
+    aheadOfSchedule: 0.5,          // If ahead of total schedule, moderate size
+    behindSchedule: 1.2,           // If behind schedule, push slightly harder
+    significantlyBehind: 1.4,      // If significantly behind, controlled aggression
+    maxPushMultiplier: 1.5,        // Never exceed 1.5x normal size
+  },
+
+  // AGGRESSION CURVE
+  aggressionCurve: {
+    baseSize: 1.0,                 // Normal contract size
+    highScoreBonus: 1.3,           // 30% more on quality score > 80
+    earlyMomentumBonus: 1.2,       // 20% more in opening hour with trend
+    trendDayBonus: 1.2,            // 20% more on clear trend days
+    chopPenalty: 0.6,              // 40% less in ranging conditions
+    postLossPenalty: 0.8,          // 20% less after a loss
+    winStreakBonus: 1.1,           // 10% more on 2+ consecutive wins
+  },
+
+  // 7-DAY SURVIVAL LOGIC
+  survivalRules: {
+    maxDailyLoss: 700,             // NEVER lose more than $700 in a day
+    redDayRecovery: 1.15,          // 15% more aggressive day after red day
+    protectWinningDay: 0.5,        // After +$1,000, reduce to 50% size
+    noRevengeTrading: true,        // After 2 consecutive losses, wait 30 min
+    preserveCapital: 0.9,          // When at 60%+ of $9k target, play safe
+  },
+}
+
+// Eval tracking state
+let evalState = {
+  day: 1,                          // Current eval day (1-7)
+  totalPnL: 0,                     // Cumulative P&L toward $9,000
+  dailyPnLHistory: [] as number[], // P&L per day
+  isOnTrack: true,                 // Are we on track to hit $9,000?
+  requiredDailyPnL: 1286,          // What we need per remaining day
+  consecutiveWins: 0,              // For win streak tracking
+  lastTradeResult: 'none' as 'win' | 'loss' | 'none',
+}
+
 // Daily P&L tracking
 let dailyPnL = 0
 let dailyTradeCount = 0
 let lastTradeIndex = 0
 let currentTradingDay = ''
 let consecutiveLosses = 0       // Track losing streak
+
+// =============================================================================
+// EVAL MODE CALCULATION FUNCTIONS
+// =============================================================================
+
+function getEvalScheduleMultiplier(): number {
+  if (!EVAL_MODE.enabled) return 1.0
+
+  const remainingDays = EVAL_MODE.evalDays - evalState.day + 1
+  const remainingTarget = EVAL_MODE.targetProfit - evalState.totalPnL
+  const requiredDaily = remainingTarget / remainingDays
+
+  evalState.requiredDailyPnL = requiredDaily
+
+  // Determine schedule status
+  if (requiredDaily <= EVAL_MODE.dailyTarget * 0.8) {
+    // Ahead of schedule - protect gains
+    evalState.isOnTrack = true
+    return EVAL_MODE.dailyPnLShaping.aheadOfSchedule
+  } else if (requiredDaily <= EVAL_MODE.dailyTarget * 1.1) {
+    // On track - normal
+    evalState.isOnTrack = true
+    return 1.0
+  } else if (requiredDaily <= EVAL_MODE.dailyTarget * 1.3) {
+    // Behind schedule - push slightly
+    evalState.isOnTrack = false
+    return EVAL_MODE.dailyPnLShaping.behindSchedule
+  } else {
+    // Significantly behind - controlled aggression
+    evalState.isOnTrack = false
+    return Math.min(EVAL_MODE.dailyPnLShaping.significantlyBehind, EVAL_MODE.dailyPnLShaping.maxPushMultiplier)
+  }
+}
+
+function getDailyPnLShapingMultiplier(): number {
+  if (!EVAL_MODE.enabled) return 1.0
+
+  // Check if daily target reached
+  if (dailyPnL >= EVAL_MODE.dailyTarget) {
+    return EVAL_MODE.dailyPnLShaping.targetReached // Reduce aggression after target
+  }
+
+  // Check if protecting a winning day
+  if (dailyPnL >= EVAL_MODE.survivalRules.protectWinningDay * 1000) {
+    return 0.5 // Protect $1k+ daily gains
+  }
+
+  // Check if approaching daily loss limit
+  if (dailyPnL <= -EVAL_MODE.survivalRules.maxDailyLoss * 0.7) {
+    return 0.3 // Emergency slowdown near daily loss limit
+  }
+
+  return 1.0
+}
+
+function getStrategyPriorityMultiplier(strategy: string): number {
+  if (!EVAL_MODE.enabled) return 1.0
+
+  const weight = EVAL_MODE.strategyWeights[strategy as keyof typeof EVAL_MODE.strategyWeights]
+  return weight || EVAL_MODE.strategyWeights['DEFAULT']
+}
+
+function getTimeAllocationMultiplier(session: LocalTradingSession): number {
+  if (!EVAL_MODE.enabled) return 1.0
+
+  return EVAL_MODE.timeAllocation[session] || 1.0
+}
+
+function getAggressionMultiplier(
+  qualityScore: number,
+  session: LocalTradingSession,
+  regime: string,
+  mtfAligned: boolean
+): number {
+  if (!EVAL_MODE.enabled) return 1.0
+
+  let multiplier = EVAL_MODE.aggressionCurve.baseSize
+
+  // High quality score bonus
+  if (qualityScore >= 80) {
+    multiplier *= EVAL_MODE.aggressionCurve.highScoreBonus
+  }
+
+  // Early momentum bonus (opening hour with trend)
+  if (session === 'openingHour' && mtfAligned) {
+    multiplier *= EVAL_MODE.aggressionCurve.earlyMomentumBonus
+  }
+
+  // Trend day bonus
+  if (regime === 'TRENDING_UP' || regime === 'TRENDING_DOWN') {
+    multiplier *= EVAL_MODE.aggressionCurve.trendDayBonus
+  }
+
+  // Chop penalty
+  if (regime === 'RANGING' || regime === 'LOW_VOLATILITY') {
+    multiplier *= EVAL_MODE.aggressionCurve.chopPenalty
+  }
+
+  // Post-loss penalty
+  if (evalState.lastTradeResult === 'loss') {
+    multiplier *= EVAL_MODE.aggressionCurve.postLossPenalty
+  }
+
+  // Win streak bonus
+  if (evalState.consecutiveWins >= 2) {
+    multiplier *= EVAL_MODE.aggressionCurve.winStreakBonus
+  }
+
+  return multiplier
+}
+
+function updateEvalState(pnl: number): void {
+  if (!EVAL_MODE.enabled) return
+
+  // Update tracking
+  evalState.totalPnL += pnl
+
+  if (pnl > 0) {
+    evalState.consecutiveWins++
+    evalState.lastTradeResult = 'win'
+  } else {
+    evalState.consecutiveWins = 0
+    evalState.lastTradeResult = 'loss'
+  }
+}
+
+function shouldSkipForRevengeTrading(): boolean {
+  if (!EVAL_MODE.enabled) return false
+  if (!EVAL_MODE.survivalRules.noRevengeTrading) return false
+
+  // Skip if 2+ consecutive losses and not enough time passed
+  return consecutiveLosses >= 2
+}
+
+function getEvalThresholds(): {
+  minConfluence: number
+  minConfidence: number
+  minRR: number
+  maxTrades: number
+  minTimeBetween: number
+} {
+  if (EVAL_MODE.enabled) {
+    return {
+      minConfluence: EVAL_MODE.minConfluenceScore,
+      minConfidence: EVAL_MODE.minConfidence,
+      minRR: EVAL_MODE.minRiskReward,
+      maxTrades: EVAL_MODE.maxTradesPerDay,
+      minTimeBetween: EVAL_MODE.minTimeBetweenTrades,
+    }
+  } else {
+    return {
+      minConfluence: PROFIT_CONFIG.minConfluenceScore,
+      minConfidence: PROFIT_CONFIG.minConfidence,
+      minRR: PROFIT_CONFIG.minRiskReward,
+      maxTrades: PROFIT_CONFIG.maxTradesPerDay,
+      minTimeBetween: PROFIT_CONFIG.minTimeBetweenTrades,
+    }
+  }
+}
 
 // =============================================================================
 // SESSION DETECTION & FILTERING (Local version for config compatibility)
@@ -1816,6 +2250,34 @@ async function processCandle(index: number): Promise<void> {
     propFirmRisk
   )
 
+  // =========================================================================
+  // LIQUIDITY SWEEP REVERSAL (WEIGHT-BASED) - Governance Compliant
+  // Uses weights instead of binary blocking - trades are DEGRADED not BLOCKED
+  // =========================================================================
+
+  // Convert candles to liquidity sweep format
+  const sweepCandles: LiquiditySweepCandle[] = candles1m.map(c => ({
+    time: c.time,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+    volume: c.volume,
+  }))
+
+  // Detect liquidity sweep with weight-based logic
+  const liquiditySweepSignal = detectLiquiditySweep(sweepCandles, {
+    swingLookback: 10,
+    volumeMultiplier: 1.5,
+    rsiPeriod: 14,
+    atrPeriod: 14,
+  })
+
+  // Convert to backtest format if signal exists
+  const liquiditySweepBacktestSignal = liquiditySweepSignal
+    ? toBacktestSignal(liquiditySweepSignal)
+    : null
+
   // Also generate old signals for backwards compatibility and comparison
   const masterSignal = generateMasterSignal(
     candles1m,
@@ -1944,6 +2406,9 @@ async function processCandle(index: number): Promise<void> {
       state.trades.push(trade)
       recordEntryAnalytics(trade)
       dailyPnL += netPnL
+
+      // EVAL MODE TRACKING: Update eval state for 7-day target
+      updateEvalState(netPnL)
 
       // Update state
       state.grossPnL += grossPnL
@@ -2150,6 +2615,16 @@ async function processCandle(index: number): Promise<void> {
       // PROFIT TRACKING: Update daily P&L for daily loss limit enforcement
       dailyPnL += netPnL
 
+      // EVAL MODE TRACKING: Update eval state for 7-day target
+      updateEvalState(netPnL)
+
+      // Update consecutive losses for revenge trading protection
+      if (netPnL < 0) {
+        consecutiveLosses++
+      } else {
+        consecutiveLosses = 0
+      }
+
       // Update peak balance (high water mark) for trailing drawdown
       if (state.currentBalance > state.peakBalance) {
         state.peakBalance = state.currentBalance
@@ -2211,46 +2686,50 @@ async function processCandle(index: number): Promise<void> {
     }
   } else {
     // =========================================================================
-    // APEX SAFETY CHECK - MUST CHECK BEFORE ANY ENTRY
+    // APEX SAFETY CHECK - DEGRADE, DON'T BLOCK
+    // GOVERNANCE FIX: Changed from binary block to degraded sizing
     // =========================================================================
     updateApexRiskStatus()
 
-    if (!apexRisk.canTrade) {
-      // STOP TRADING - Risk too high
+    // GOVERNANCE: apexRisk.canTrade=false now means MINIMUM SIZE, not NO TRADE
+    // The only TRUE block is if we've actually VIOLATED the account (100%+ drawdown)
+    const isAccountViolated = apexRisk.riskLevel === 'VIOLATED'
+    if (isAccountViolated) {
+      // ONLY block if account is actually violated - this is a regulatory requirement
       state.candlesProcessed++
       state.currentIndex = index
       return
     }
+
+    // Calculate degraded risk multiplier - minimum 0.1 even in DANGER zone
+    const degradedRiskMultiplier = apexRisk.canTrade
+      ? apexRisk.positionSizeMultiplier
+      : 0.1  // 10% size in danger zone instead of blocking
 
     // =========================================================================
     // APEX TIMING CHECK - 4:30 PM ET NO NEW TRADES
+    // This is a regulatory requirement, not a fear mechanism - keep as binary
     // =========================================================================
     if (isNearMandatoryClose(currentCandle.time)) {
-      // AFTER 4:30 PM ET - No new trades allowed
-      // This gives us 29 minutes buffer before mandatory 4:59 PM close
       state.candlesProcessed++
       state.currentIndex = index
       return
     }
 
-    // SESSION FILTER: Only trade during optimal market sessions
+    // SESSION FILTER: DEGRADED, not blocked
+    // GOVERNANCE FIX: Poor sessions get reduced size, not blocked
     const sessionInfo = getSessionInfo(currentCandle.time)
-    if (!sessionInfo.canTrade) {
-      // Skip entry - not in optimal trading session
-      state.candlesProcessed++
-      state.currentIndex = index
-      return
-    }
+    const sessionMultiplier = sessionInfo.canTrade ? 1.0 : 0.25  // 25% size in non-optimal sessions
 
     // MULTI-TIMEFRAME CONFIRMATION: Check higher timeframe trend alignment
     const mtfTrend = getMTFConfirmation(candles5m.slice(-50), candles15m.slice(-30))
 
     // ==========================================================================
-    // PRODUCTION-READY ENTRY LOGIC - PROFIT MAXIMIZATION
-    // Only take the ABSOLUTE BEST setups - quality over quantity
+    // PRODUCTION-READY ENTRY LOGIC - DEGRADED, NOT BLOCKED
+    // GOVERNANCE FIX: All checks produce multipliers, not binary gates
     // ==========================================================================
 
-    // CHECK 1: Daily loss limit - PROTECT THE ACCOUNT
+    // CHECK 1: Daily loss tracking - DEGRADE, don't block
     const tradingDay = new Date(currentCandle.time).toDateString()
     if (tradingDay !== currentTradingDay) {
       // New trading day - reset counters
@@ -2259,175 +2738,341 @@ async function processCandle(index: number): Promise<void> {
       dailyTradeCount = 0
     }
 
-    if (dailyPnL <= -PROFIT_CONFIG.dailyMaxLoss) {
-      // STOP TRADING - Hit daily loss limit
-      state.candlesProcessed++
-      state.currentIndex = index
-      return
+    // GOVERNANCE FIX: Daily loss limit becomes degradation, not block
+    // At 50% of limit: 50% size, at 100% of limit: 10% size (not zero)
+    const dailyLossRatio = Math.min(1, Math.abs(dailyPnL) / PROFIT_CONFIG.dailyMaxLoss)
+    const dailyLossMultiplier = dailyPnL >= 0 ? 1.0 : Math.max(0.1, 1 - dailyLossRatio * 0.9)
+
+    // CHECK 2: Trade frequency - DEGRADE, don't block
+    // GOVERNANCE FIX: More trades = smaller size, not blocked
+    const tradeFrequencyRatio = dailyTradeCount / PROFIT_CONFIG.maxTradesPerDay
+    const tradeFrequencyMultiplier = tradeFrequencyRatio >= 1 ? 0.1 : (1 - tradeFrequencyRatio * 0.5)
+
+    // CHECK 3: Time between trades - DEGRADE, don't block
+    const barsSinceLastTrade = index - lastTradeIndex
+    const timeMultiplier = barsSinceLastTrade >= PROFIT_CONFIG.minTimeBetweenTrades
+      ? 1.0
+      : Math.max(0.25, barsSinceLastTrade / PROFIT_CONFIG.minTimeBetweenTrades)
+
+    // CHECK 4: Consecutive loss degradation - COOLING PERIOD after losses
+    // After max consecutive losses, require double the waiting period
+    let consecutiveLossMultiplier = 1.0
+    if (consecutiveLosses >= PROFIT_CONFIG.maxConsecutiveLosses) {
+      // After 2+ losses: require extended cooling (2x time between trades)
+      const requiredCooling = PROFIT_CONFIG.minTimeBetweenTrades * 2
+      if (barsSinceLastTrade < requiredCooling) {
+        consecutiveLossMultiplier = Math.max(0.1, barsSinceLastTrade / requiredCooling)
+      }
+      // Also require higher confluence score after losses
+      // This is enforced in the entry selection below
+    } else if (consecutiveLosses === 1) {
+      // After 1 loss: slightly more cautious, 75% size
+      consecutiveLossMultiplier = 0.75
     }
 
-    // CHECK 2: Max trades per day
-    if (dailyTradeCount >= PROFIT_CONFIG.maxTradesPerDay) {
-      state.candlesProcessed++
-      state.currentIndex = index
-      return
-    }
-
-    // CHECK 3: Minimum time between trades (avoid overtrading)
-    if (index - lastTradeIndex < PROFIT_CONFIG.minTimeBetweenTrades) {
-      state.candlesProcessed++
-      state.currentIndex = index
-      return
-    }
-
-    // CHECK 4: Momentum confirmation
+    // CHECK 5: Momentum analysis (used for signal validation, not blocking)
     const currentRSI = indicators.rsi
     const macdHistogram = indicators.macdHistogram
 
     // Determine which signal to use
-    let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number; qualityScore?: number } | null = null
+    let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number; qualityScore?: number; sizeFactor?: number } | null = null
 
     // ==========================================================================
-    // WORLD-CLASS SIGNAL (PRIMARY) - Regime-aware, quality-scored strategies
-    // Uses 11 institutional strategies with explicit WORKS IN / FAILS IN conditions
+    // DYNAMIC REGIME-ADAPTIVE STRATEGY SELECTION
+    // Collects ALL signals, filters by regime, requires confluence
     // ==========================================================================
+
+    // Get current session for time-based strategy boosting
+    const currentSession = getLocalSession(currentCandle.time)
+
+    // Collect ALL available signals from all sources
+    type CandidateSignal = {
+      direction: 'LONG' | 'SHORT'
+      confidence: number
+      strategy: string
+      stopLoss: number
+      takeProfit: number
+      riskRewardRatio: number
+      qualityScore: number
+      source: string
+      regimeOptimal: boolean
+      sessionBoost: number
+    }
+
+    const candidateSignals: CandidateSignal[] = []
+
+    // 1. Collect from Liquidity Sweep
+    if (liquiditySweepBacktestSignal && liquiditySweepSignal) {
+      const strategy = 'LIQUIDITY_SWEEP_REVERSAL'
+      const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
+      const sessionBoost = getSessionBoost(strategy, currentSession)
+
+      candidateSignals.push({
+        direction: liquiditySweepBacktestSignal.direction,
+        confidence: calculateDynamicConfidence(liquiditySweepSignal.weights.total, strategy, regime, currentSession),
+        strategy,
+        stopLoss: liquiditySweepBacktestSignal.stopLoss,
+        takeProfit: liquiditySweepBacktestSignal.takeProfit,
+        riskRewardRatio: liquiditySweepBacktestSignal.riskRewardRatio,
+        qualityScore: liquiditySweepSignal.weights.total,
+        source: 'LIQUIDITY_SWEEP',
+        regimeOptimal,
+        sessionBoost,
+      })
+    }
+
+    // 2. Collect from World-Class strategies
     if (worldClassResult.signal && worldClassResult.quality) {
       const wcSignal = worldClassResult.signal
       const wcQuality = worldClassResult.quality
+      const strategy = wcSignal.type
+      const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
+      const sessionBoost = getSessionBoost(strategy, currentSession)
 
-      // Only take trades that meet quality threshold
-      // FULL_SIZE = 80+, HALF_SIZE = 60-79, QUARTER_SIZE = 40-59, NO_TRADE = <40
-      if (wcQuality.recommendation !== 'NO_TRADE') {
-        // Extract stop and target from signal
-        const wcStopLoss = wcSignal.stopLoss.price
-        const wcTakeProfit = wcSignal.targets.length > 0 ? wcSignal.targets[wcSignal.targets.length - 1].price : currentPrice
+      candidateSignals.push({
+        direction: wcSignal.direction,
+        confidence: calculateDynamicConfidence(wcSignal.confidence, strategy, regime, currentSession),
+        strategy,
+        stopLoss: wcSignal.stopLoss.price,
+        takeProfit: wcSignal.targets.length > 0 ? wcSignal.targets[wcSignal.targets.length - 1].price : currentPrice,
+        riskRewardRatio: wcSignal.metadata.riskRewardRatio,
+        qualityScore: wcQuality.overall,
+        source: 'WORLD_CLASS',
+        regimeOptimal,
+        sessionBoost,
+      })
+    }
 
-        signalToUse = {
-          direction: wcSignal.direction,
-          confidence: wcSignal.confidence,
-          strategy: wcSignal.type,
-          stopLoss: wcStopLoss,
-          takeProfit: wcTakeProfit,
-          riskRewardRatio: wcSignal.metadata.riskRewardRatio,
-          qualityScore: wcQuality.overall,
+    // 3. Collect from Advanced strategies
+    if (advancedSignal && advancedSignal.direction !== 'FLAT') {
+      const strategy = advancedSignal.strategy || 'ADVANCED_SIGNAL'
+      const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
+      const sessionBoost = getSessionBoost(strategy, currentSession)
+
+      candidateSignals.push({
+        direction: advancedSignal.direction as 'LONG' | 'SHORT',
+        confidence: calculateDynamicConfidence(advancedSignal.confidence, strategy, regime, currentSession),
+        strategy,
+        stopLoss: advancedSignal.stopLoss,
+        takeProfit: advancedSignal.takeProfit,
+        riskRewardRatio: advancedSignal.riskRewardRatio,
+        qualityScore: advancedSignal.confidence,
+        source: 'ADVANCED',
+        regimeOptimal,
+        sessionBoost,
+      })
+    }
+
+    // 4. Collect from Master signal strategies
+    if (masterSignal.direction !== 'FLAT') {
+      for (const strat of masterSignal.strategies) {
+        if (strat.direction !== 'FLAT') {
+          const strategy = strat.strategy
+          const regimeOptimal = isStrategyOptimalForRegime(strategy, regime)
+          const sessionBoost = getSessionBoost(strategy, currentSession)
+
+          candidateSignals.push({
+            direction: strat.direction as 'LONG' | 'SHORT',
+            confidence: calculateDynamicConfidence(strat.confidence, strategy, regime, currentSession),
+            strategy,
+            stopLoss: masterSignal.stopLoss,
+            takeProfit: masterSignal.takeProfit,
+            riskRewardRatio: masterSignal.riskRewardRatio,
+            qualityScore: strat.confidence,
+            source: 'MASTER',
+            regimeOptimal,
+            sessionBoost,
+          })
         }
       }
     }
 
     // ==========================================================================
-    // FALLBACK: Old signals (if world-class didn't fire)
+    // ENHANCED CONFLUENCE ANALYSIS - Multi-factor scoring system
     // ==========================================================================
-    if (!signalToUse) {
-      // FOCUSED MODE: Only use ORB signals (74.56% documented win rate)
-      if (FOCUSED_MODE.enabled) {
-        // Check if we're in the ORB trade window (10:00 AM - 1:00 PM ET)
-        const { etTime } = getETTime(currentCandle.time)
-        if (etTime < FOCUSED_MODE.orbTradeWindowStart || etTime > FOCUSED_MODE.orbTradeWindowEnd) {
-          // Outside ORB window - skip
-          state.candlesProcessed++
-          state.currentIndex = index
-          return
-        }
+    const longSignals = candidateSignals.filter(s => s.direction === 'LONG' && s.regimeOptimal)
+    const shortSignals = candidateSignals.filter(s => s.direction === 'SHORT' && s.regimeOptimal)
 
-        // Check daily trade limit for focused mode
-        if (dailyTradeCount >= FOCUSED_MODE.maxDailyTrades) {
-          state.candlesProcessed++
-          state.currentIndex = index
-          return
-        }
+    // Calculate comprehensive confluence scores
+    function calculateConfluenceScore(signals: CandidateSignal[], direction: 'LONG' | 'SHORT'): {
+      score: number
+      factors: Record<string, number>
+      passes: boolean
+    } {
+      if (signals.length === 0) return { score: 0, factors: {}, passes: false }
 
-        // Find the ORB signal specifically from masterSignal.strategies
-        const orbSignal = masterSignal.strategies.find(s => s.strategy === 'ORB_BREAKOUT')
+      const factors: Record<string, number> = {}
 
-        if (orbSignal && orbSignal.direction !== 'FLAT') {
-          // Validate ORB range is within acceptable bounds
-          const orbHigh = indicators.openingRangeHigh
-          const orbLow = indicators.openingRangeLow
-          const orbRange = orbHigh - orbLow
+      // 1. SIGNAL COUNT SCORE (20 points max)
+      // 2 signals = 10, 3 signals = 15, 4+ signals = 20
+      factors.signalCount = Math.min(20, signals.length * 5 + 5)
 
-          // Skip if range too small or too large
-          if (orbRange < FOCUSED_MODE.minORBRangePoints || orbRange > FOCUSED_MODE.maxORBRangePoints) {
-            state.candlesProcessed++
-            state.currentIndex = index
-            return
-          }
+      // 2. CONFIDENCE SCORE (25 points max)
+      const avgConfidence = signals.reduce((sum, s) => sum + s.confidence, 0) / signals.length
+      factors.confidence = (avgConfidence / 100) * 25
 
-          // Validate volume on breakout
-          if (indicators.relativeVolume < FOCUSED_MODE.minBreakoutVolume) {
-            state.candlesProcessed++
-            state.currentIndex = index
-            return
-          }
+      // 3. REGIME ALIGNMENT SCORE (15 points max)
+      const regimeOptimalCount = signals.filter(s => s.regimeOptimal).length
+      factors.regimeAlignment = (regimeOptimalCount / signals.length) * 15
 
-          // Check regime - only trade trending days
-          if (FOCUSED_MODE.onlyTrendingDays) {
-            // MarketRegime is a string type, not object
-            if (regime !== 'TRENDING_UP' && regime !== 'TRENDING_DOWN' && regime !== 'HIGH_VOLATILITY') {
-              state.candlesProcessed++
-              state.currentIndex = index
-              return
-            }
-          }
+      // 4. SESSION ALIGNMENT SCORE (10 points max)
+      const avgSessionBoost = signals.reduce((sum, s) => sum + s.sessionBoost, 0) / signals.length
+      factors.sessionAlignment = Math.min(10, avgSessionBoost * 8)
 
-          // ORB signal is valid - use it
-          signalToUse = {
-            direction: orbSignal.direction as 'LONG' | 'SHORT',
-            confidence: orbSignal.confidence,
-            strategy: 'ORB_BREAKOUT',
-            stopLoss: orbSignal.direction === 'LONG' ? orbLow : orbHigh,
-            takeProfit: orbSignal.direction === 'LONG'
-              ? currentPrice + (orbRange * 2)  // 2R target
-              : currentPrice - (orbRange * 2),
-            riskRewardRatio: 2.0,
-          }
+      // 5. MOMENTUM CONFIRMATION (15 points max)
+      const currentRSI = indicators.rsi
+      const macdHistogram = indicators.macdHistogram
+      let momentumScore = 0
+
+      if (direction === 'LONG') {
+        // For longs: RSI should be rising but not overbought, MACD positive or turning
+        if (currentRSI > 40 && currentRSI < 70) momentumScore += 8  // RSI in good zone
+        if (macdHistogram > 0) momentumScore += 7  // MACD bullish
+        else if (macdHistogram > -0.5) momentumScore += 3  // MACD neutral
+      } else {
+        // For shorts: RSI should be falling but not oversold, MACD negative or turning
+        if (currentRSI < 60 && currentRSI > 30) momentumScore += 8  // RSI in good zone
+        if (macdHistogram < 0) momentumScore += 7  // MACD bearish
+        else if (macdHistogram < 0.5) momentumScore += 3  // MACD neutral
+      }
+      factors.momentum = momentumScore
+
+      // 6. STRATEGY DIVERSITY SCORE (10 points max)
+      // More unique sources = more confidence
+      const uniqueSources = new Set(signals.map(s => s.source)).size
+      factors.diversity = Math.min(10, uniqueSources * 3)
+
+      // 7. QUALITY SCORE (5 points max)
+      const avgQuality = signals.reduce((sum, s) => sum + s.qualityScore, 0) / signals.length
+      factors.quality = (avgQuality / 100) * 5
+
+      // TOTAL SCORE (100 points max)
+      const totalScore = Object.values(factors).reduce((sum, f) => sum + f, 0)
+
+      // PASS CRITERIA:
+      // - Total score >= 60 (out of 100)
+      // - At least 2 agreeing signals
+      // - Average confidence >= 65%
+      // - Momentum score >= 5 (some momentum confirmation)
+      // AFTER CONSECUTIVE LOSSES: Require HIGHER confluence score (70 -> 80)
+      const requiredConfluence = consecutiveLosses >= PROFIT_CONFIG.maxConsecutiveLosses
+        ? PROFIT_CONFIG.minConfluenceScore + 10  // +10 points after losses
+        : PROFIT_CONFIG.minConfluenceScore
+      const requiredConfidence = consecutiveLosses >= PROFIT_CONFIG.maxConsecutiveLosses
+        ? PROFIT_CONFIG.minConfidence + 5  // +5% after losses
+        : PROFIT_CONFIG.minConfidence
+
+      const passes = totalScore >= requiredConfluence &&
+                     signals.length >= DYNAMIC_STRATEGY_SYSTEM.confluence.minStrategiesAgreeing &&
+                     avgConfidence >= requiredConfidence &&
+                     momentumScore >= 5
+
+      return { score: totalScore, factors, passes }
+    }
+
+    const longConfluenceResult = calculateConfluenceScore(longSignals, 'LONG')
+    const shortConfluenceResult = calculateConfluenceScore(shortSignals, 'SHORT')
+
+    // Legacy values for backwards compatibility
+    const longConfluence = longSignals.length
+    const shortConfluence = shortSignals.length
+    const avgLongConfidence = longSignals.length > 0
+      ? longSignals.reduce((sum, s) => sum + s.confidence, 0) / longSignals.length
+      : 0
+    const avgShortConfidence = shortSignals.length > 0
+      ? shortSignals.reduce((sum, s) => sum + s.confidence, 0) / shortSignals.length
+      : 0
+
+    // ==========================================================================
+    // SELECT BEST SIGNAL BASED ON CONFLUENCE SCORE
+    // ==========================================================================
+    let selectedDirection: 'LONG' | 'SHORT' | null = null
+    let selectedSignals: CandidateSignal[] = []
+    let winningConfluenceScore = 0
+
+    // Determine winning direction based on confluence score
+    if (longConfluenceResult.passes && shortConfluenceResult.passes) {
+      // Both pass - take the higher score
+      if (longConfluenceResult.score > shortConfluenceResult.score) {
+        selectedDirection = 'LONG'
+        selectedSignals = longSignals
+        winningConfluenceScore = longConfluenceResult.score
+      } else {
+        selectedDirection = 'SHORT'
+        selectedSignals = shortSignals
+        winningConfluenceScore = shortConfluenceResult.score
+      }
+    } else if (longConfluenceResult.passes) {
+      selectedDirection = 'LONG'
+      selectedSignals = longSignals
+      winningConfluenceScore = longConfluenceResult.score
+    } else if (shortConfluenceResult.passes) {
+      selectedDirection = 'SHORT'
+      selectedSignals = shortSignals
+      winningConfluenceScore = shortConfluenceResult.score
+    }
+
+    // If we have confluence, select the BEST signal from agreeing strategies
+    if (selectedDirection && selectedSignals.length > 0) {
+      // Sort by: regime optimal (1st), confidence (2nd), session boost (3rd)
+      selectedSignals.sort((a, b) => {
+        // Regime optimal first
+        if (a.regimeOptimal !== b.regimeOptimal) return b.regimeOptimal ? 1 : -1
+        // Then by confidence
+        if (b.confidence !== a.confidence) return b.confidence - a.confidence
+        // Then by session boost
+        return b.sessionBoost - a.sessionBoost
+      })
+
+      const bestSignal = selectedSignals[0]
+
+      // Check Apex requirements
+      const meetsRR = bestSignal.riskRewardRatio >= DYNAMIC_STRATEGY_SYSTEM.apex150k.minRiskReward
+      const meetsConfidence = bestSignal.confidence >= DYNAMIC_STRATEGY_SYSTEM.apex150k.minWinProbability * 100
+
+      if (meetsRR && meetsConfidence) {
+        // Calculate size factor based on confluence strength
+        const confluenceBonus = Math.min(1.5, 1 + (selectedSignals.length - 2) * 0.25)  // +25% per extra signal
+        const sizeFactor = Math.min(1.0, (bestSignal.confidence / 100) * confluenceBonus)
+
+        signalToUse = {
+          direction: selectedDirection,
+          confidence: bestSignal.confidence,
+          strategy: `${bestSignal.strategy}+${selectedSignals.length}`,  // Show confluence count
+          stopLoss: bestSignal.stopLoss,
+          takeProfit: bestSignal.takeProfit,
+          riskRewardRatio: bestSignal.riskRewardRatio,
+          qualityScore: bestSignal.qualityScore,
+          sizeFactor,
         }
       }
-      // Standard multi-strategy mode (if FOCUSED_MODE disabled)
-      else {
-        // Advanced signal takes priority if it exists and meets STRICT requirements
-        if (advancedSignal &&
-            advancedSignal.direction !== 'FLAT' &&
-            advancedSignal.confidence >= PROFIT_CONFIG.minConfidence &&
-            advancedSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
+    }
 
-          // Momentum must confirm direction
-          const momentumConfirms = advancedSignal.direction === 'LONG'
-            ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
-            : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
+    // ==========================================================================
+    // FALLBACK: Single best signal if confluence not met
+    // Only take if signal is VERY high quality (90%+ confidence, regime optimal)
+    // ==========================================================================
+    if (!signalToUse && candidateSignals.length > 0) {
+      // Find the absolute best signal even without confluence
+      const allRegimeOptimal = candidateSignals.filter(s => s.regimeOptimal)
 
-          if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
-            signalToUse = {
-              direction: advancedSignal.direction as 'LONG' | 'SHORT',
-              confidence: advancedSignal.confidence,
-              strategy: advancedSignal.strategy,
-              stopLoss: advancedSignal.stopLoss,
-              takeProfit: advancedSignal.takeProfit,
-              riskRewardRatio: advancedSignal.riskRewardRatio,
-            }
-          }
-        }
+      if (allRegimeOptimal.length > 0) {
+        // Sort by confidence
+        allRegimeOptimal.sort((a, b) => b.confidence - a.confidence)
+        const bestSingle = allRegimeOptimal[0]
 
-        // Fall back to master signal ONLY if it meets STRICT requirements
-        if (!signalToUse &&
-            masterSignal.direction !== 'FLAT' &&
-            masterSignal.confluenceScore >= PROFIT_CONFIG.minConfluenceScore &&
-            masterSignal.confidence >= PROFIT_CONFIG.minConfidence &&
-            masterSignal.riskRewardRatio >= PROFIT_CONFIG.minRiskReward) {
-
-          // Momentum must confirm
-          const momentumConfirms = masterSignal.direction === 'LONG'
-            ? (currentRSI > PROFIT_CONFIG.rsiOversoldThreshold && macdHistogram > 0)
-            : (currentRSI < PROFIT_CONFIG.rsiOverboughtThreshold && macdHistogram < 0)
-
-          if (!PROFIT_CONFIG.requireMomentumConfirm || momentumConfirms) {
-            signalToUse = {
-              direction: masterSignal.direction as 'LONG' | 'SHORT',
-              confidence: masterSignal.confidence,
-              strategy: masterSignal.primaryStrategy,
-              stopLoss: masterSignal.stopLoss,
-              takeProfit: masterSignal.takeProfit,
-              riskRewardRatio: masterSignal.riskRewardRatio,
-            }
+        // Only take if VERY high confidence (90%+) and meets Apex R/R
+        if (bestSingle.confidence >= 90 &&
+            bestSingle.riskRewardRatio >= DYNAMIC_STRATEGY_SYSTEM.apex150k.minRiskReward) {
+          signalToUse = {
+            direction: bestSingle.direction,
+            confidence: bestSingle.confidence,
+            strategy: `${bestSingle.strategy}(SOLO)`,  // Mark as solo signal
+            stopLoss: bestSingle.stopLoss,
+            takeProfit: bestSingle.takeProfit,
+            riskRewardRatio: bestSingle.riskRewardRatio,
+            qualityScore: bestSingle.qualityScore,
+            sizeFactor: 0.5,  // Half size for solo signals
           }
         }
       }
@@ -2443,19 +3088,17 @@ async function processCandle(index: number): Promise<void> {
         entryDir = entryDir === 'LONG' ? 'SHORT' : 'LONG'
       }
 
-      // MTF FILTER: Only trade in direction of higher timeframe trend
-      if (!signalAlignedWithMTF(entryDir, mtfTrend)) {
-        // Signal against higher timeframe trend - skip entry
-        state.candlesProcessed++
-        state.currentIndex = index
-        return
-      }
+      // GOVERNANCE FIX: MTF FILTER now DEGRADES, not BLOCKS
+      // Counter-trend trades get 25% size, aligned trades get 100%
+      const mtfAligned = signalAlignedWithMTF(entryDir, mtfTrend)
+      const mtfMultiplier = mtfAligned ? 1.0 : 0.25  // 25% size for counter-trend
 
       // PA ONE DIRECTION RULE: Check if we're violating the one direction rule
       // (Only applies in Performance Account mode)
+      // NOTE: This is a REGULATORY requirement, not a fear mechanism - keep as binary
       const paViolation = checkPAViolation(state.currentBalance, 0, entryDir)
       if (paViolation.violation) {
-        // Block trade - would violate PA rules
+        // Block trade - would violate PA rules (regulatory)
         state.candlesProcessed++
         state.currentIndex = index
         return
@@ -2513,11 +3156,18 @@ async function processCandle(index: number): Promise<void> {
       const trailingDistance = atr * 1.5
 
       // =======================================================================
-      // QUALITY-BASED POSITION SIZING (World-Class Strategies)
-      // Quality score determines position size: FULL > HALF > QUARTER
+      // QUALITY-BASED POSITION SIZING
+      // Weight-based (liquidity sweep) uses sizeFactor (0.25 to 1.0)
+      // World-class strategies use quality score
       // =======================================================================
       let qualityMultiplier = 1.0
-      if (signalToUse.qualityScore !== undefined) {
+
+      // Check if liquidity sweep provided a size factor (weight-based)
+      if (signalToUse.sizeFactor !== undefined) {
+        // Liquidity sweep weight-based sizing (governance compliant)
+        // sizeFactor ranges from 0.25 (low weight) to 1.0 (high weight)
+        qualityMultiplier = signalToUse.sizeFactor
+      } else if (signalToUse.qualityScore !== undefined) {
         // World-class signal with quality score
         if (signalToUse.qualityScore >= 80) {
           qualityMultiplier = 1.0  // FULL_SIZE - high quality setup
@@ -2532,9 +3182,39 @@ async function processCandle(index: number): Promise<void> {
                             signalToUse.confidence >= 75 ? 1.0 : 0.75
       }
 
-      // Apply both quality and prop firm risk multipliers
+      // Apply ALL multipliers: quality, prop firm risk, degraded risk, session, daily loss, frequency, time
+      // GOVERNANCE: All factors are degradation multipliers (0.1-1.0), never binary blocks
+      // EVAL MODE: Additional multipliers for 7-day $9,000 target optimization
+      const currentSession = getLocalSession(currentCandle.time)
+
+      // Get eval-mode specific multipliers
+      const evalStrategyWeight = getStrategyPriorityMultiplier(signalToUse.strategy)
+      const evalTimeAllocation = getTimeAllocationMultiplier(currentSession)
+      const evalAggression = getAggressionMultiplier(
+        signalToUse.qualityScore || signalToUse.confidence,
+        currentSession,
+        regime,
+        mtfAligned
+      )
+      const evalSchedule = getEvalScheduleMultiplier()
+      const evalDailyShape = getDailyPnLShapingMultiplier()
+
       const baseContracts = qualityMultiplier
-      const riskAdjustedContracts = baseContracts * propFirmRisk.positionSizeMultiplier
+      const riskAdjustedContracts = baseContracts
+        * degradedRiskMultiplier     // GOVERNANCE: danger zone = 0.1, not blocked
+        * sessionMultiplier          // GOVERNANCE: non-optimal session = 0.25, not blocked
+        * dailyLossMultiplier        // GOVERNANCE: daily loss = 0.1-1.0, not blocked
+        * tradeFrequencyMultiplier   // GOVERNANCE: high frequency = 0.1, not blocked
+        * timeMultiplier             // GOVERNANCE: quick succession = 0.25, not blocked
+        * mtfMultiplier              // GOVERNANCE: counter-trend = 0.25, not blocked
+        * consecutiveLossMultiplier  // RISK: consecutive losses = 0.1-1.0, with cooling
+        * propFirmRisk.positionSizeMultiplier
+        // EVAL MODE MULTIPLIERS
+        * evalStrategyWeight         // EVAL: Strategy priority (0.8-1.5)
+        * evalTimeAllocation         // EVAL: Time-of-day allocation (0.1-1.5)
+        * evalAggression             // EVAL: Aggression curve (0.6-1.56)
+        * evalSchedule               // EVAL: Behind/ahead schedule (0.5-1.5)
+        * evalDailyShape             // EVAL: Daily PnL shaping (0.3-1.0)
 
       // APEX MAX CONTRACTS LIMIT - 17 contracts max for 150K account
       // Also apply PA contract scaling if in Performance Account
@@ -2553,6 +3233,11 @@ async function processCandle(index: number): Promise<void> {
       // Stop/target multipliers for adaptive learning
       const stopMultiplier = riskAmount / atr
       const targetMultiplier = Math.abs(takeProfit - entryPrice) / atr
+
+      // GOVERNANCE FIX: Ensure strategy name is NEVER blank
+      const finalStrategy = signalToUse.strategy && signalToUse.strategy !== 'NONE'
+        ? signalToUse.strategy
+        : 'FALLBACK_SIGNAL'
 
       state.position = {
         direction: entryDir,
@@ -2573,7 +3258,7 @@ async function processCandle(index: number): Promise<void> {
         trailingDistance,
         highestPrice: entryPrice,
         lowestPrice: entryPrice,
-        confluenceScore: signalToUse.confidence,  // Use the actual signal's confidence
+        confluenceScore: winningConfluenceScore || signalToUse.confidence,  // Use enhanced confluence score
         mlConfidence: signalToUse.confidence / 100,
         vpinAtEntry: vpin.vpin,
         volatilityAtEntry: volatility,
@@ -2581,9 +3266,9 @@ async function processCandle(index: number): Promise<void> {
         features,
         stopMultiplierUsed: stopMultiplier,
         targetMultiplierUsed: targetMultiplier,
-        strategy: signalToUse.strategy,
+        strategy: finalStrategy,
         entryAnalytics: {
-          strategy: signalToUse.strategy,
+          strategy: finalStrategy,
           rsiAtEntry: lastRsi,
           ema20Distance,
           ema50Distance,

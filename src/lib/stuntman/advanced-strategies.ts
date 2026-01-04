@@ -67,6 +67,38 @@ export interface Absorption {
   priceMovement: number       // How little price moved despite volume
 }
 
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Calculate Exponential Moving Average
+ */
+function calculateEMA(prices: number[], period: number): number[] {
+  if (prices.length < period) return prices
+
+  const ema: number[] = []
+  const multiplier = 2 / (period + 1)
+
+  // Start with SMA
+  let sum = 0
+  for (let i = 0; i < period; i++) {
+    sum += prices[i]
+  }
+  ema.push(sum / period)
+
+  // Calculate EMA
+  for (let i = period; i < prices.length; i++) {
+    ema.push((prices[i] - ema[ema.length - 1]) * multiplier + ema[ema.length - 1])
+  }
+
+  return ema
+}
+
+// =============================================================================
+// 1. ORDER FLOW ANALYSIS - Delta Divergence
+// =============================================================================
+
 /**
  * Detect Delta Divergence
  *
@@ -982,6 +1014,9 @@ export function analyzeMarket(
  * Generate Master Advanced Signal
  *
  * Combines all analysis into a single high-confidence signal
+ *
+ * CRITICAL: These are REVERSAL strategies. In strong trends, they FAIL.
+ * We must filter/penalize counter-trend signals.
  */
 export function generateAdvancedMasterSignal(
   candles: Candle[],
@@ -991,23 +1026,63 @@ export function generateAdvancedMasterSignal(
   const currentPrice = candles[candles.length - 1].close
   const signals: AdvancedSignal[] = []
 
+  // ==========================================================================
+  // TREND DETECTION - Critical for filtering reversal signals
+  // ==========================================================================
+  const ema20 = calculateEMA(candles.slice(-30).map(c => c.close), 20)
+  const ema50 = calculateEMA(candles.slice(-60).map(c => c.close), 50)
+  const currentEma20 = ema20[ema20.length - 1] || currentPrice
+  const currentEma50 = ema50[ema50.length - 1] || currentPrice
+
+  // Determine trend direction and strength
+  const priceAboveEma20 = currentPrice > currentEma20
+  const priceAboveEma50 = currentPrice > currentEma50
+  const ema20AboveEma50 = currentEma20 > currentEma50
+
+  // STRONG UPTREND: Price > EMA20 > EMA50
+  // STRONG DOWNTREND: Price < EMA20 < EMA50
+  const isStrongUptrend = priceAboveEma20 && priceAboveEma50 && ema20AboveEma50
+  const isStrongDowntrend = !priceAboveEma20 && !priceAboveEma50 && !ema20AboveEma50
+
+  // Trend bias for signal filtering
+  const trendBias: 'LONG' | 'SHORT' | 'NEUTRAL' =
+    isStrongUptrend ? 'LONG' :
+    isStrongDowntrend ? 'SHORT' :
+    'NEUTRAL'
+
+  // ==========================================================================
+  // REVERSAL SIGNALS - Penalize heavily in strong trends
+  // ==========================================================================
+
   // 1. Delta Divergence Signal (HIGHEST PRIORITY - Leading indicator)
+  // NOTE: This is a REVERSAL indicator - reduce confidence in strong trends
   if (analysis.deltaDivergence.detected && analysis.deltaDivergence.confidence >= 70) {
     const dir = analysis.deltaDivergence.type === 'BULLISH' ? 'LONG' : 'SHORT'
-    signals.push({
-      direction: dir,
-      confidence: analysis.deltaDivergence.confidence,
-      strategy: 'DELTA_DIVERGENCE',
-      entryPrice: currentPrice,
-      stopLoss: dir === 'LONG' ? currentPrice - atr * 1.5 : currentPrice + atr * 1.5,
-      takeProfit: dir === 'LONG' ? currentPrice + atr * 3 : currentPrice - atr * 3,
-      riskRewardRatio: 2.0,
-      reasoning: `Delta divergence: ${analysis.deltaDivergence.type}`,
-      metadata: { deltaDivergence: analysis.deltaDivergence },
-    })
+
+    // COUNTER-TREND PENALTY: In strong trend, reversal signals get 50% confidence reduction
+    let adjustedConfidence = analysis.deltaDivergence.confidence
+    if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
+      adjustedConfidence *= 0.5  // 50% penalty for counter-trend
+    }
+
+    // Only add if still above minimum threshold after penalty
+    if (adjustedConfidence >= 50) {
+      signals.push({
+        direction: dir,
+        confidence: adjustedConfidence,
+        strategy: 'DELTA_DIVERGENCE',
+        entryPrice: currentPrice,
+        stopLoss: dir === 'LONG' ? currentPrice - atr * 1.5 : currentPrice + atr * 1.5,
+        takeProfit: dir === 'LONG' ? currentPrice + atr * 3 : currentPrice - atr * 3,
+        riskRewardRatio: 2.0,
+        reasoning: `Delta divergence: ${analysis.deltaDivergence.type}${trendBias !== 'NEUTRAL' && trendBias !== dir ? ' (counter-trend)' : ''}`,
+        metadata: { deltaDivergence: analysis.deltaDivergence },
+      })
+    }
   }
 
   // 2. Order Block + FVG Confluence
+  // NOTE: Order blocks are REVERSAL setups - price returning to supply/demand zone
   const activeOBs = analysis.orderBlocks.filter(ob => ob.tested && !ob.mitigated)
   const activeFVGs = analysis.fvgs.filter(fvg => !fvg.filled && fvg.fillPercentage < 30)
 
@@ -1019,55 +1094,92 @@ export function generateAdvancedMasterSignal(
 
     if (nearbyFVG || ob.volume > 0) {
       const dir = ob.type === 'BULLISH' ? 'LONG' : 'SHORT'
-      signals.push({
-        direction: dir,
-        confidence: nearbyFVG ? 85 : 75,
-        strategy: 'OB_FVG_CONFLUENCE',
-        entryPrice: currentPrice,
-        stopLoss: dir === 'LONG' ? ob.low - atr * 0.5 : ob.high + atr * 0.5,
-        takeProfit: dir === 'LONG' ? currentPrice + atr * 3 : currentPrice - atr * 3,
-        riskRewardRatio: 2.5,
-        reasoning: `Order block ${ob.type} at ${ob.price.toFixed(2)}${nearbyFVG ? ' + FVG confluence' : ''}`,
-        metadata: { orderBlock: ob, fvg: nearbyFVG },
-      })
+
+      // COUNTER-TREND PENALTY
+      let adjustedConfidence = nearbyFVG ? 85 : 75
+      if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
+        adjustedConfidence *= 0.5  // 50% penalty for counter-trend
+      }
+
+      if (adjustedConfidence >= 50) {
+        signals.push({
+          direction: dir,
+          confidence: adjustedConfidence,
+          strategy: 'OB_FVG_CONFLUENCE',
+          entryPrice: currentPrice,
+          stopLoss: dir === 'LONG' ? ob.low - atr * 0.5 : ob.high + atr * 0.5,
+          takeProfit: dir === 'LONG' ? currentPrice + atr * 3 : currentPrice - atr * 3,
+          riskRewardRatio: 2.5,
+          reasoning: `Order block ${ob.type} at ${ob.price.toFixed(2)}${nearbyFVG ? ' + FVG confluence' : ''}${trendBias !== 'NEUTRAL' && trendBias !== dir ? ' (counter-trend)' : ''}`,
+          metadata: { orderBlock: ob, fvg: nearbyFVG },
+        })
+      }
     }
   }
 
   // 3. Liquidity Sweep + Structure Shift (ICT classic setup)
+  // NOTE: This is a REVERSAL setup
   const sweptPools = analysis.liquidityPools.filter(p => p.swept)
   if (sweptPools.length > 0 && analysis.marketStructure.lastCHoCH) {
     const dir = analysis.marketStructure.lastCHoCH.type === 'BULLISH' ? 'LONG' : 'SHORT'
-    signals.push({
-      direction: dir,
-      confidence: 80,
-      strategy: 'LIQUIDITY_SWEEP_MSS',
-      entryPrice: currentPrice,
-      stopLoss: dir === 'LONG' ? analysis.marketStructure.swingLow - atr * 0.5 : analysis.marketStructure.swingHigh + atr * 0.5,
-      takeProfit: dir === 'LONG' ? currentPrice + atr * 4 : currentPrice - atr * 4,
-      riskRewardRatio: 3.0,
-      reasoning: `Liquidity swept + CHoCH ${analysis.marketStructure.lastCHoCH.type}`,
-      metadata: { sweptPools, choch: analysis.marketStructure.lastCHoCH },
-    })
+
+    // COUNTER-TREND PENALTY
+    let adjustedConfidence = 80
+    if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
+      adjustedConfidence *= 0.5
+    }
+
+    if (adjustedConfidence >= 50) {
+      signals.push({
+        direction: dir,
+        confidence: adjustedConfidence,
+        strategy: 'LIQUIDITY_SWEEP_MSS',
+        entryPrice: currentPrice,
+        stopLoss: dir === 'LONG' ? analysis.marketStructure.swingLow - atr * 0.5 : analysis.marketStructure.swingHigh + atr * 0.5,
+        takeProfit: dir === 'LONG' ? currentPrice + atr * 4 : currentPrice - atr * 4,
+        riskRewardRatio: 3.0,
+        reasoning: `Liquidity swept + CHoCH ${analysis.marketStructure.lastCHoCH.type}${trendBias !== 'NEUTRAL' && trendBias !== dir ? ' (counter-trend)' : ''}`,
+        metadata: { sweptPools, choch: analysis.marketStructure.lastCHoCH },
+      })
+    }
   }
 
   // 4. Volume Profile + Z-Score Mean Reversion
+  // NOTE: Mean reversion is a COUNTER-TREND strategy
   const vpSignal = generateVolumeProfileSignal(currentPrice, analysis.volumeProfile, atr)
   if (vpSignal && Math.abs(analysis.zscore.zscore) >= 1.5) {
-    // Confluence: VP at extreme + statistical oversold/overbought
-    vpSignal.confidence = Math.min(95, vpSignal.confidence + 10)
-    vpSignal.reasoning += ` + Z-score ${analysis.zscore.zscore.toFixed(2)}`
-    signals.push(vpSignal)
+    // Apply counter-trend penalty
+    if ((trendBias === 'LONG' && vpSignal.direction === 'SHORT') ||
+        (trendBias === 'SHORT' && vpSignal.direction === 'LONG')) {
+      vpSignal.confidence *= 0.5
+    }
+
+    if (vpSignal.confidence >= 50) {
+      vpSignal.confidence = Math.min(95, vpSignal.confidence + 10)
+      vpSignal.reasoning += ` + Z-score ${analysis.zscore.zscore.toFixed(2)}${trendBias !== 'NEUTRAL' && trendBias !== vpSignal.direction ? ' (counter-trend)' : ''}`
+      signals.push(vpSignal)
+    }
   }
 
   // 5. Pure Z-Score if extreme
+  // NOTE: Z-Score is MEAN REVERSION = counter-trend
   if (Math.abs(analysis.zscore.zscore) >= 2.0) {
     const zSignal = generateZScoreSignal(candles.map(c => c.close), atr)
     if (zSignal) {
-      signals.push(zSignal)
+      // Apply counter-trend penalty
+      if ((trendBias === 'LONG' && zSignal.direction === 'SHORT') ||
+          (trendBias === 'SHORT' && zSignal.direction === 'LONG')) {
+        zSignal.confidence *= 0.5
+      }
+
+      if (zSignal.confidence >= 50) {
+        signals.push(zSignal)
+      }
     }
   }
 
   // 6. Absorption at key levels
+  // NOTE: Absorption is a REVERSAL signal
   if (analysis.absorption.detected) {
     const nearPOC = Math.abs(analysis.absorption.price - analysis.volumeProfile.poc) < atr
     const nearOB = analysis.orderBlocks.some(ob =>
@@ -1076,17 +1188,26 @@ export function generateAdvancedMasterSignal(
 
     if (nearPOC || nearOB) {
       const dir = analysis.absorption.type === 'SELL_ABSORBED' ? 'LONG' : 'SHORT'
-      signals.push({
-        direction: dir,
-        confidence: 75,
-        strategy: 'ABSORPTION_REVERSAL',
-        entryPrice: currentPrice,
-        stopLoss: dir === 'LONG' ? currentPrice - atr * 1.5 : currentPrice + atr * 1.5,
-        takeProfit: dir === 'LONG' ? currentPrice + atr * 2.5 : currentPrice - atr * 2.5,
-        riskRewardRatio: 1.67,
-        reasoning: `Absorption at ${nearPOC ? 'POC' : 'Order Block'}`,
-        metadata: { absorption: analysis.absorption },
-      })
+
+      // COUNTER-TREND PENALTY
+      let adjustedConfidence = 75
+      if ((trendBias === 'LONG' && dir === 'SHORT') || (trendBias === 'SHORT' && dir === 'LONG')) {
+        adjustedConfidence *= 0.5
+      }
+
+      if (adjustedConfidence >= 50) {
+        signals.push({
+          direction: dir,
+          confidence: adjustedConfidence,
+          strategy: 'ABSORPTION_REVERSAL',
+          entryPrice: currentPrice,
+          stopLoss: dir === 'LONG' ? currentPrice - atr * 1.5 : currentPrice + atr * 1.5,
+          takeProfit: dir === 'LONG' ? currentPrice + atr * 2.5 : currentPrice - atr * 2.5,
+          riskRewardRatio: 1.67,
+          reasoning: `Absorption at ${nearPOC ? 'POC' : 'Order Block'}${trendBias !== 'NEUTRAL' && trendBias !== dir ? ' (counter-trend)' : ''}`,
+          metadata: { absorption: analysis.absorption },
+        })
+      }
     }
   }
 

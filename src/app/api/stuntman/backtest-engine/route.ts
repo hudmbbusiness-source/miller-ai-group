@@ -176,15 +176,15 @@ function calculateTradeCosts(
   // Exchange fees (both sides)
   const exchangeFees = (TRADING_COSTS.exchangeFeePerSide + TRADING_COSTS.nfaFee) * 2 * contracts
 
-  // Slippage calculation - REALISTIC for ES (0.5-4 ticks typical, can be higher during news)
-  // ES is liquid but retail traders still face slippage, especially during fast moves
-  const volatilityFactor = Math.max(1, Math.min(3, volatility / 0.015))  // Up to 3x during vol
-  const baseSlip = TRADING_COSTS.baseSlippageTicks + (Math.random() * 0.5)  // 0.5-1 tick base
-  const volSlip = TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * (0.5 + Math.random())
-  const slippageTicks = Math.min(TRADING_COSTS.maxSlippageTicks, baseSlip + volSlip)
-  const slippage = slippageTicks * TRADING_COSTS.tickValue * contracts * 2  // Entry and exit
+  // FIXED: Slippage is already applied to entry/exit prices via applySlippage()
+  // DO NOT add slippage again here - that was DOUBLE COUNTING
+  // The price difference already reflects slippage
+  const slippage = 0  // Slippage is in the prices, not a separate cost
+  const slippageTicks = 0
 
-  const totalCosts = commission + exchangeFees + slippage
+  // Only fixed costs (commission + exchange fees)
+  // Slippage is already reflected in gross P&L through price adjustments
+  const totalCosts = commission + exchangeFees
 
   return {
     commission,

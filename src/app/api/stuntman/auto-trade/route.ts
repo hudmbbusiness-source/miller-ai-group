@@ -67,6 +67,8 @@ import {
 import {
   classifyMarketRegime,
   calculatePropFirmRisk,
+  generateAllWorldClassSignals,
+  StrategySignal,
 } from '@/lib/stuntman/world-class-strategies'
 
 // =============================================================================
@@ -1677,6 +1679,58 @@ async function runAutoTrader(): Promise<void> {
   console.log(`[REGIME] Optimal strategies: ${optimalStrategies.slice(0, 3).join(', ')}`)
 
   // ==========================================================================
+  // STEP 7.5: WORLD-CLASS STRATEGIES (11 strategies from paper trading)
+  // ==========================================================================
+  console.log('[STEP 7.5] Generating world-class strategy signals...')
+
+  // Get current price for session data fallbacks
+  const currentPrice = candles1m[candles1m.length - 1].close
+
+  // Calculate VWAP and stdDev for world-class strategies
+  const vwapPrices = candles1m.slice(-50).map(c => c.close)
+  const vwapAvg = vwapPrices.reduce((s, p) => s + p, 0) / vwapPrices.length
+  const vwapStdDev = Math.sqrt(
+    vwapPrices.reduce((sum, p) => sum + Math.pow(p - vwapAvg, 2), 0) / vwapPrices.length
+  ) || 10
+
+  // Calculate session data from recent candles
+  const last100 = candles1m.slice(-100)
+  const sessionHigh = Math.max(...last100.map(c => c.high))
+  const sessionLow = Math.min(...last100.map(c => c.low))
+
+  // Get prop firm risk status for world-class strategies
+  const propFirmRisk = calculatePropFirmRisk(
+    state.todayPnL,
+    150000 + state.todayPnL,  // Current balance
+    6000,                      // Max drawdown
+    0,                         // Consecutive losses handled separately
+    state.todayTrades.length
+  )
+
+  // Generate ALL world-class signals (same as paper trading)
+  const worldClassResult = generateAllWorldClassSignals(
+    candles1m,
+    candles5m.slice(-50),
+    candles15m.slice(-30),
+    { high: sessionHigh, low: sessionLow, formed: true },
+    {
+      asia: { high: currentPrice, low: currentPrice },
+      london: { high: currentPrice, low: currentPrice },
+      ny: { high: sessionHigh, low: sessionLow },
+    },
+    { vwap: vwapAvg, stdDev: vwapStdDev },
+    propFirmRisk
+  )
+
+  console.log(`[WCS] ${worldClassResult.signals.length} signals from 11 strategies | ${worldClassResult.reason}`)
+
+  // Get best world-class signal
+  const bestWorldClassSignal = worldClassResult.signals[0]?.signal || null
+  if (bestWorldClassSignal) {
+    console.log(`[WCS] Best: ${bestWorldClassSignal.type} ${bestWorldClassSignal.direction} | Quality: ${bestWorldClassSignal.qualityScore}`)
+  }
+
+  // ==========================================================================
   // STEP 8: ENHANCED CONFLUENCE SCORING (7-factor system from paper trading)
   // ==========================================================================
   console.log('[STEP 8] Calculating enhanced confluence...')
@@ -1765,8 +1819,25 @@ async function runAutoTrader(): Promise<void> {
   const patternScore = Math.min(5, patterns * 2)
   if (patterns > 0) factors.push(`Patterns: ${patterns} (${patternScore}pts)`)
 
-  // TOTAL CONFLUENCE SCORE
-  let confluenceScore = signalCountScore + confidenceScore + regimeScore + sessionScore + momentumScore + orderFlowScore + patternScore
+  // 8. WORLD-CLASS STRATEGY SCORE (20 points max) - CRITICAL FOR PAPER/LIVE CONSISTENCY
+  let worldClassScore = 0
+  if (worldClassResult.signals.length > 0) {
+    // Add points for each agreeing world-class signal
+    const agreeing = worldClassResult.signals.filter(s =>
+      (s.signal.direction === 'LONG' && mlDir === 'LONG') ||
+      (s.signal.direction === 'SHORT' && mlDir === 'SHORT')
+    )
+    worldClassScore = Math.min(20, agreeing.length * 7 + (bestWorldClassSignal?.qualityScore || 0) / 5)
+
+    if (agreeing.length > 0) {
+      // Add to signal count for confluence
+      signalCount += agreeing.length
+      factors.push(`WCS: ${agreeing.length}/${worldClassResult.signals.length} agree (${worldClassScore.toFixed(0)}pts)`)
+    }
+  }
+
+  // TOTAL CONFLUENCE SCORE (now includes world-class strategies)
+  let confluenceScore = signalCountScore + confidenceScore + regimeScore + sessionScore + momentumScore + orderFlowScore + patternScore + worldClassScore
 
   // ==========================================================================
   // ADAPTIVE THRESHOLDS - Dynamic based on regime, session, and performance

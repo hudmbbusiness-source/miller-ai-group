@@ -239,7 +239,9 @@ export default function StuntManDashboard() {
           price: parseFloat(data.market?.price || '0'),
           open: data.market?.withinTradingHours,
           pickMyTradeConnected: data.pickMyTrade?.connected,
-          pickMyTradeAccount: data.pickMyTrade?.account
+          pickMyTradeAccount: data.pickMyTrade?.account,
+          estHour: data.market?.estHour || '0',
+          estTime: data.market?.estTime || ''
         })
 
         setTradingDays(1) // Will track properly later
@@ -761,11 +763,11 @@ export default function StuntManDashboard() {
         {/* ================================================================ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
           {/* ============================================================ */}
-          {/* ACTIVE STRATEGIES PANEL */}
+          {/* HOW STRATEGIES ARE BEING USED PANEL */}
           {/* ============================================================ */}
           <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-medium text-white/80">Active Strategies</div>
+              <div className="text-sm font-medium text-white/80">Strategy Trigger Status</div>
               <div className={`px-2 py-1 rounded text-xs font-bold ${
                 marketStatus?.regime?.includes('UP') ? 'bg-emerald-500/20 text-emerald-400' :
                 marketStatus?.regime?.includes('DOWN') ? 'bg-red-500/20 text-red-400' :
@@ -775,78 +777,204 @@ export default function StuntManDashboard() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              {/* VWAP Pullback Long */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    marketStatus?.regime?.includes('UP') ? 'bg-emerald-500' : 'bg-white/20'
-                  }`} />
-                  <div>
-                    <div className="text-sm font-medium">VWAP_PULLBACK_LONG</div>
-                    <div className="text-[10px] text-white/40">Price pulls back to VWAP then bounces</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-emerald-400">71.4%</div>
-                  <div className="text-[10px] text-white/40">win rate</div>
-                </div>
-              </div>
+            <div className="space-y-3">
+              {/* VWAP Pullback Long - Show HOW it works */}
+              {(() => {
+                const price = marketStatus?.price || 0
+                const vwap = parseFloat(marketStatus?.indicators?.vwap || '0')
+                const distanceToVwap = price - vwap
+                const vwapPct = vwap > 0 ? (distanceToVwap / vwap) * 100 : 0
+                const isNearVwap = Math.abs(vwapPct) < 0.15
+                const isAboveVwap = price > vwap
+                const isUptrend = marketStatus?.regime?.includes('UP')
+                const canTrigger = isUptrend && isNearVwap && isAboveVwap
 
-              {/* VWAP Pullback Short */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    marketStatus?.regime?.includes('DOWN') ? 'bg-red-500' : 'bg-white/20'
-                  }`} />
-                  <div>
-                    <div className="text-sm font-medium">VWAP_PULLBACK_SHORT</div>
-                    <div className="text-[10px] text-white/40">Price rallies to VWAP then rejects</div>
+                return (
+                  <div className={`p-3 rounded-lg border ${canTrigger ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${canTrigger ? 'bg-emerald-500 animate-pulse' : isUptrend ? 'bg-amber-500' : 'bg-white/20'}`} />
+                        <span className="text-sm font-medium">VWAP_PULLBACK_LONG</span>
+                        <span className="text-[10px] text-emerald-400">71.4% WR</span>
+                      </div>
+                      <span className={`text-xs font-medium ${canTrigger ? 'text-emerald-400' : 'text-white/40'}`}>
+                        {canTrigger ? '✓ READY' : isUptrend ? 'WAITING' : 'BLOCKED'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-white/60 space-y-1 pl-4">
+                      <div className="flex justify-between">
+                        <span>Regime required:</span>
+                        <span className={isUptrend ? 'text-emerald-400' : 'text-red-400'}>
+                          UPTREND {isUptrend ? '✓' : '✗ (current: ' + (marketStatus?.regime || 'SIDEWAYS') + ')'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Price to VWAP (need &lt;0.15%):</span>
+                        <span className={isNearVwap ? 'text-emerald-400' : 'text-amber-400'}>
+                          {vwapPct.toFixed(3)}% ({distanceToVwap >= 0 ? '+' : ''}{distanceToVwap.toFixed(2)} pts)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Price position:</span>
+                        <span className={isAboveVwap && isNearVwap ? 'text-emerald-400' : 'text-white/50'}>
+                          {isAboveVwap ? 'Above VWAP ✓' : 'Below VWAP ✗'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-white/30 pl-4">
+                      Trigger: Price pulls back to within 0.15% of VWAP, then bounces up
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-emerald-400">57.1%</div>
-                  <div className="text-[10px] text-white/40">win rate</div>
-                </div>
-              </div>
+                )
+              })()}
 
-              {/* EMA20 Bounce Long */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    marketStatus?.regime === 'STRONG_UPTREND' ? 'bg-emerald-500' : 'bg-white/20'
-                  }`} />
-                  <div>
-                    <div className="text-sm font-medium">EMA20_BOUNCE_LONG</div>
-                    <div className="text-[10px] text-white/40">Price touches EMA20 and bounces (strong uptrend only)</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-emerald-400">57.1%</div>
-                  <div className="text-[10px] text-white/40">win rate</div>
-                </div>
-              </div>
+              {/* VWAP Pullback Short - Show HOW it works */}
+              {(() => {
+                const price = marketStatus?.price || 0
+                const vwap = parseFloat(marketStatus?.indicators?.vwap || '0')
+                const distanceToVwap = price - vwap
+                const vwapPct = vwap > 0 ? (distanceToVwap / vwap) * 100 : 0
+                const isNearVwap = Math.abs(vwapPct) < 0.15
+                const isBelowVwap = price < vwap
+                const isDowntrend = marketStatus?.regime?.includes('DOWN')
+                const canTrigger = isDowntrend && isNearVwap && isBelowVwap
 
-              {/* ORB Breakout Short */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    marketStatus?.regime?.includes('DOWN') ? 'bg-red-500' : 'bg-white/20'
-                  }`} />
-                  <div>
-                    <div className="text-sm font-medium">ORB_BREAKOUT_SHORT</div>
-                    <div className="text-[10px] text-white/40">Opening Range Breakdown (9:45-11:00 AM)</div>
+                return (
+                  <div className={`p-3 rounded-lg border ${canTrigger ? 'bg-red-500/10 border-red-500/30' : 'bg-white/5 border-white/10'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${canTrigger ? 'bg-red-500 animate-pulse' : isDowntrend ? 'bg-amber-500' : 'bg-white/20'}`} />
+                        <span className="text-sm font-medium">VWAP_PULLBACK_SHORT</span>
+                        <span className="text-[10px] text-emerald-400">57.1% WR</span>
+                      </div>
+                      <span className={`text-xs font-medium ${canTrigger ? 'text-red-400' : 'text-white/40'}`}>
+                        {canTrigger ? '✓ READY' : isDowntrend ? 'WAITING' : 'BLOCKED'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-white/60 space-y-1 pl-4">
+                      <div className="flex justify-between">
+                        <span>Regime required:</span>
+                        <span className={isDowntrend ? 'text-red-400' : 'text-white/40'}>
+                          DOWNTREND {isDowntrend ? '✓' : '✗ (current: ' + (marketStatus?.regime || 'SIDEWAYS') + ')'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Price to VWAP (need &lt;0.15%):</span>
+                        <span className={isNearVwap ? 'text-emerald-400' : 'text-amber-400'}>
+                          {vwapPct.toFixed(3)}% ({distanceToVwap >= 0 ? '+' : ''}{distanceToVwap.toFixed(2)} pts)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Price position:</span>
+                        <span className={isBelowVwap && isNearVwap ? 'text-red-400' : 'text-white/50'}>
+                          {isBelowVwap ? 'Below VWAP ✓' : 'Above VWAP ✗'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-white/30 pl-4">
+                      Trigger: Price rallies to within 0.15% of VWAP, then rejects down
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-emerald-400">100%</div>
-                  <div className="text-[10px] text-white/40">win rate*</div>
-                </div>
-              </div>
+                )
+              })()}
+
+              {/* EMA20 Bounce Long - Show HOW it works */}
+              {(() => {
+                const price = marketStatus?.price || 0
+                const ema20 = parseFloat(marketStatus?.indicators?.ema20 || '0')
+                const distanceToEma = price - ema20
+                const emaPct = ema20 > 0 ? (distanceToEma / ema20) * 100 : 0
+                const touchedEma = emaPct <= 0.2 && emaPct >= -0.5
+                const closedAbove = price > ema20
+                const isStrongUptrend = marketStatus?.regime === 'STRONG_UPTREND'
+                const canTrigger = isStrongUptrend && touchedEma && closedAbove
+
+                return (
+                  <div className={`p-3 rounded-lg border ${canTrigger ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${canTrigger ? 'bg-emerald-500 animate-pulse' : isStrongUptrend ? 'bg-amber-500' : 'bg-white/20'}`} />
+                        <span className="text-sm font-medium">EMA20_BOUNCE_LONG</span>
+                        <span className="text-[10px] text-emerald-400">57.1% WR</span>
+                      </div>
+                      <span className={`text-xs font-medium ${canTrigger ? 'text-emerald-400' : 'text-white/40'}`}>
+                        {canTrigger ? '✓ READY' : isStrongUptrend ? 'WAITING' : 'BLOCKED'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-white/60 space-y-1 pl-4">
+                      <div className="flex justify-between">
+                        <span>Regime required:</span>
+                        <span className={isStrongUptrend ? 'text-emerald-400' : 'text-white/40'}>
+                          STRONG_UPTREND {isStrongUptrend ? '✓' : '✗ (current: ' + (marketStatus?.regime || 'SIDEWAYS') + ')'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Price to EMA20:</span>
+                        <span className={touchedEma ? 'text-emerald-400' : 'text-amber-400'}>
+                          {emaPct.toFixed(3)}% ({distanceToEma >= 0 ? '+' : ''}{distanceToEma.toFixed(2)} pts)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Price must close above EMA20:</span>
+                        <span className={closedAbove ? 'text-emerald-400' : 'text-white/50'}>
+                          {closedAbove ? 'Yes ✓' : 'No ✗'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-white/30 pl-4">
+                      Trigger: Price touches EMA20 (within 0.2%) and closes above it
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* ORB Breakout - Show HOW it works */}
+              {(() => {
+                const estHour = parseFloat(marketStatus?.estHour || '0')
+                const isORBWindow = estHour >= 9.75 && estHour < 11
+                const isDowntrend = marketStatus?.regime?.includes('DOWN')
+                const canTrigger = isORBWindow && isDowntrend
+
+                return (
+                  <div className={`p-3 rounded-lg border ${canTrigger ? 'bg-red-500/10 border-red-500/30' : 'bg-white/5 border-white/10'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${canTrigger ? 'bg-red-500 animate-pulse' : isORBWindow ? 'bg-amber-500' : 'bg-white/20'}`} />
+                        <span className="text-sm font-medium">ORB_BREAKOUT_SHORT</span>
+                        <span className="text-[10px] text-emerald-400">100% WR*</span>
+                      </div>
+                      <span className={`text-xs font-medium ${canTrigger ? 'text-red-400' : 'text-white/40'}`}>
+                        {canTrigger ? '✓ READY' : !isORBWindow ? 'TIME BLOCKED' : 'WAITING'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-white/60 space-y-1 pl-4">
+                      <div className="flex justify-between">
+                        <span>Time window (9:45-11:00 AM EST):</span>
+                        <span className={isORBWindow ? 'text-emerald-400' : 'text-white/40'}>
+                          {isORBWindow ? 'Active ✓' : `Inactive (now: ${estHour.toFixed(2)} EST)`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Regime required:</span>
+                        <span className={isDowntrend ? 'text-red-400' : 'text-white/40'}>
+                          DOWNTREND {isDowntrend ? '✓' : '✗'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Opening Range (9:30-9:45):</span>
+                        <span className="text-white/50">Calculated at open</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-white/30 pl-4">
+                      Trigger: Price breaks below Opening Range low in downtrend
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="mt-4 pt-3 border-t border-white/5 text-[10px] text-white/30 text-center">
-              * Based on backtested results. Combined strategy: 60.3% win rate, 1.65 profit factor
+              * Based on backtested results. Combined: 60.3% win rate, 1.65 profit factor. SIDEWAYS = NO TRADE
             </div>
           </div>
 

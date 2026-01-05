@@ -176,12 +176,18 @@ export default function StuntManDashboard() {
   const [tradingDaysNeeded, setTradingDaysNeeded] = useState(7)
   const [paperMode, setPaperMode] = useState(true)
 
+  // Open Positions State - CRITICAL for tracking live trades
+  const [openPositions, setOpenPositions] = useState<any[]>([])
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+
   // Manual Trading State
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
 
-  // TradingView symbols - SPY tracks ES, QQQ tracks NQ
-  const tvSymbol = instrument === 'ES' ? 'SPY' : 'QQQ'
+  // TradingView symbols - Use actual futures for REAL-TIME data
+  // CME_MINI:ES1! = E-mini S&P 500 continuous contract (REAL-TIME)
+  // CME_MINI:NQ1! = E-mini Nasdaq continuous contract (REAL-TIME)
+  const tvSymbol = instrument === 'ES' ? 'CME_MINI:ES1!' : 'CME_MINI:NQ1!'
 
   // ==========================================================================
   // DATA FETCHING
@@ -232,6 +238,25 @@ export default function StuntManDashboard() {
 
         setRecentTrades(data.status?.tradeHistory || [])
         setConfigured(data.pickMyTrade?.connected || false)
+
+        // Track open positions - if currentPosition exists, show it
+        if (data.status?.currentPosition) {
+          setOpenPositions([{
+            id: Date.now(),
+            symbol: 'ESH26',
+            direction: data.status.currentPosition.direction,
+            contracts: 1,
+            entryPrice: data.status.currentPosition.entryPrice,
+            stopLoss: data.status.currentPosition.stopLoss,
+            takeProfit: data.status.currentPosition.takeProfit,
+            pattern: data.status.currentPosition.patternId
+          }])
+        } else {
+          setOpenPositions([])
+        }
+
+        // Update last refresh time
+        setLastRefresh(new Date())
 
         // Market data
         setMarketStatus({
@@ -537,6 +562,53 @@ export default function StuntManDashboard() {
             </div>
             <div className="text-[10px] text-white/30">profit needed</div>
           </div>
+        </div>
+
+        {/* ================================================================ */}
+        {/* OPEN POSITIONS - CRITICAL VISIBILITY */}
+        {/* ================================================================ */}
+        {openPositions.length > 0 && (
+          <div className="mb-4 p-4 bg-red-500/10 border-2 border-red-500/50 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-lg font-bold text-red-400">⚠️ OPEN POSITIONS</span>
+              </div>
+              <button
+                onClick={closePosition}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold"
+              >
+                CLOSE ALL
+              </button>
+            </div>
+            <div className="space-y-2">
+              {openPositions.map(pos => (
+                <div key={pos.id} className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <span className={`text-xl font-bold ${pos.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {pos.direction}
+                    </span>
+                    <span className="text-white">{pos.contracts}x {pos.symbol}</span>
+                    <span className="text-white/60">@ {pos.entryPrice?.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-red-400">SL: {pos.stopLoss?.toFixed(2)}</span>
+                    <span className="text-emerald-400">TP: {pos.takeProfit?.toFixed(2)}</span>
+                    <span className="text-white/40">{pos.pattern}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* LAST REFRESH INDICATOR */}
+        <div className="mb-4 flex items-center justify-between text-xs text-white/40">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Auto-refresh: Every 3 seconds</span>
+          </div>
+          <span>Last updated: {lastRefresh.toLocaleTimeString()}</span>
         </div>
 
         {/* ================================================================ */}

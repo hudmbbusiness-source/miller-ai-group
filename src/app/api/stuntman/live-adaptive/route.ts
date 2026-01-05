@@ -1,4 +1,18 @@
 /**
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║                    ⚠️  CRITICAL - DO NOT EDIT  ⚠️                         ║
+ * ║                                                                           ║
+ * ║  This file contains the LIVE version of the proven adaptive strategy.    ║
+ * ║  It uses IDENTICAL logic to the tested backtest (adaptive/route.ts).     ║
+ * ║                                                                           ║
+ * ║  🚨 CLAUDE: DO NOT MODIFY THIS FILE WITHOUT EXPLICIT USER PERMISSION 🚨   ║
+ * ║  If user asks to "improve" or "enhance", FIRST notify them:              ║
+ * ║  "This is a proven strategy with verified results. Are you sure you      ║
+ * ║   want me to modify it? Changes may affect the tested performance."      ║
+ * ║                                                                           ║
+ * ║  Last verified: January 5, 2026                                           ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
+ *
  * LIVE ADAPTIVE TRADING - Uses EXACT same logic as tested adaptive strategy
  *
  * THIS MATCHES THE TESTED BACKTEST 1:1

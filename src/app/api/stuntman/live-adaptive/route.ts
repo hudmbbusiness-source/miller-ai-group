@@ -33,8 +33,35 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
-// PickMyTrade integration (optional - for live execution)
-// import { PickMyTradeClient, getCurrentContractSymbol } from '@/lib/stuntman/pickmytrade-client'
+// PickMyTrade integration - ENABLED for live execution to Apex
+import { PickMyTradeClient, getCurrentContractSymbol, TradeResult } from '@/lib/stuntman/pickmytrade-client'
+
+// Initialize PickMyTrade client with environment variables
+const PICKMYTRADE_TOKEN = process.env.PICKMYTRADE_TOKEN || ''
+const APEX_ACCOUNT_ID = process.env.APEX_ACCOUNT_ID || 'APEX-456334'
+
+let pickMyTradeClient: PickMyTradeClient | null = null
+
+function getPickMyTradeClient(): PickMyTradeClient | null {
+  if (!PICKMYTRADE_TOKEN) {
+    console.log('[PickMyTrade] No token configured - live execution disabled')
+    return null
+  }
+
+  if (!pickMyTradeClient) {
+    pickMyTradeClient = new PickMyTradeClient({
+      token: PICKMYTRADE_TOKEN,
+      accountId: APEX_ACCOUNT_ID,
+      platform: 'RITHMIC',
+      defaultSymbol: getCurrentContractSymbol('ES'),
+      maxContracts: 17,
+      enabled: true
+    })
+    console.log(`[PickMyTrade] Client initialized for ${APEX_ACCOUNT_ID}`)
+  }
+
+  return pickMyTradeClient
+}
 
 // ============================================================================
 // TYPES - EXACT SAME AS TESTED
@@ -503,6 +530,20 @@ export async function GET(request: NextRequest) {
 
     const withinTradingHours = estHour >= CONFIG.tradingStartHour && estHour <= CONFIG.tradingEndHour
 
+    // Check PickMyTrade connection
+    const pmtClient = getPickMyTradeClient()
+    const pickMyTradeStatus = pmtClient ? {
+      connected: true,
+      token: PICKMYTRADE_TOKEN ? `${PICKMYTRADE_TOKEN.substring(0, 4)}...${PICKMYTRADE_TOKEN.slice(-4)}` : 'NOT SET',
+      account: APEX_ACCOUNT_ID,
+      enabled: pmtClient.isEnabled
+    } : {
+      connected: false,
+      token: 'NOT SET',
+      account: APEX_ACCOUNT_ID,
+      enabled: false
+    }
+
     return NextResponse.json({
       success: true,
       status: {
@@ -516,6 +557,7 @@ export async function GET(request: NextRequest) {
         price: lastCandle.close.toFixed(2),
         regime,
         withinTradingHours,
+        estHour: estHour.toFixed(2),
         estTime: now.toLocaleString('en-US', { timeZone: 'America/New_York' }),
         indicators: {
           ema20: ema20[lastIndex].toFixed(2),
@@ -525,6 +567,7 @@ export async function GET(request: NextRequest) {
           vwap: vwap[lastIndex].toFixed(2)
         }
       },
+      pickMyTrade: pickMyTradeStatus,
       signal: signal ? {
         pattern: signal.patternId,
         direction: signal.direction,
@@ -535,7 +578,7 @@ export async function GET(request: NextRequest) {
         reason: signal.reason
       } : null,
       message: !withinTradingHours
-        ? 'Outside trading hours (9:30 AM - 3:30 PM EST)'
+        ? `Outside trading hours (9:30 AM - 3:30 PM EST) - Current: ${estHour.toFixed(2)} EST`
         : regime === 'SIDEWAYS'
           ? 'SIDEWAYS market - NO TRADE (waiting for trend)'
           : signal
@@ -605,6 +648,50 @@ export async function POST(request: NextRequest) {
 
       dailyTrades++
 
+      // ============================================================================
+      // EXECUTE TRADE VIA PICKMYTRADE TO APEX
+      // ============================================================================
+      const client = getPickMyTradeClient()
+      let executionResult: TradeResult | null = null
+
+      if (client) {
+        const contractSymbol = getCurrentContractSymbol('ES')
+        console.log(`[LiveAdaptive] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
+
+        try {
+          if (signal.direction === 'LONG') {
+            executionResult = await client.buyMarket(
+              contractSymbol,
+              1, // Start with 1 contract for safety
+              signal.stopLoss,
+              signal.takeProfit
+            )
+          } else {
+            executionResult = await client.sellMarket(
+              contractSymbol,
+              1, // Start with 1 contract for safety
+              signal.stopLoss,
+              signal.takeProfit
+            )
+          }
+
+          console.log(`[LiveAdaptive] Execution result:`, executionResult)
+        } catch (error) {
+          console.error(`[LiveAdaptive] Execution error:`, error)
+          executionResult = {
+            success: false,
+            message: error instanceof Error ? error.message : 'Execution failed',
+            timestamp: Date.now(),
+            signal: {
+              action: signal.direction === 'LONG' ? 'BUY' : 'SELL',
+              symbol: contractSymbol,
+              quantity: 1,
+              orderType: 'MKT'
+            }
+          }
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: `Signal generated: ${signal.direction} via ${signal.patternId}`,
@@ -617,7 +704,16 @@ export async function POST(request: NextRequest) {
           reason: signal.reason
         },
         position: currentPosition,
-        note: 'To execute live, configure PICKMYTRADE_TOKEN and connect to Apex via PickMyTrade webhook'
+        execution: executionResult ? {
+          success: executionResult.success,
+          message: executionResult.message,
+          orderId: executionResult.orderId,
+          timestamp: executionResult.timestamp
+        } : {
+          success: false,
+          message: 'PickMyTrade not configured - set PICKMYTRADE_TOKEN in environment'
+        },
+        pickMyTradeConnected: !!client
       })
     }
 

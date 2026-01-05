@@ -125,9 +125,9 @@ export class PickMyTradeClient {
       };
     }
 
-    // Validate quantity
-    const quantity = Math.min(signal.quantity, this.config.maxContracts);
-    if (quantity < 1) {
+    // Validate quantity (FLAT orders can have 0 quantity)
+    const quantity = signal.action === 'FLAT' ? 1 : Math.min(signal.quantity, this.config.maxContracts);
+    if (signal.action !== 'FLAT' && quantity < 1) {
       return {
         success: false,
         message: 'Invalid quantity',

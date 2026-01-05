@@ -1,5 +1,5 @@
 // @ts-nocheck
-// BUILD: 2026-01-02-v2
+// BUILD: 2026-01-04-dual-mode
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -33,11 +33,17 @@ import {
   Timer,
   Wallet,
   TrendingUp as TrendUp,
+  Radio,
+  History,
+  Database,
+  Save,
 } from 'lucide-react'
 
 // =============================================================================
 // TYPES
 // =============================================================================
+
+type PaperMode = 'LIVE' | 'HISTORICAL'
 
 interface BacktestPerformance {
   startBalance: number
@@ -129,37 +135,6 @@ interface BacktestStatus {
   processingSpeed: string
 }
 
-interface BacktestData {
-  success: boolean
-  status: BacktestStatus
-  performance: BacktestPerformance
-  tradingCosts: TradingCosts
-  latencyStats: LatencyStats
-  mlAccuracy: MLAccuracy
-  strategies: Strategy[]
-  recentTrades: BacktestTrade[]
-  position: any
-  config?: {
-    speed: number | 'MAX'
-    inverseMode: boolean
-    autoInverse: boolean
-    currentlyInversed: boolean
-  }
-  dataSource?: {
-    provider: string
-    candlesLoaded: {
-      '1m': number
-      '5m': number
-      '15m': number
-    }
-  }
-  chartData?: ChartData
-}
-
-// =============================================================================
-// SIMULATION CHART (lightweight-charts v5 API)
-// =============================================================================
-
 interface ChartData {
   candles: Array<{
     time: number
@@ -187,6 +162,75 @@ interface ChartData {
   currentPrice: number
   currentTime: number
 }
+
+interface BacktestData {
+  success: boolean
+  status: BacktestStatus
+  performance: BacktestPerformance
+  tradingCosts: TradingCosts
+  latencyStats: LatencyStats
+  mlAccuracy: MLAccuracy
+  strategies: Strategy[]
+  recentTrades: BacktestTrade[]
+  position: any
+  config?: {
+    speed: number | 'MAX'
+    inverseMode: boolean
+    autoInverse: boolean
+    currentlyInversed: boolean
+  }
+  dataSource?: {
+    provider: string
+    candlesLoaded: {
+      '1m': number
+      '5m': number
+      '15m': number
+    }
+  }
+  chartData?: ChartData
+}
+
+// Live trading data structure
+interface LiveData {
+  success: boolean
+  enabled: boolean
+  timestamp: string
+  currentPrice: number
+  position: {
+    direction: 'LONG' | 'SHORT' | null
+    entryPrice: number
+    contracts: number
+    unrealizedPnL: number
+  } | null
+  todayStats: {
+    trades: number
+    wins: number
+    losses: number
+    winRate: string
+    netPnL: number
+    grossPnL: number
+  }
+  signal: {
+    direction: 'LONG' | 'SHORT' | 'FLAT'
+    confidence: number
+    pattern: string
+    regime: string
+  } | null
+  recentTrades: Array<{
+    timestamp: string
+    direction: string
+    entryPrice: number
+    exitPrice: number
+    netPnL: number
+    exitReason: string
+  }>
+  marketStatus: string
+  dataLogged?: number
+}
+
+// =============================================================================
+// SIMULATION CHART (lightweight-charts v5 API)
+// =============================================================================
 
 function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | undefined, isRunning: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -304,9 +348,6 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
       volumeSeriesRef.current.setData(volumeData)
     }
 
-    // Note: Markers and price lines removed due to v5 API incompatibility
-    // Trades are shown in the trade history panel instead
-
     // Auto-scroll to latest candle if running
     if (isRunning && chartRef.current) {
       chartRef.current.timeScale().scrollToRealTime()
@@ -319,7 +360,7 @@ function HistoricalChart({ chartData, isRunning }: { chartData: ChartData | unde
       {/* Overlay for current price */}
       {chartData?.currentPrice ? (
         <div className="absolute top-2 right-2 bg-black/80 px-3 py-1.5 rounded-lg border border-amber-500/30">
-          <div className="text-xs text-amber-400 mb-0.5 font-medium">ES FUTURES (REAL)</div>
+          <div className="text-xs text-amber-400 mb-0.5 font-medium">ES FUTURES (HISTORICAL)</div>
           <div className="text-lg font-bold text-white">
             {chartData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
@@ -396,27 +437,34 @@ function StatCard({
 // =============================================================================
 
 export default function PaperTradingPage() {
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<BacktestData | null>(null)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [instrument] = useState<'ES' | 'NQ'>('ES')
+  // Mode selection
+  const [mode, setMode] = useState<PaperMode>('LIVE')
 
-  // Speed & Inverse controls
+  // Historical mode state
+  const [histLoading, setHistLoading] = useState(true)
+  const [histData, setHistData] = useState<BacktestData | null>(null)
+  const [histActionLoading, setHistActionLoading] = useState(false)
   const [speed, setSpeed] = useState<1 | 5 | 10 | 50 | 100 | 'MAX'>(1)
   const [inverseMode, setInverseMode] = useState(false)
   const [autoInverse, setAutoInverse] = useState(false)
 
+  // Live mode state
+  const [liveLoading, setLiveLoading] = useState(true)
+  const [liveData, setLiveData] = useState<LiveData | null>(null)
+  const [liveEnabled, setLiveEnabled] = useState(false)
+  const [dataLogging, setDataLogging] = useState(true)
+  const [candlesLogged, setCandlesLogged] = useState(0)
+
   // ===========================================================================
-  // FETCH DATA
+  // HISTORICAL MODE - FETCH DATA
   // ===========================================================================
 
-  const fetchData = useCallback(async () => {
+  const fetchHistData = useCallback(async () => {
     try {
       const res = await fetch('/api/stuntman/backtest-engine')
       const result = await res.json()
       if (result.success) {
-        setData(result)
-        // Sync config state
+        setHistData(result)
         if (result.config) {
           setSpeed(result.config.speed || 1)
           setInverseMode(result.config.inverseMode || false)
@@ -426,42 +474,103 @@ export default function PaperTradingPage() {
     } catch (e) {
       console.error('Fetch error:', e)
     } finally {
-      setLoading(false)
+      setHistLoading(false)
     }
   }, [])
 
-  // Initial fetch
-  useEffect(() => {
-    fetchData()
+  // ===========================================================================
+  // LIVE MODE - FETCH DATA
+  // ===========================================================================
+
+  const fetchLiveData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/stuntman/live-adaptive')
+      const result = await res.json()
+      if (result.success !== false) {
+        setLiveData(result)
+        setLiveEnabled(result.enabled || false)
+      }
+    } catch (e) {
+      console.error('Live fetch error:', e)
+    } finally {
+      setLiveLoading(false)
+    }
   }, [])
 
-  // Dynamic polling - faster when simulation is running
+  // ===========================================================================
+  // DATA LOGGING - Log candles to Supabase for future backtesting
+  // ===========================================================================
+
+  const logCandles = useCallback(async (candles: any[]) => {
+    if (!dataLogging || !candles || candles.length === 0) return
+
+    try {
+      const res = await fetch('/api/stuntman/data-logger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'candles', data: candles }),
+      })
+      const result = await res.json()
+      if (result.success) {
+        setCandlesLogged(prev => prev + result.saved)
+      }
+    } catch (e) {
+      console.error('Data logging error:', e)
+    }
+  }, [dataLogging])
+
+  // ===========================================================================
+  // INITIAL FETCH & POLLING
+  // ===========================================================================
+
+  // Initial fetch based on mode
   useEffect(() => {
-    const pollInterval = data?.status?.running ? 400 : 2000  // 400ms when running for smooth updates
-    const poll = setInterval(fetchData, pollInterval)
+    if (mode === 'LIVE') {
+      fetchLiveData()
+    } else {
+      fetchHistData()
+    }
+  }, [mode])
+
+  // Polling for LIVE mode
+  useEffect(() => {
+    if (mode !== 'LIVE') return
+
+    const poll = setInterval(() => {
+      fetchLiveData()
+    }, 3000) // Poll every 3 seconds for live data
+
     return () => clearInterval(poll)
-  }, [fetchData, data?.status?.running])
+  }, [mode, fetchLiveData])
+
+  // Polling for HISTORICAL mode
+  useEffect(() => {
+    if (mode !== 'HISTORICAL') return
+
+    const pollInterval = histData?.status?.running ? 400 : 2000
+    const poll = setInterval(fetchHistData, pollInterval)
+    return () => clearInterval(poll)
+  }, [mode, fetchHistData, histData?.status?.running])
 
   // ===========================================================================
-  // ACTIONS
+  // HISTORICAL MODE ACTIONS
   // ===========================================================================
 
-  const handleAction = async (action: 'start' | 'stop' | 'reset') => {
-    setActionLoading(true)
+  const handleHistAction = async (action: 'start' | 'stop' | 'reset') => {
+    setHistActionLoading(true)
     try {
       await fetch('/api/stuntman/backtest-engine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, days: 7 }),
       })
-      await fetchData()
+      await fetchHistData()
     } catch (e) {
       console.error('Action error:', e)
     }
-    setActionLoading(false)
+    setHistActionLoading(false)
   }
 
-  // Set speed
   const handleSpeed = async (newSpeed: 1 | 5 | 10 | 50 | 100 | 'MAX') => {
     setSpeed(newSpeed)
     try {
@@ -475,7 +584,6 @@ export default function PaperTradingPage() {
     }
   }
 
-  // Toggle inverse mode
   const handleInverse = async () => {
     const newValue = !inverseMode
     setInverseMode(newValue)
@@ -490,7 +598,6 @@ export default function PaperTradingPage() {
     }
   }
 
-  // Toggle auto-inverse
   const handleAutoInverse = async () => {
     const newValue = !autoInverse
     setAutoInverse(newValue)
@@ -502,6 +609,27 @@ export default function PaperTradingPage() {
       })
     } catch (e) {
       console.error('Auto-inverse error:', e)
+    }
+  }
+
+  // ===========================================================================
+  // LIVE MODE ACTIONS
+  // ===========================================================================
+
+  const handleLiveToggle = async () => {
+    try {
+      const res = await fetch('/api/stuntman/live-adaptive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: liveEnabled ? 'stop' : 'start' }),
+      })
+      const result = await res.json()
+      if (result.success !== false) {
+        setLiveEnabled(!liveEnabled)
+        await fetchLiveData()
+      }
+    } catch (e) {
+      console.error('Live toggle error:', e)
     }
   }
 
@@ -519,38 +647,32 @@ export default function PaperTradingPage() {
 
   const fmtPrice = (n: number) => n?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'
 
-  const formatTime = (ms: number) => {
-    const mins = Math.floor(ms / 60000)
-    const secs = Math.floor((ms % 60000) / 1000)
-    return `${mins}m ${secs}s`
-  }
-
   // ===========================================================================
   // LOADING
   // ===========================================================================
 
-  if (loading) {
+  const isLoading = mode === 'LIVE' ? liveLoading : histLoading
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-10 h-10 text-amber-500 animate-spin mx-auto mb-4" />
-          <p className="text-white/50">Loading Paper Trading System...</p>
+          <p className="text-white/50">Loading {mode} Paper Trading...</p>
         </div>
       </div>
     )
   }
 
-  const perf = data?.performance
-  const costs = data?.tradingCosts
-  const ml = data?.mlAccuracy
-  const latency = data?.latencyStats
-  const status = data?.status
-  const strategies = data?.strategies || []
-  const trades = data?.recentTrades || []
-
-  const isRunning = status?.running || false
-  const netPnL = perf?.netPnL || 0
-  const grossPnL = perf?.grossPnL || 0
+  // Extract data based on mode
+  const perf = histData?.performance
+  const costs = histData?.tradingCosts
+  const ml = histData?.mlAccuracy
+  const latency = histData?.latencyStats
+  const status = histData?.status
+  const strategies = histData?.strategies || []
+  const histTrades = histData?.recentTrades || []
+  const isHistRunning = status?.running || false
 
   // ===========================================================================
   // RENDER
@@ -573,448 +695,634 @@ export default function PaperTradingPage() {
             <div className="flex items-center gap-2">
               <Activity className="w-6 h-6 text-amber-400" />
               <span className="font-bold text-lg">Paper Trading</span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                SIMULATION
-              </span>
             </div>
           </div>
 
-          {/* Center - Status */}
-          <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
-              isRunning ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-white/40'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
-              <span className="text-xs font-medium">{isRunning ? 'RUNNING' : 'STOPPED'}</span>
-            </div>
-            {isRunning && (
-              <>
-                <div className="text-xs text-white/40">
-                  Progress: <span className="text-white font-medium">{status?.progress || '0%'}</span>
-                </div>
-                <div className="text-xs text-white/40">
-                  Speed: <span className="text-white font-medium">{status?.processingSpeed || '0/sec'}</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Right - Controls */}
-          <div className="flex items-center gap-2">
+          {/* Center - MODE SELECTOR */}
+          <div className="flex items-center gap-1 p-1 bg-white/5 rounded-lg">
             <button
-              onClick={() => handleAction('reset')}
-              disabled={actionLoading}
-              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-sm font-medium transition flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
-              Reset
-            </button>
-            <button
-              onClick={() => handleAction(isRunning ? 'stop' : 'start')}
-              disabled={actionLoading}
-              className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition ${
-                isRunning
-                  ? 'bg-red-500 hover:bg-red-400 text-white'
-                  : 'bg-amber-500 hover:bg-amber-400 text-black'
+              onClick={() => setMode('LIVE')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
+                mode === 'LIVE'
+                  ? 'bg-emerald-500 text-white'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
               }`}
             >
-              {isRunning ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              {isRunning ? 'STOP' : 'START'}
+              <Radio className="w-4 h-4" />
+              LIVE PAPER
+              {mode === 'LIVE' && liveEnabled && (
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              )}
+            </button>
+            <button
+              onClick={() => setMode('HISTORICAL')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
+                mode === 'HISTORICAL'
+                  ? 'bg-amber-500 text-black'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              HISTORICAL PAPER
+              {mode === 'HISTORICAL' && isHistRunning && (
+                <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
+              )}
+            </button>
+          </div>
+
+          {/* Right - Data Logging Status */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30">
+              <Database className="w-4 h-4 text-blue-400" />
+              <span className="text-xs text-blue-400 font-medium">
+                {candlesLogged.toLocaleString()} candles logged
+              </span>
+            </div>
+            <button
+              onClick={() => setDataLogging(!dataLogging)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                dataLogging
+                  ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
+                  : 'bg-white/5 border border-white/10 text-white/40'
+              }`}
+            >
+              <Save className="w-3.5 h-3.5" />
+              {dataLogging ? 'LOGGING ON' : 'LOGGING OFF'}
             </button>
           </div>
         </div>
       </header>
 
       {/* ===================================================================== */}
-      {/* CONTROL BAR - Speed & Inverse Controls */}
+      {/* MODE-SPECIFIC CONTENT */}
       {/* ===================================================================== */}
-      <div className="border-b border-white/5 bg-black/50 backdrop-blur">
-        <div className="max-w-[1920px] mx-auto px-4 py-2 flex items-center justify-between">
-          {/* Speed Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-white/40 mr-2">SPEED:</span>
-            {([1, 5, 10, 50, 100, 'MAX'] as const).map((s) => (
+
+      {mode === 'LIVE' ? (
+        /* ================================================================= */
+        /* LIVE PAPER MODE */
+        /* ================================================================= */
+        <div>
+          {/* Live Control Bar */}
+          <div className="border-b border-white/5 bg-emerald-500/5 backdrop-blur">
+            <div className="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${
+                  liveEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40'
+                }`}>
+                  <div className={`w-3 h-3 rounded-full ${liveEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-white/30'}`} />
+                  <span className="text-sm font-bold">{liveEnabled ? 'LIVE TRADING ACTIVE' : 'PAUSED'}</span>
+                </div>
+
+                <div className="text-xs text-white/40">
+                  Market: <span className={`font-medium ${
+                    liveData?.marketStatus === 'OPEN' ? 'text-emerald-400' : 'text-red-400'
+                  }`}>{liveData?.marketStatus || 'CHECKING...'}</span>
+                </div>
+
+                {liveData?.currentPrice && (
+                  <div className="text-xs text-white/40">
+                    ES Price: <span className="text-white font-bold">{fmtPrice(liveData.currentPrice)}</span>
+                  </div>
+                )}
+              </div>
+
               <button
-                key={s}
-                onClick={() => handleSpeed(s)}
-                className={`px-3 py-1 rounded text-xs font-bold transition ${
-                  speed === s
-                    ? 'bg-amber-500 text-black'
-                    : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                onClick={handleLiveToggle}
+                className={`px-6 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition ${
+                  liveEnabled
+                    ? 'bg-red-500 hover:bg-red-400 text-white'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-white'
                 }`}
               >
-                {s === 'MAX' ? '🚀 MAX' : `${s}x`}
+                {liveEnabled ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {liveEnabled ? 'STOP LIVE' : 'START LIVE'}
               </button>
-            ))}
+            </div>
           </div>
 
-          {/* Inverse Controls */}
-          <div className="flex items-center gap-4">
-            {/* Manual Inverse Toggle */}
-            <button
-              onClick={handleInverse}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                inverseMode
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10'
-              }`}
-            >
-              <span className="text-lg">🔄</span>
-              INVERSE {inverseMode ? 'ON' : 'OFF'}
-            </button>
+          {/* Live Stats */}
+          <main className="max-w-[1920px] mx-auto p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
+              <StatCard
+                icon={Wallet}
+                label="Today's P&L"
+                value={`${(liveData?.todayStats?.netPnL || 0) >= 0 ? '+' : ''}${fmt(liveData?.todayStats?.netPnL || 0)}`}
+                subValue={`${liveData?.todayStats?.trades || 0} trades today`}
+                color={(liveData?.todayStats?.netPnL || 0) >= 0 ? 'green' : 'red'}
+                trend={(liveData?.todayStats?.netPnL || 0) >= 0 ? 'up' : 'down'}
+              />
+              <StatCard
+                icon={BarChart2}
+                label="Win Rate"
+                value={liveData?.todayStats?.winRate || '0%'}
+                subValue={`${liveData?.todayStats?.wins || 0}W / ${liveData?.todayStats?.losses || 0}L`}
+                color="amber"
+              />
+              <StatCard
+                icon={Activity}
+                label="Current Position"
+                value={liveData?.position?.direction || 'FLAT'}
+                subValue={liveData?.position ? `Entry: ${fmtPrice(liveData.position.entryPrice)}` : 'No position'}
+                color={liveData?.position?.direction === 'LONG' ? 'green' : liveData?.position?.direction === 'SHORT' ? 'red' : 'white'}
+              />
+              <StatCard
+                icon={Target}
+                label="Signal"
+                value={liveData?.signal?.direction || 'SCANNING...'}
+                subValue={liveData?.signal?.pattern || 'Analyzing market'}
+                color={liveData?.signal?.direction === 'LONG' ? 'green' : liveData?.signal?.direction === 'SHORT' ? 'red' : 'amber'}
+              />
+              <StatCard
+                icon={Brain}
+                label="Confidence"
+                value={liveData?.signal?.confidence ? `${(liveData.signal.confidence * 100).toFixed(0)}%` : 'N/A'}
+                subValue={liveData?.signal?.regime || 'Unknown regime'}
+                color="blue"
+              />
+              <StatCard
+                icon={DollarSign}
+                label="Unrealized P&L"
+                value={liveData?.position?.unrealizedPnL ? fmtDecimal(liveData.position.unrealizedPnL) : '$0.00'}
+                subValue={liveData?.position ? `${liveData.position.contracts} contracts` : 'No open position'}
+                color={(liveData?.position?.unrealizedPnL || 0) >= 0 ? 'green' : 'red'}
+              />
+            </div>
 
-            {/* Auto-Inverse Toggle */}
-            <button
-              onClick={handleAutoInverse}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                autoInverse
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10'
-              }`}
-            >
-              <Brain className="w-4 h-4" />
-              AUTO-INVERSE {autoInverse ? 'ON' : 'OFF'}
-            </button>
-
-            {/* Currently Inversed Indicator */}
-            {data?.config?.currentlyInversed && (
-              <div className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 text-xs font-bold animate-pulse">
-                ⚡ SIGNALS INVERSED
-              </div>
-            )}
-          </div>
-
-          {/* Data Source */}
-          <div className="flex items-center gap-2 text-xs text-white/30">
-            <span>Data:</span>
-            <span className="text-white/50">{data?.dataSource?.provider || 'Loading...'}</span>
-            <span className="text-white/20">|</span>
-            <span className="text-amber-400">{data?.dataSource?.candlesLoaded?.['1m'] || 0} candles</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ===================================================================== */}
-      {/* MAIN CONTENT */}
-      {/* ===================================================================== */}
-      <main className="max-w-[1920px] mx-auto p-4">
-        {/* =================================================================== */}
-        {/* TOP STATS ROW */}
-        {/* =================================================================== */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
-          <StatCard
-            icon={Wallet}
-            label="Balance"
-            value={fmt(perf?.currentBalance || 150000)}
-            subValue={`Started: ${fmt(perf?.startBalance || 150000)}`}
-            color="white"
-          />
-          <StatCard
-            icon={DollarSign}
-            label="Net P&L"
-            value={`${netPnL >= 0 ? '+' : ''}${fmt(netPnL)}`}
-            subValue={perf?.netPnLPercent || '0%'}
-            color={netPnL >= 0 ? 'green' : 'red'}
-            trend={netPnL >= 0 ? 'up' : 'down'}
-          />
-          <StatCard
-            icon={TrendUp}
-            label="Gross P&L"
-            value={`${grossPnL >= 0 ? '+' : ''}${fmt(grossPnL)}`}
-            subValue={perf?.grossPnLPercent || '0%'}
-            color={grossPnL >= 0 ? 'green' : 'red'}
-          />
-          <StatCard
-            icon={AlertTriangle}
-            label="Total Costs"
-            value={`-$${costs?.total || '0.00'}`}
-            subValue={`${costs?.costAsPercentOfGross || '0%'} of gross`}
-            color="red"
-          />
-          <StatCard
-            icon={BarChart2}
-            label="Win Rate"
-            value={perf?.winRate || '0%'}
-            subValue={`${perf?.wins || 0}W / ${perf?.losses || 0}L`}
-            color={(parseFloat(perf?.winRate || '0') >= 50) ? 'green' : 'amber'}
-          />
-          <StatCard
-            icon={Target}
-            label="Profit Factor"
-            value={perf?.profitFactor || 'N/A'}
-            subValue={`${perf?.trades || 0} trades`}
-          />
-          <StatCard
-            icon={TrendingDown}
-            label="Max Drawdown"
-            value={fmt(perf?.maxDrawdown || 0)}
-            subValue={perf?.maxDrawdownPercent || '0%'}
-            color="red"
-          />
-          <StatCard
-            icon={Brain}
-            label="ML Accuracy"
-            value={ml?.overall || '0%'}
-            subValue={`${ml?.correctPredictions || 0}/${ml?.totalPredictions || 0}`}
-            color="blue"
-          />
-        </div>
-
-        {/* =================================================================== */}
-        {/* MAIN GRID */}
-        {/* =================================================================== */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          {/* ================================================================= */}
-          {/* SIMULATION CHART (3 cols) - PAPER MODE ONLY */}
-          {/* ================================================================= */}
-          <div className="lg:col-span-3 space-y-4">
-            {/* Full Width Simulation Chart */}
-            <div className="bg-white/[0.02] border border-amber-500/30 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-amber-500/20 flex items-center justify-between bg-amber-500/5">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
-                  <span className="text-sm font-bold text-amber-400">PAPER TRADING SIMULATION</span>
-                  <span className="text-xs text-white/40">|</span>
-                  <span className="text-xs text-white/50">Historical SPY Data → ES Prices</span>
-                </div>
-                <div className="flex items-center gap-4">
+            {/* Live Trading Dashboard */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* TradingView Chart */}
+              <div className="lg:col-span-2 bg-white/[0.02] border border-emerald-500/30 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${liveEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-white/30'}`} />
+                    <span className="text-sm font-bold text-emerald-400">LIVE MARKET DATA</span>
+                    <span className="text-xs text-white/40">ES Futures</span>
+                  </div>
                   <span className="text-xs text-white/40">
-                    Candle {data?.chartData?.currentIndex?.toLocaleString() || 0} / {data?.status?.totalCandles?.toLocaleString() || 0}
-                  </span>
-                  <span className={`text-xs font-medium ${isRunning ? 'text-amber-400' : 'text-white/40'}`}>
-                    {isRunning ? 'RUNNING' : 'STOPPED'}
+                    Last update: {liveData?.timestamp ? new Date(liveData.timestamp).toLocaleTimeString() : 'N/A'}
                   </span>
                 </div>
-              </div>
-              <div className="h-[500px]">
-                <HistoricalChart chartData={data?.chartData} isRunning={isRunning} />
-              </div>
-            </div>
-
-            {/* Bottom Row - Strategies & Trade History */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Strategy Performance */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-medium flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-amber-400" />
-                    Strategy Performance
-                  </h3>
-                  <span className="text-xs text-white/40">{strategies.length} strategies</span>
+                <div className="h-[500px]">
+                  {/* TradingView Widget for Live */}
+                  <iframe
+                    src="https://www.tradingview.com/widgetembed/?frameElementId=tradingview_live&symbol=CME_MINI%3AES1%21&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=America%2FNew_York"
+                    style={{ width: '100%', height: '100%' }}
+                    frameBorder="0"
+                    allowTransparency
+                    scrolling="no"
+                  />
                 </div>
-                {strategies.length === 0 ? (
-                  <div className="text-center text-white/30 py-8">
-                    Start backtesting to see strategy performance
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {strategies.map((s, i) => (
-                      <div key={i} className="p-3 rounded-lg bg-black/30 hover:bg-black/50 transition">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-sm">{s.name}</span>
-                          <span className={`font-bold ${s.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {s.pnl >= 0 ? '+' : ''}{fmt(s.pnl)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-white/40">
-                          <span>{s.trades} trades</span>
-                          <span>{s.winRate?.toFixed(0)}% win rate</span>
-                          <span>Avg: {fmtDecimal(s.avgPnL || 0)}</span>
-                        </div>
-                        {/* Progress bar */}
-                        <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${s.pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
-                            style={{ width: `${Math.min(100, s.winRate || 0)}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
-              {/* Trade History */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-medium flex items-center gap-2">
-                    <LineChart className="w-4 h-4 text-amber-400" />
-                    Recent Trades
+              {/* Live Trades & Info */}
+              <div className="space-y-4">
+                {/* Recent Live Trades */}
+                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                  <h3 className="font-medium mb-4 flex items-center gap-2">
+                    <LineChart className="w-4 h-4 text-emerald-400" />
+                    Today's Trades
                   </h3>
-                  <span className="text-xs text-white/40">{trades.length} trades</span>
-                </div>
-                {trades.length === 0 ? (
-                  <div className="text-center text-white/30 py-8">
-                    No trades yet - start backtesting
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {trades.map((t, i) => (
-                      <div key={i} className="p-3 rounded-lg bg-black/30 hover:bg-black/50 transition">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              t.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                            }`}>
-                              {t.direction}
+                  {(liveData?.recentTrades?.length || 0) === 0 ? (
+                    <div className="text-center text-white/30 py-8">
+                      No trades yet today
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {liveData?.recentTrades?.map((t, i) => (
+                        <div key={i} className="p-3 rounded-lg bg-black/30 hover:bg-black/50 transition">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                t.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {t.direction}
+                              </span>
+                            </div>
+                            <span className={`font-bold text-sm ${t.netPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {t.netPnL >= 0 ? '+' : ''}{fmtDecimal(t.netPnL)}
                             </span>
-                            <span className="text-xs text-white/60">{t.contracts}x</span>
                           </div>
-                          <span className={`font-bold text-sm ${t.netPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {t.netPnL >= 0 ? '+' : ''}{fmtDecimal(t.netPnL)}
-                          </span>
+                          <div className="flex items-center justify-between text-[10px] text-white/40">
+                            <span>{fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)}</span>
+                            <span>{t.exitReason}</span>
+                          </div>
+                          <div className="text-[10px] text-white/30 mt-1">
+                            {new Date(t.timestamp).toLocaleTimeString()}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between text-[10px] text-white/40">
-                          <span>{fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)}</span>
-                          <span>{t.exitReason}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-white/30 mt-1">
-                          <span>Gross: {fmtDecimal(t.grossPnL)} | Costs: -{fmtDecimal(t.costs?.totalCosts || 0)}</span>
-                          <span>{t.latencyMs?.toFixed(0)}ms</span>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* System Status */}
+                <div className="bg-white/[0.02] border border-emerald-500/20 rounded-xl p-4">
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-emerald-400" />
+                    Live System Status
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-2 rounded bg-black/30">
+                      <span className="text-sm text-white/60">Strategy</span>
+                      <span className="font-medium text-emerald-400">STUNTMAN OG</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-black/30">
+                      <span className="text-sm text-white/60">Mode</span>
+                      <span className="font-medium text-amber-400">PAPER (NO REAL TRADES)</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-black/30">
+                      <span className="text-sm text-white/60">Data Logging</span>
+                      <span className={`font-medium ${dataLogging ? 'text-emerald-400' : 'text-white/40'}`}>
+                        {dataLogging ? 'ACTIVE' : 'DISABLED'}
+                      </span>
+                    </div>
                   </div>
+                  <div className="mt-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                    <div className="text-xs text-emerald-400 font-medium mb-1">💡 Live Paper Mode</div>
+                    <div className="text-[10px] text-white/50">
+                      Testing STUNTMAN OG with REAL market data. No actual trades executed.
+                      All candles and signals are being saved for future backtesting.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Navigation to Live Trading */}
+                <Link
+                  href="/stuntman"
+                  className="block p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-emerald-400">Ready for Live?</div>
+                      <div className="text-xs text-white/40">Go to Real Live Trading</div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-emerald-400" />
+                  </div>
+                </Link>
+              </div>
+            </div>
+          </main>
+        </div>
+      ) : (
+        /* ================================================================= */
+        /* HISTORICAL PAPER MODE */
+        /* ================================================================= */
+        <div>
+          {/* Historical Control Bar */}
+          <div className="border-b border-white/5 bg-amber-500/5 backdrop-blur">
+            <div className="max-w-[1920px] mx-auto px-4 py-2 flex items-center justify-between">
+              {/* Speed Selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/40 mr-2">SPEED:</span>
+                {([1, 5, 10, 50, 100, 'MAX'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => handleSpeed(s)}
+                    className={`px-3 py-1 rounded text-xs font-bold transition ${
+                      speed === s
+                        ? 'bg-amber-500 text-black'
+                        : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    {s === 'MAX' ? '🚀 MAX' : `${s}x`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Status & Controls */}
+              <div className="flex items-center gap-4">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+                  isHistRunning ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-white/40'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${isHistRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
+                  <span className="text-xs font-medium">{isHistRunning ? 'RUNNING' : 'STOPPED'}</span>
+                </div>
+                {isHistRunning && (
+                  <>
+                    <div className="text-xs text-white/40">
+                      Progress: <span className="text-white font-medium">{status?.progress || '0%'}</span>
+                    </div>
+                    <div className="text-xs text-white/40">
+                      Speed: <span className="text-white font-medium">{status?.processingSpeed || '0/sec'}</span>
+                    </div>
+                  </>
                 )}
               </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleHistAction('reset')}
+                  disabled={histActionLoading}
+                  className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-sm font-medium transition flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${histActionLoading ? 'animate-spin' : ''}`} />
+                  Reset
+                </button>
+                <button
+                  onClick={() => handleHistAction(isHistRunning ? 'stop' : 'start')}
+                  disabled={histActionLoading}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition ${
+                    isHistRunning
+                      ? 'bg-red-500 hover:bg-red-400 text-white'
+                      : 'bg-amber-500 hover:bg-amber-400 text-black'
+                  }`}
+                >
+                  {isHistRunning ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  {isHistRunning ? 'STOP' : 'START'}
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* ================================================================= */}
-          {/* RIGHT SIDEBAR */}
-          {/* ================================================================= */}
-          <div className="space-y-4">
-            {/* Trading Costs Breakdown */}
-            <div className="bg-white/[0.02] border border-red-500/20 rounded-xl p-4">
-              <h3 className="font-medium mb-4 flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-red-400" />
-                Trading Costs (Realistic)
-              </h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-black/30">
-                  <span className="text-sm text-white/60">Commissions</span>
-                  <span className="font-medium text-red-400">-${costs?.breakdown?.commissions || '0.00'}</span>
+          {/* Historical Stats & Content */}
+          <main className="max-w-[1920px] mx-auto p-4">
+            {/* Top Stats Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
+              <StatCard
+                icon={Wallet}
+                label="Balance"
+                value={fmt(perf?.currentBalance || 150000)}
+                subValue={`Started: ${fmt(perf?.startBalance || 150000)}`}
+                color="white"
+              />
+              <StatCard
+                icon={DollarSign}
+                label="Net P&L"
+                value={`${(perf?.netPnL || 0) >= 0 ? '+' : ''}${fmt(perf?.netPnL || 0)}`}
+                subValue={perf?.netPnLPercent || '0%'}
+                color={(perf?.netPnL || 0) >= 0 ? 'green' : 'red'}
+                trend={(perf?.netPnL || 0) >= 0 ? 'up' : 'down'}
+              />
+              <StatCard
+                icon={TrendUp}
+                label="Gross P&L"
+                value={`${(perf?.grossPnL || 0) >= 0 ? '+' : ''}${fmt(perf?.grossPnL || 0)}`}
+                subValue={perf?.grossPnLPercent || '0%'}
+                color={(perf?.grossPnL || 0) >= 0 ? 'green' : 'red'}
+              />
+              <StatCard
+                icon={AlertTriangle}
+                label="Total Costs"
+                value={`-$${costs?.total || '0.00'}`}
+                subValue={`${costs?.costAsPercentOfGross || '0%'} of gross`}
+                color="red"
+              />
+              <StatCard
+                icon={BarChart2}
+                label="Win Rate"
+                value={perf?.winRate || '0%'}
+                subValue={`${perf?.wins || 0}W / ${perf?.losses || 0}L`}
+                color={(parseFloat(perf?.winRate || '0') >= 50) ? 'green' : 'amber'}
+              />
+              <StatCard
+                icon={Target}
+                label="Profit Factor"
+                value={perf?.profitFactor || 'N/A'}
+                subValue={`${perf?.trades || 0} trades`}
+              />
+              <StatCard
+                icon={TrendingDown}
+                label="Max Drawdown"
+                value={fmt(perf?.maxDrawdown || 0)}
+                subValue={perf?.maxDrawdownPercent || '0%'}
+                color="red"
+              />
+              <StatCard
+                icon={Brain}
+                label="ML Accuracy"
+                value={ml?.overall || '0%'}
+                subValue={`${ml?.correctPredictions || 0}/${ml?.totalPredictions || 0}`}
+                color="blue"
+              />
+            </div>
+
+            {/* Main Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              {/* Simulation Chart (3 cols) */}
+              <div className="lg:col-span-3 space-y-4">
+                <div className="bg-white/[0.02] border border-amber-500/30 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-amber-500/20 flex items-center justify-between bg-amber-500/5">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${isHistRunning ? 'bg-amber-400 animate-pulse' : 'bg-white/30'}`} />
+                      <span className="text-sm font-bold text-amber-400">HISTORICAL SIMULATION</span>
+                      <span className="text-xs text-white/40">|</span>
+                      <span className="text-xs text-white/50">Past Market Data → ES Prices</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-white/40">
+                        Candle {histData?.chartData?.currentIndex?.toLocaleString() || 0} / {histData?.status?.totalCandles?.toLocaleString() || 0}
+                      </span>
+                      <span className={`text-xs font-medium ${isHistRunning ? 'text-amber-400' : 'text-white/40'}`}>
+                        {isHistRunning ? 'RUNNING' : 'STOPPED'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-[500px]">
+                    <HistoricalChart chartData={histData?.chartData} isRunning={isHistRunning} />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-black/30">
-                  <span className="text-sm text-white/60">Exchange Fees</span>
-                  <span className="font-medium text-red-400">-${costs?.breakdown?.exchangeFees || '0.00'}</span>
+
+                {/* Strategy & Trade History */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Strategy Performance */}
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-medium flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-amber-400" />
+                        Strategy Performance
+                      </h3>
+                      <span className="text-xs text-white/40">{strategies.length} strategies</span>
+                    </div>
+                    {strategies.length === 0 ? (
+                      <div className="text-center text-white/30 py-8">
+                        Start backtesting to see strategy performance
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                        {strategies.map((s, i) => (
+                          <div key={i} className="p-3 rounded-lg bg-black/30 hover:bg-black/50 transition">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-sm">{s.name}</span>
+                              <span className={`font-bold ${s.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {s.pnl >= 0 ? '+' : ''}{fmt(s.pnl)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-white/40">
+                              <span>{s.trades} trades</span>
+                              <span>{s.winRate?.toFixed(0)}% win rate</span>
+                              <span>Avg: {fmtDecimal(s.avgPnL || 0)}</span>
+                            </div>
+                            <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${s.pnl >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                style={{ width: `${Math.min(100, s.winRate || 0)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Trade History */}
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-medium flex items-center gap-2">
+                        <LineChart className="w-4 h-4 text-amber-400" />
+                        Recent Trades
+                      </h3>
+                      <span className="text-xs text-white/40">{histTrades.length} trades</span>
+                    </div>
+                    {histTrades.length === 0 ? (
+                      <div className="text-center text-white/30 py-8">
+                        No trades yet - start backtesting
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                        {histTrades.map((t, i) => (
+                          <div key={i} className="p-3 rounded-lg bg-black/30 hover:bg-black/50 transition">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  t.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                                }`}>
+                                  {t.direction}
+                                </span>
+                                <span className="text-xs text-white/60">{t.contracts}x</span>
+                              </div>
+                              <span className={`font-bold text-sm ${t.netPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {t.netPnL >= 0 ? '+' : ''}{fmtDecimal(t.netPnL)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-white/40">
+                              <span>{fmtPrice(t.entryPrice)} → {fmtPrice(t.exitPrice)}</span>
+                              <span>{t.exitReason}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-white/30 mt-1">
+                              <span>Gross: {fmtDecimal(t.grossPnL)} | Costs: -{fmtDecimal(t.costs?.totalCosts || 0)}</span>
+                              <span>{t.latencyMs?.toFixed(0)}ms</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-black/30">
-                  <span className="text-sm text-white/60">Slippage</span>
-                  <span className="font-medium text-red-400">-${costs?.breakdown?.slippage || '0.00'}</span>
+              </div>
+
+              {/* Right Sidebar */}
+              <div className="space-y-4">
+                {/* Trading Costs */}
+                <div className="bg-white/[0.02] border border-red-500/20 rounded-xl p-4">
+                  <h3 className="font-medium mb-4 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-red-400" />
+                    Trading Costs (Realistic)
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-black/30">
+                      <span className="text-sm text-white/60">Commissions</span>
+                      <span className="font-medium text-red-400">-${costs?.breakdown?.commissions || '0.00'}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-black/30">
+                      <span className="text-sm text-white/60">Exchange Fees</span>
+                      <span className="font-medium text-red-400">-${costs?.breakdown?.exchangeFees || '0.00'}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-black/30">
+                      <span className="text-sm text-white/60">Slippage</span>
+                      <span className="font-medium text-red-400">-${costs?.breakdown?.slippage || '0.00'}</span>
+                    </div>
+                    <div className="border-t border-white/10 pt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Total Costs</span>
+                        <span className="font-bold text-lg text-red-400">-${costs?.total || '0.00'}</span>
+                      </div>
+                      <div className="text-[10px] text-white/30 mt-1">
+                        Avg per trade: ${costs?.avgCostPerTrade || '0.00'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="border-t border-white/10 pt-3">
+
+                {/* ML Accuracy */}
+                <div className="bg-white/[0.02] border border-blue-500/20 rounded-xl p-4">
+                  <h3 className="font-medium mb-4 flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-blue-400" />
+                    ML Signal Accuracy
+                  </h3>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl font-bold text-blue-400">{ml?.overall || '0%'}</div>
+                    <div className="text-xs text-white/40">Overall Accuracy</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-2 rounded bg-black/30">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <span className="text-sm text-white/60">High (&gt;80%)</span>
+                      </div>
+                      <span className="font-medium text-emerald-400">{ml?.byConfidence?.high || 'N/A'}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-black/30">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-400" />
+                        <span className="text-sm text-white/60">Medium (60-80%)</span>
+                      </div>
+                      <span className="font-medium text-amber-400">{ml?.byConfidence?.medium || 'N/A'}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-black/30">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-400" />
+                        <span className="text-sm text-white/60">Low (&lt;60%)</span>
+                      </div>
+                      <span className="font-medium text-red-400">{ml?.byConfidence?.low || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* System Info */}
+                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                  <h3 className="font-medium mb-3 flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-white/40" />
+                    Simulation Engine
+                  </h3>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-white/40">
+                      <span>Candles Processed</span>
+                      <span className="text-white">{status?.candlesProcessed?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-white/40">
+                      <span>Total Available</span>
+                      <span className="text-white">{status?.totalCandles?.toLocaleString() || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-white/40">
+                      <span>Data Source</span>
+                      <span className="text-white">{histData?.dataSource?.provider || 'Yahoo Finance'}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-white/5 text-[10px] text-white/30 text-center">
+                    STUNTMAN OG • 60.3% Win Rate<br/>
+                    Real fees • Real slippage • Real latency
+                  </div>
+                </div>
+
+                {/* Navigation */}
+                <Link
+                  href="/stuntman"
+                  className="block p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition"
+                >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Total Costs</span>
-                    <span className="font-bold text-lg text-red-400">-${costs?.total || '0.00'}</span>
+                    <div>
+                      <div className="font-medium text-emerald-400">Ready for Live?</div>
+                      <div className="text-xs text-white/40">Go to Live Trading Dashboard</div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-emerald-400" />
                   </div>
-                  <div className="text-[10px] text-white/30 mt-1">
-                    Avg per trade: ${costs?.avgCostPerTrade || '0.00'}
-                  </div>
-                </div>
+                </Link>
               </div>
             </div>
-
-            {/* ML Accuracy Breakdown */}
-            <div className="bg-white/[0.02] border border-blue-500/20 rounded-xl p-4">
-              <h3 className="font-medium mb-4 flex items-center gap-2">
-                <Brain className="w-4 h-4 text-blue-400" />
-                ML Signal Accuracy
-              </h3>
-              <div className="text-center mb-4">
-                <div className="text-4xl font-bold text-blue-400">{ml?.overall || '0%'}</div>
-                <div className="text-xs text-white/40">Overall Accuracy</div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-2 rounded bg-black/30">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-sm text-white/60">High Confidence (&gt;80%)</span>
-                  </div>
-                  <span className="font-medium text-emerald-400">{ml?.byConfidence?.high || 'N/A'}</span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-black/30">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-sm text-white/60">Medium (60-80%)</span>
-                  </div>
-                  <span className="font-medium text-amber-400">{ml?.byConfidence?.medium || 'N/A'}</span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-black/30">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-red-400" />
-                    <span className="text-sm text-white/60">Low (&lt;60%)</span>
-                  </div>
-                  <span className="font-medium text-red-400">{ml?.byConfidence?.low || 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Latency Simulation */}
-            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-              <h3 className="font-medium mb-4 flex items-center gap-2">
-                <Timer className="w-4 h-4 text-amber-400" />
-                Latency Simulation
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="text-center p-3 rounded-lg bg-black/30">
-                  <div className="text-lg font-bold text-white">{latency?.avgLatencyMs || 'N/A'}</div>
-                  <div className="text-[10px] text-white/40">Average</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-black/30">
-                  <div className="text-lg font-bold text-amber-400">{latency?.maxLatencyMs || 'N/A'}</div>
-                  <div className="text-[10px] text-white/40">Max</div>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-black/30">
-                  <div className="text-lg font-bold text-emerald-400">{latency?.minLatencyMs || 'N/A'}</div>
-                  <div className="text-[10px] text-white/40">Min</div>
-                </div>
-              </div>
-            </div>
-
-            {/* System Info */}
-            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-              <h3 className="font-medium mb-3 flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-white/40" />
-                Simulation Engine
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between text-white/40">
-                  <span>Candles Processed</span>
-                  <span className="text-white">{status?.candlesProcessed?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-white/40">
-                  <span>Total Available</span>
-                  <span className="text-white">{status?.totalCandles?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-white/40">
-                  <span>Processing Speed</span>
-                  <span className="text-white">{status?.processingSpeed || '0/sec'}</span>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-white/5 text-[10px] text-white/30 text-center">
-                Matches live trading 1:1<br/>
-                Real fees • Real slippage • Real latency<br/>
-                <span className="text-amber-400">BUILD: v2-fixed</span>
-              </div>
-            </div>
-
-            {/* Navigation */}
-            <Link
-              href="/stuntman"
-              className="block p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-emerald-400">Ready for Live?</div>
-                  <div className="text-xs text-white/40">Go to Live Trading Dashboard</div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-emerald-400" />
-              </div>
-            </Link>
-          </div>
+          </main>
         </div>
-      </main>
+      )}
     </div>
   )
 }

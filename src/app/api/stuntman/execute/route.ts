@@ -32,6 +32,7 @@ function getClient(): PickMyTradeClient | null {
     const config: PickMyTradeConfig = {
       token: process.env.PICKMYTRADE_TOKEN,
       accountId: process.env.APEX_ACCOUNT_ID || 'APEX-456334',
+      connectionName: process.env.RITHMIC_CONNECTION_NAME || 'RITHMIC1',
       platform: 'RITHMIC',
       defaultSymbol: getCurrentContractSymbol('ES'),
       maxContracts: 5, // Conservative default

@@ -2539,7 +2539,7 @@ export async function GET(request: NextRequest) {
     message: 'Please use /api/stuntman/live-adaptive for the PROVEN trading strategy'
   })
 
-  /* DISABLED - Original code below
+  // DISABLED - Original code below (will never run due to early return)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -2708,6 +2708,7 @@ export async function GET(request: NextRequest) {
     console.error('Auto-trade status error:', e)
     return NextResponse.json({ error: 'Failed to get status' }, { status: 500 })
   }
+  // GET DISABLED - code above will never run due to early return
 }
 
 export async function POST(request: NextRequest) {
@@ -2720,7 +2721,7 @@ export async function POST(request: NextRequest) {
     message: 'POST to /api/stuntman/live-adaptive with {"action": "execute"} for proven strategy'
   })
 
-  /* DISABLED - Original code below
+  // DISABLED - Original code below (will never run due to early return)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -2940,4 +2941,5 @@ export async function POST(request: NextRequest) {
     console.error('Auto-trade error:', e)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
   }
+  // POST DISABLED - code above will never run due to early return
 }

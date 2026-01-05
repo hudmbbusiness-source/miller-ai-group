@@ -137,20 +137,146 @@ const CONFIG = {
 }
 
 // ============================================================================
-// DATA FETCHING
+// DATA FETCHING - WITH RANDOM HISTORICAL PERIODS
 // ============================================================================
 
-async function fetchESData(days: number): Promise<Candle[]> {
+interface FetchResult {
+  candles: Candle[]
+  periodStart: string
+  periodEnd: string
+  marketCondition: string
+}
+
+// Pick random window from AVAILABLE data (Yahoo only keeps ~60 days of 5m data)
+// So we pick random SUBSETS of the available data to test on different market segments
+function getRandomHistoricalPeriod(days: number): { start: number; end: number; label: string; offset: number } {
+  const now = Math.floor(Date.now() / 1000)
+  // Yahoo Finance keeps ~60 days of 5m data, so fetch all and pick random subsets
+  // We'll fetch full 60 days but tell caller to use random subset
+  const sixtyDaysAgo = now - (60 * 24 * 60 * 60)
+
+  // Random offset: pick different starting points within the data
+  // This means test 1 might use days 1-30, test 2 might use days 15-45, etc.
+  const maxOffset = Math.max(0, 60 - days)
+  const randomOffset = Math.floor(Math.random() * (maxOffset + 1))
+
+  const startDate = new Date((sixtyDaysAgo + randomOffset * 24 * 60 * 60) * 1000)
+  const endDate = new Date((sixtyDaysAgo + (randomOffset + days) * 24 * 60 * 60) * 1000)
+  const label = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+
+  return { start: sixtyDaysAgo, end: now, label, offset: randomOffset }
+}
+
+// Classify market condition based on price change
+function classifyMarketCondition(candles: Candle[]): string {
+  if (candles.length < 10) return 'UNKNOWN'
+  const startPrice = candles[0].close
+  const endPrice = candles[candles.length - 1].close
+  const change = ((endPrice - startPrice) / startPrice) * 100
+
+  // Calculate volatility
+  let maxDrawdown = 0
+  let maxRunup = 0
+  let peak = startPrice
+  let trough = startPrice
+
+  for (const c of candles) {
+    if (c.close > peak) peak = c.close
+    if (c.close < trough) trough = c.close
+    const drawdown = ((peak - c.close) / peak) * 100
+    const runup = ((c.close - trough) / trough) * 100
+    if (drawdown > maxDrawdown) maxDrawdown = drawdown
+    if (runup > maxRunup) maxRunup = runup
+  }
+
+  const volatility = Math.max(maxDrawdown, maxRunup)
+
+  if (change > 8) return 'STRONG_BULL'
+  if (change > 3) return 'BULL'
+  if (change < -8) return 'STRONG_BEAR'
+  if (change < -3) return 'BEAR'
+  if (volatility > 10) return 'VOLATILE_CHOP'
+  return 'SIDEWAYS'
+}
+
+// FMP Daily data interface
+interface FMPDailyRecord {
+  symbol: string
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  vwap: number
+}
+
+// Global cache for daily data (loaded once from local file)
+let dailyDataCache: Candle[] | null = null
+
+// Load 5 YEARS of daily data from local file (saved from FMP API)
+async function loadDailyDataFromFile(): Promise<Candle[]> {
+  if (dailyDataCache) return dailyDataCache
+
+  try {
+    // Read from local file - NO API calls needed!
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const filePath = path.join(process.cwd(), 'data', 'spy_daily_5years.json')
+    const fileContent = await fs.readFile(filePath, 'utf-8')
+    const records: FMPDailyRecord[] = JSON.parse(fileContent)
+
+    // Convert to Candle format, sorted oldest to newest
+    const candles: Candle[] = records.reverse().map(r => ({
+      time: new Date(r.date).getTime(),
+      open: r.open * 10,   // Scale SPY to ES prices
+      high: r.high * 10,
+      low: r.low * 10,
+      close: r.close * 10,
+      volume: r.volume,
+      hour: 10,  // Mid-day for daily bars
+      dateStr: r.date,
+    }))
+
+    dailyDataCache = candles
+    return candles
+  } catch (e) {
+    console.error('Failed to load daily data from file:', e)
+    throw new Error('Could not load local daily data file')
+  }
+}
+
+// Fetch DAILY data from local file - 5 YEARS of history!
+async function fetchDailyData(testDays: number = 60): Promise<FetchResult> {
+  const allCandles = await loadDailyDataFromFile()
+
+  // Pick random period from 5 years of data
+  const maxStart = Math.max(0, allCandles.length - testDays)
+  const startIdx = Math.floor(Math.random() * (maxStart + 1))
+  const selectedCandles = allCandles.slice(startIdx, startIdx + testDays)
+
+  return {
+    candles: selectedCandles,
+    periodStart: selectedCandles[0]?.dateStr || 'N/A',
+    periodEnd: selectedCandles[selectedCandles.length - 1]?.dateStr || 'N/A',
+    marketCondition: classifyMarketCondition(selectedCandles)
+  }
+}
+
+async function fetchESData(days: number, useRandom: boolean = false): Promise<FetchResult> {
   const sources = [
-    { symbol: 'ES=F', scale: 1 },
-    { symbol: 'SPY', scale: 10 }
+    { symbol: 'SPY', scale: 10 }  // SPY has better historical data than ES=F
   ]
+
+  // Yahoo only has ~60 days of 5m data - fetch all and pick random subset if needed
+  const now = Math.floor(Date.now() / 1000)
+  const start = now - (60 * 24 * 60 * 60)  // Always fetch 60 days
+
+  // For random mode: pick a random subset of the available days
+  const randomPeriod = useRandom ? getRandomHistoricalPeriod(days) : null
 
   for (const source of sources) {
     try {
-      const now = Math.floor(Date.now() / 1000)
-      const start = now - (days * 24 * 60 * 60)
-
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(source.symbol)}?period1=${start}&period2=${now}&interval=5m&includePrePost=false`
 
       const response = await fetch(url, {
@@ -186,7 +312,36 @@ async function fetchESData(days: number): Promise<Candle[]> {
         }
       }
 
-      if (candles.length > 100) return candles
+      if (candles.length > 100) {
+          // If random mode, pick a subset based on random offset
+          let selectedCandles = candles
+          if (useRandom && randomPeriod) {
+            // Group candles by day and pick random subset of days
+            const candlesByDay: Record<string, Candle[]> = {}
+            for (const c of candles) {
+              if (!candlesByDay[c.dateStr]) candlesByDay[c.dateStr] = []
+              candlesByDay[c.dateStr].push(c)
+            }
+            const allDays = Object.keys(candlesByDay).sort()
+
+            // Pick random starting day, get 'days' worth of data
+            const maxStartIdx = Math.max(0, allDays.length - days)
+            const startIdx = Math.floor(Math.random() * (maxStartIdx + 1))
+            const selectedDays = allDays.slice(startIdx, startIdx + days)
+
+            selectedCandles = []
+            for (const day of selectedDays) {
+              selectedCandles.push(...candlesByDay[day])
+            }
+          }
+
+          return {
+            candles: selectedCandles,
+            periodStart: selectedCandles[0]?.dateStr || 'N/A',
+            periodEnd: selectedCandles[selectedCandles.length - 1]?.dateStr || 'N/A',
+            marketCondition: classifyMarketCondition(selectedCandles)
+          }
+        }
     } catch {
       continue
     }
@@ -634,10 +789,143 @@ function detectSidewaysLongSignal(
 }
 
 // ============================================================================
+// DAILY PATTERNS (for 5-year historical testing on daily bars)
+// ============================================================================
+
+function detectDailySignal(
+  candles: Candle[],
+  index: number,
+  ema20: number[],
+  ema50: number[],
+  atr: number[],
+  rsi: number[],
+  regime: MarketRegime
+): Signal | null {
+  if (index < 5) return null
+
+  const c = candles[index]
+  const prev = candles[index - 1]
+  const currentATR = atr[index]
+
+  const stopDistance = currentATR * 1.5
+  const targetDistance = currentATR * 2.5
+
+  // ===== LONG PATTERNS (Uptrend only) =====
+  if (regime === 'STRONG_UPTREND' || regime === 'UPTREND') {
+    const bullishCandle = c.close > c.open
+
+    // DAILY_EMA_PULLBACK_LONG - Price pulls back to EMA20 in uptrend
+    if (c.low <= ema20[index] * 1.01 && c.close > ema20[index] && bullishCandle) {
+      // Previous candle was a pullback (red)
+      if (prev.close < prev.open) {
+        return {
+          patternId: 'DAILY_EMA_PULLBACK_LONG',
+          direction: 'LONG',
+          entryPrice: c.close,
+          stopLoss: c.low - currentATR,
+          takeProfit: c.close + targetDistance,
+          confidence: 65,
+          reason: `Daily EMA20 pullback in ${regime}`,
+          regime
+        }
+      }
+    }
+
+    // DAILY_RSI_BOUNCE_LONG - RSI oversold bounce in uptrend
+    if (rsi[index] < 40 && rsi[index] > rsi[index - 1] && bullishCandle) {
+      return {
+        patternId: 'DAILY_RSI_BOUNCE_LONG',
+        direction: 'LONG',
+        entryPrice: c.close,
+        stopLoss: c.low - stopDistance,
+        takeProfit: c.close + targetDistance,
+        confidence: 60,
+        reason: `Daily RSI bounce from ${rsi[index].toFixed(0)} in ${regime}`,
+        regime
+      }
+    }
+
+    // DAILY_BREAKOUT_LONG - New 5-day high breakout
+    let high5 = 0
+    for (let j = index - 5; j < index; j++) {
+      if (j >= 0) high5 = Math.max(high5, candles[j].high)
+    }
+    if (c.close > high5 && bullishCandle && regime === 'STRONG_UPTREND') {
+      return {
+        patternId: 'DAILY_BREAKOUT_LONG',
+        direction: 'LONG',
+        entryPrice: c.close,
+        stopLoss: c.close - stopDistance,
+        takeProfit: c.close + targetDistance,
+        confidence: 65,
+        reason: `Daily 5-day high breakout in ${regime}`,
+        regime
+      }
+    }
+  }
+
+  // ===== SHORT PATTERNS (Downtrend only) =====
+  if (regime === 'STRONG_DOWNTREND' || regime === 'DOWNTREND') {
+    const bearishCandle = c.close < c.open
+
+    // DAILY_EMA_REJECTION_SHORT - Price rallies to EMA20 and rejects
+    if (c.high >= ema20[index] * 0.99 && c.close < ema20[index] && bearishCandle) {
+      // Previous candle was a rally (green)
+      if (prev.close > prev.open) {
+        return {
+          patternId: 'DAILY_EMA_REJECTION_SHORT',
+          direction: 'SHORT',
+          entryPrice: c.close,
+          stopLoss: c.high + currentATR,
+          takeProfit: c.close - targetDistance,
+          confidence: 65,
+          reason: `Daily EMA20 rejection in ${regime}`,
+          regime
+        }
+      }
+    }
+
+    // DAILY_RSI_REJECTION_SHORT - RSI overbought rejection in downtrend
+    if (rsi[index] > 60 && rsi[index] < rsi[index - 1] && bearishCandle) {
+      return {
+        patternId: 'DAILY_RSI_REJECTION_SHORT',
+        direction: 'SHORT',
+        entryPrice: c.close,
+        stopLoss: c.high + stopDistance,
+        takeProfit: c.close - targetDistance,
+        confidence: 60,
+        reason: `Daily RSI rejection from ${rsi[index].toFixed(0)} in ${regime}`,
+        regime
+      }
+    }
+
+    // DAILY_BREAKDOWN_SHORT - New 5-day low breakdown
+    let low5 = Infinity
+    for (let j = index - 5; j < index; j++) {
+      if (j >= 0) low5 = Math.min(low5, candles[j].low)
+    }
+    if (c.close < low5 && bearishCandle && regime === 'STRONG_DOWNTREND') {
+      return {
+        patternId: 'DAILY_BREAKDOWN_SHORT',
+        direction: 'SHORT',
+        entryPrice: c.close,
+        stopLoss: c.close + stopDistance,
+        takeProfit: c.close - targetDistance,
+        confidence: 65,
+        reason: `Daily 5-day low breakdown in ${regime}`,
+        regime
+      }
+    }
+  }
+
+  return null
+}
+
+// ============================================================================
 // BACKTEST ENGINE
 // ============================================================================
 
-function runBacktest(candles: Candle[], avgATR: number): { trades: Trade[]; regimeStats: Record<string, unknown> } {
+function runBacktest(candles: Candle[], avgATR: number, useDaily: boolean = false): { trades: Trade[]; regimeStats: Record<string, unknown> } {
   const ema20 = calculateEMA(candles, 20)
   const ema50 = calculateEMA(candles, 50)
   const bb = calculateBB(candles, 20)
@@ -684,9 +972,14 @@ function runBacktest(candles: Candle[], avgATR: number): { trades: Trade[]; regi
       dailyTrades = 0
     }
 
-    // Skip if outside trading hours or bad volatility
-    if (c.hour < CONFIG.tradingStartHour || c.hour >= CONFIG.tradingEndHour) continue
-    if (currentATR < CONFIG.minATR || currentATR > CONFIG.maxATR) continue
+    // Skip filters based on mode
+    if (!useDaily) {
+      // INTRADAY MODE: Check trading hours
+      if (c.hour < CONFIG.tradingStartHour || c.hour >= CONFIG.tradingEndHour) continue
+      if (currentATR < CONFIG.minATR || currentATR > CONFIG.maxATR) continue
+    }
+    // DAILY MODE: No hour filter, just skip very low/high ATR
+    if (useDaily && (currentATR < 10 || currentATR > 200)) continue
 
     // Check exit if in position
     if (inPosition && currentTrade) {
@@ -701,7 +994,8 @@ function runBacktest(candles: Candle[], avgATR: number): { trades: Trade[]; regi
         } else if (c.high >= currentTrade.takeProfit) {
           exitPrice = currentTrade.takeProfit - exitSlippage
           exitReason = 'Take Profit'
-        } else if (c.hour >= 15.83 || c.dateStr !== candles[currentTrade.entryIndex].dateStr) {
+        } else if (!useDaily && (c.hour >= 15.83 || c.dateStr !== candles[currentTrade.entryIndex].dateStr)) {
+          // End of Day exit - ONLY for intraday mode
           exitPrice = c.open - exitSlippage
           exitReason = 'End of Day'
         }
@@ -712,7 +1006,8 @@ function runBacktest(candles: Candle[], avgATR: number): { trades: Trade[]; regi
         } else if (c.low <= currentTrade.takeProfit) {
           exitPrice = currentTrade.takeProfit + exitSlippage
           exitReason = 'Take Profit'
-        } else if (c.hour >= 15.83 || c.dateStr !== candles[currentTrade.entryIndex].dateStr) {
+        } else if (!useDaily && (c.hour >= 15.83 || c.dateStr !== candles[currentTrade.entryIndex].dateStr)) {
+          // End of Day exit - ONLY for intraday mode
           exitPrice = c.open + exitSlippage
           exitReason = 'End of Day'
         }
@@ -750,25 +1045,28 @@ function runBacktest(candles: Candle[], avgATR: number): { trades: Trade[]; regi
     if (!inPosition && dailyTrades < CONFIG.maxDailyTrades) {
       let signal: Signal | null = null
 
-      // ADAPTIVE: Choose signal based on regime
-      // STRICT REGIME MATCHING - don't force trades in wrong conditions
+      // Use DAILY patterns for daily mode, INTRADAY patterns otherwise
+      if (useDaily) {
+        // DAILY MODE: Use swing trading patterns
+        signal = detectDailySignal(candles, i, ema20, ema50, atr, rsi, regime)
+      } else {
+        // INTRADAY MODE: Use original patterns
 
-      if (regime === 'STRONG_UPTREND' || regime === 'UPTREND') {
-        // ONLY LONGs in uptrends
-        signal = detectLongSignal(candles, i, ema20, ema50, bb, vwap, atr, rsi, regime)
-      }
+        if (regime === 'STRONG_UPTREND' || regime === 'UPTREND') {
+          // ONLY LONGs in uptrends
+          signal = detectLongSignal(candles, i, ema20, ema50, bb, vwap, atr, rsi, regime)
+        }
 
-      if (regime === 'DOWNTREND' || regime === 'STRONG_DOWNTREND') {
-        // ONLY SHORTs in downtrends (NOT sideways!)
-        signal = detectShortSignal(candles, i, ema20, ema50, bb, vwap, atr, regime)
-      }
+        if (regime === 'DOWNTREND' || regime === 'STRONG_DOWNTREND') {
+          // ONLY SHORTs in downtrends (NOT sideways!)
+          signal = detectShortSignal(candles, i, ema20, ema50, bb, vwap, atr, regime)
+        }
 
-      // SIDEWAYS: DON'T TRADE - consistency test showed BB_LOWER_BOUNCE has 23% win rate
-      // Skip sideways completely - it's just noise
-      // BB_LOWER_BOUNCE was -$1,652 loss across 13 trades
-      if (regime === 'SIDEWAYS') {
-        // No trades in sideways - data shows it doesn't work
-        signal = null
+        // SIDEWAYS: DON'T TRADE - consistency test showed BB_LOWER_BOUNCE has 23% win rate
+        // Skip sideways completely - it's just noise
+        if (regime === 'SIDEWAYS') {
+          signal = null
+        }
       }
 
       if (signal) {
@@ -804,17 +1102,32 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const days = parseInt(searchParams.get('days') || '60')
+    const useRandom = searchParams.get('random') === 'true'
+    const mode = searchParams.get('mode') || 'intraday'  // 'intraday' or 'daily'
 
-    const candles = await fetchESData(days)
+    // Use daily data for true historical testing (goes back 2 years)
+    let fetchResult: FetchResult
+    let minCandles = 200
 
-    if (candles.length < 200) {
-      return NextResponse.json({ success: false, error: 'Insufficient data' })
+    if (mode === 'daily') {
+      fetchResult = await fetchDailyData(days)  // Random 60-day period from 5 years
+      minCandles = 55  // Need at least 55 candles for indicators + trades
+    } else {
+      fetchResult = await fetchESData(days, useRandom)
+    }
+
+    const { candles, periodStart, periodEnd, marketCondition } = fetchResult
+
+    if (candles.length < minCandles) {
+      return NextResponse.json({ success: false, error: 'Insufficient data', candleCount: candles.length })
     }
 
     const atr = calculateATR(candles, 14)
-    const avgATR = atr.slice(0, 200).reduce((sum, v) => sum + v, 0) / 200
+    const atrSlice = atr.slice(0, Math.min(200, atr.length))
+    const avgATR = atrSlice.reduce((sum, v) => sum + v, 0) / atrSlice.length
 
-    const { trades, regimeStats } = runBacktest(candles, avgATR)
+    const useDaily = mode === 'daily'
+    const { trades, regimeStats } = runBacktest(candles, avgATR, useDaily)
 
     // Calculate stats
     const wins = trades.filter(t => t.netPnL > 0).length
@@ -859,12 +1172,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      strategy: 'STUNTMAN V2 (Experimental - Currently same as OG)',
+      strategy: 'STUNTMAN V2 (Experimental)',
       testPeriod: {
+        mode,
         days,
-        startDate: candles[0].dateStr,
-        endDate: candles[candles.length - 1].dateStr,
-        candlesAnalyzed: candles.length
+        startDate: periodStart,
+        endDate: periodEnd,
+        candlesAnalyzed: candles.length,
+        marketCondition,
+        isRandomPeriod: useRandom || mode === 'daily'
       },
       regimeDistribution: regimeStats,
       performance: {

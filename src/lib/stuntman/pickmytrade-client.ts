@@ -15,6 +15,7 @@
 export interface PickMyTradeConfig {
   token: string;                    // Your PickMyTrade API token
   accountId: string;                // Rithmic account ID (e.g., "APEX-456334")
+  connectionName: string;           // Rithmic connection name (e.g., "RITHMIC1")
   platform: 'RITHMIC';
   defaultSymbol: string;            // Default contract (e.g., "ESH5", "NQH5")
   maxContracts: number;             // Maximum contracts per trade
@@ -53,6 +54,7 @@ export interface PickMyTradePayload {
   token: string;
   duplicate_position_allow: boolean;
   platform: 'RITHMIC';
+  connection_name: string;          // CRITICAL: Must match your Rithmic connection name
   reverse_order_close: boolean;
   multiple_accounts: {
     id: string;
@@ -218,6 +220,7 @@ export class PickMyTradeClient {
       token: this.config.token,
       duplicate_position_allow: false,
       platform: 'RITHMIC',
+      connection_name: this.config.connectionName, // CRITICAL: Links to your Rithmic connection
       reverse_order_close: true, // Close opposite position when entering
       multiple_accounts: [
         {

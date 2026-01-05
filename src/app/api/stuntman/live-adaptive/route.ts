@@ -39,6 +39,7 @@ import { PickMyTradeClient, getCurrentContractSymbol, TradeResult } from '@/lib/
 // Initialize PickMyTrade client with environment variables
 const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
 const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || 'APEX-456334').trim()
+const RITHMIC_CONNECTION_NAME = (process.env.RITHMIC_CONNECTION_NAME || 'RITHMIC1').trim()
 
 let pickMyTradeClient: PickMyTradeClient | null = null
 
@@ -52,12 +53,13 @@ function getPickMyTradeClient(): PickMyTradeClient | null {
     pickMyTradeClient = new PickMyTradeClient({
       token: PICKMYTRADE_TOKEN,
       accountId: APEX_ACCOUNT_ID,
+      connectionName: RITHMIC_CONNECTION_NAME, // CRITICAL: Must match PickMyTrade connection name
       platform: 'RITHMIC',
       defaultSymbol: getCurrentContractSymbol('ES'),
       maxContracts: 17,
       enabled: true
     })
-    console.log(`[PickMyTrade] Client initialized for ${APEX_ACCOUNT_ID}`)
+    console.log(`[PickMyTrade] Client initialized for ${APEX_ACCOUNT_ID} via ${RITHMIC_CONNECTION_NAME}`)
   }
 
   return pickMyTradeClient
@@ -720,11 +722,13 @@ export async function GET(request: NextRequest) {
       connected: true,
       token: PICKMYTRADE_TOKEN ? `${PICKMYTRADE_TOKEN.substring(0, 4)}...${PICKMYTRADE_TOKEN.slice(-4)}` : 'NOT SET',
       account: APEX_ACCOUNT_ID,
+      connectionName: RITHMIC_CONNECTION_NAME,
       enabled: pmtClient.isEnabled
     } : {
       connected: false,
       token: 'NOT SET',
       account: APEX_ACCOUNT_ID,
+      connectionName: RITHMIC_CONNECTION_NAME,
       enabled: false
     }
 

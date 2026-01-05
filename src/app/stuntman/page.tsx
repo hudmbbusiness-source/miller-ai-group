@@ -240,6 +240,7 @@ export default function StuntManDashboard() {
           open: data.market?.withinTradingHours,
           pickMyTradeConnected: data.pickMyTrade?.connected,
           pickMyTradeAccount: data.pickMyTrade?.account,
+          connectionName: data.pickMyTrade?.connectionName || 'RITHMIC1',
           estHour: data.market?.estHour || '0',
           estTime: data.market?.estTime || '',
           dataSource: data.market?.dataSource || 'yahoo',
@@ -1068,13 +1069,31 @@ export default function StuntManDashboard() {
 
             {/* PickMyTrade Account */}
             {marketStatus?.pickMyTradeConnected && (
-              <div className="mt-4 pt-3 border-t border-white/5">
+              <div className="mt-4 pt-3 border-t border-white/5 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-white/40">Apex Account:</span>
                   <span className="font-mono text-emerald-400">{marketStatus?.pickMyTradeAccount}</span>
                 </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/40">Connection:</span>
+                  <span className="font-mono text-emerald-400">{marketStatus?.connectionName || 'RITHMIC1'}</span>
+                </div>
               </div>
             )}
+
+            {/* Last Updated Timestamp */}
+            <div className="mt-4 pt-3 border-t border-white/5">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Last Updated:</span>
+                <span className="text-white/50 font-mono">{marketStatus?.estTime || new Date().toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs mt-1">
+                <span className="text-white/30">Data Source:</span>
+                <span className={`${marketStatus?.dataDelayed ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {marketStatus?.dataNote || 'SPY (real-time)'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </main>

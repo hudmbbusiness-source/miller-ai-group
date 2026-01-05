@@ -106,6 +106,19 @@ import {
   Candle as ORBCandle,
 } from '@/lib/stuntman/simple-orb-strategy'
 
+// === ROC + HEIKIN ASHI STRATEGY ===
+// PROVEN: 93% market outperformance, 55% win rate, 2.7:1 R:R (LiberatedStockTrader backtest)
+// Works throughout the day - complements ORB which only trades once in morning
+import {
+  generateROCHASignal,
+  shouldExitROCHA,
+  calculateHeikinAshi,
+  calculateROC,
+  calculateATR as calculateROCATR,
+  ROCSignal,
+  Candle as ROCCandle,
+} from '@/lib/stuntman/roc-heikin-ashi-strategy'
+
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
 // =============================================================================
@@ -672,7 +685,7 @@ interface BacktestState {
     stopMultiplierUsed: number   // For adaptive learning
     targetMultiplierUsed: number // For adaptive learning
     strategy: string             // Strategy that generated signal
-    isPureORB: boolean           // True = use pure ORB logic (no partials, no trailing)
+    isProvenStrategy: boolean    // True = use pure strategy logic (no partials, no trailing) - ORB or ROC+HA
     // Entry analytics for analysis
     entryAnalytics: {
       strategy: string
@@ -2800,7 +2813,7 @@ async function processCandle(index: number): Promise<void> {
     // =========================================================================
 
     // PURE ORB MODE: Skip all partials and trailing - just use SL/TP
-    if (!pos.isPureORB) {
+    if (!pos.isProvenStrategy) {
       // Update highest/lowest price tracking
       if (pos.direction === 'LONG') {
         pos.highestPrice = Math.max(pos.highestPrice, currentPrice)
@@ -2888,7 +2901,7 @@ async function processCandle(index: number): Promise<void> {
     // Reversal signal - ONLY exit if VERY high confidence AND we're already in profit
     // This prevents cutting winners short on weak reversal signals
     // DISABLED FOR PURE ORB - ORB trades only exit at SL or TP
-    if (!pos.isPureORB) {
+    if (!pos.isProvenStrategy) {
       const isInProfit = pos.direction === 'LONG'
         ? currentPrice > pos.entryPrice
         : currentPrice < pos.entryPrice
@@ -3166,41 +3179,143 @@ async function processCandle(index: number): Promise<void> {
     // Get ORB status for logging
     const orbStatus = getORBStatus(orbCandles, currentCandle.time)
 
-    // Only trade when ORB gives a clear signal (not 'NONE')
+    // ==========================================================================
+    // ORB REGIME FILTER - CRITICAL FOR PROFITABILITY
+    // ORB only works on TRENDING days, NOT sideways/choppy markets
+    // ==========================================================================
+
+    // Calculate trend strength from EMAs
+    const ema20 = indicators.ema20
+    const ema50 = indicators.ema50
+    const atr = indicators.atr
+    const currentPrice = candles1m[candles1m.length - 1]?.close || 0
+
+    // Trend detection using EMA separation
+    const emaSeparation = Math.abs(ema20 - ema50)
+    const emaSeparationPercent = (emaSeparation / currentPrice) * 100
+
+    // Check if EMAs are aligned (trending) vs intertwined (sideways)
+    const isTrending = emaSeparationPercent > 0.15  // EMAs separated by more than 0.15%
+
+    // Check momentum - ADX-like calculation using price movement vs ATR
+    const recentCandles = candles1m.slice(-20)
+    let upMoves = 0, downMoves = 0
+    for (let i = 1; i < recentCandles.length; i++) {
+      const move = recentCandles[i].close - recentCandles[i-1].close
+      if (move > 0) upMoves += move
+      else downMoves += Math.abs(move)
+    }
+    const totalMoves = upMoves + downMoves
+    const directionalStrength = totalMoves > 0 ? Math.abs(upMoves - downMoves) / totalMoves : 0
+    const isDirectional = directionalStrength > 0.3  // 30%+ of moves in one direction
+
+    // Check volatility - need enough range for breakout to work
+    const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length
+    const hasVolatility = avgRange > atr * 0.5  // At least half ATR average range
+
+    // REGIME CHECK: Only trade ORB if conditions favor breakouts
+    const regimeOK = (isTrending || isDirectional) && hasVolatility
+
+    // Only trade when ORB gives a clear signal (not 'NONE') AND regime is favorable
     let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number; qualityScore?: number; sizeFactor?: number } | null = null
 
-    if (orbSignal.direction !== 'NONE') {
-      signalToUse = {
-        direction: orbSignal.direction,
-        confidence: orbSignal.confidence,  // 85% - proven strategy
-        strategy: 'ORB_BREAKOUT',
-        stopLoss: orbSignal.stopLoss,
-        takeProfit: orbSignal.takeProfit,
-        riskRewardRatio: orbSignal.riskReward,
-        qualityScore: 85,  // High quality - research-backed
-        sizeFactor: 1.0,   // Full size - proven strategy
+    if (orbSignal.direction !== 'NONE' && regimeOK) {
+      // Additional filter: ORB direction should align with trend
+      const trendBias = ema20 > ema50 ? 'LONG' : 'SHORT'
+      const alignedWithTrend = orbSignal.direction === trendBias
+
+      // Only take ORB trades that align with the trend (or if trend is unclear, take either)
+      const trendUnclear = emaSeparationPercent < 0.05  // EMAs very close = no clear trend
+
+      if (alignedWithTrend || trendUnclear) {
+        signalToUse = {
+          direction: orbSignal.direction,
+          confidence: alignedWithTrend ? 90 : 80,  // Higher confidence when aligned
+          strategy: 'ORB_BREAKOUT',
+          stopLoss: orbSignal.stopLoss,
+          takeProfit: orbSignal.takeProfit,
+          riskRewardRatio: orbSignal.riskReward,
+          qualityScore: alignedWithTrend ? 90 : 75,
+          sizeFactor: alignedWithTrend ? 1.0 : 0.5,  // Half size when trend unclear
+        }
+      }
+      // If ORB direction is AGAINST the trend, skip the trade entirely
+    }
+
+    // ==========================================================================
+    // STEP 6B: ROC + HEIKIN ASHI STRATEGY (FALLBACK)
+    // ==========================================================================
+    // If ORB didn't give a signal, try ROC + Heikin Ashi
+    // ROC+HA works throughout the day - complements ORB's single morning trade
+    // PROVEN: 93% market outperformance, 55% win rate, 2.7:1 R:R
+    // ==========================================================================
+
+    if (signalToUse === null) {
+      // Convert candles to ROC format
+      const rocCandles: ROCCandle[] = candles1m.map(c => ({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume,
+      }))
+
+      // Generate ROC + Heikin Ashi signal
+      const rocSignal = generateROCHASignal(rocCandles)
+
+      // REGIME FILTER for ROC+HA - Only trade in TRENDING conditions
+      // ROC momentum crossovers are unreliable in sideways/unknown markets
+      const rocRegimeOK = (isTrending || isDirectional) && hasVolatility
+
+      // Only take signal if:
+      // 1. Crossover occurred
+      // 2. Confidence is high enough
+      // 3. Market is trending (regime filter)
+      if (rocSignal.direction !== 'FLAT' && rocSignal.rocCrossover && rocSignal.confidence >= 70 && rocRegimeOK) {
+        // Additional filter: Align with trend for higher probability
+        const trendBias = ema20 > ema50 ? 'LONG' : 'SHORT'
+        const alignedWithTrend = rocSignal.direction === trendBias
+
+        // STRICT TREND ALIGNMENT for ROC+HA
+        // Unlike ORB breakouts, momentum signals MUST align with trend
+        // Strong momentum alone is not enough - trend alignment is required
+        if (alignedWithTrend) {
+          signalToUse = {
+            direction: rocSignal.direction,
+            confidence: rocSignal.confidence + 5,  // Bonus for trend alignment
+            strategy: 'ROC_HEIKIN_ASHI',
+            stopLoss: rocSignal.stopLoss,
+            takeProfit: rocSignal.takeProfit,
+            riskRewardRatio: 2.7,  // Strategy's proven R:R
+            qualityScore: 85,
+            sizeFactor: 1.0,
+          }
+        }
       }
     }
 
     const shouldEnter = signalToUse !== null
     const isORBTrade = signalToUse?.strategy === 'ORB_BREAKOUT'
+    const isROCHATrade = signalToUse?.strategy === 'ROC_HEIKIN_ASHI'
 
     if (shouldEnter && signalToUse) {
       let entryDir: 'LONG' | 'SHORT' = signalToUse.direction
 
-      // INVERSE MODE - DISABLED FOR ORB
-      // ORB is a proven mechanical strategy - NEVER flip its signals
-      if (!isORBTrade && shouldInverseSignal()) {
+      // INVERSE MODE - DISABLED FOR PROVEN STRATEGIES
+      // ORB and ROC+HA are proven backtested strategies - NEVER flip their signals
+      const isProvenStrategy = isORBTrade || isROCHATrade
+      if (!isProvenStrategy && shouldInverseSignal()) {
         entryDir = entryDir === 'LONG' ? 'SHORT' : 'LONG'
       }
 
-      // MTF FILTER - DISABLED FOR ORB
-      // ORB is a breakout strategy, it doesn't care about higher timeframe trends
+      // MTF FILTER - DISABLED FOR PROVEN STRATEGIES
+      // ORB is breakout, ROC+HA is momentum - both have their own internal filters
       let mtfMultiplier = 1.0
-      let mtfAligned = true  // Default to aligned for ORB
-      if (!isORBTrade) {
+      let mtfAligned = true  // Default to aligned for proven strategies
+      if (!isProvenStrategy) {
         mtfAligned = signalAlignedWithMTF(entryDir, mtfTrend)
-        mtfMultiplier = mtfAligned ? 1.0 : 0.25  // 25% size for counter-trend (non-ORB only)
+        mtfMultiplier = mtfAligned ? 1.0 : 0.25  // 25% size for counter-trend (non-proven only)
       }
 
       // PA ONE DIRECTION RULE: Check if we're violating the one direction rule
@@ -3322,16 +3437,16 @@ async function processCandle(index: number): Promise<void> {
 
       const baseContracts = qualityMultiplier
 
-      // PURE ORB MODE: Only apply essential Apex safety multipliers
-      // ORB is a proven mechanical strategy - don't degrade it with unnecessary filters
+      // PURE STRATEGY MODE: Only apply essential Apex safety multipliers
+      // Proven strategies (ORB, ROC+HA) - don't degrade them with unnecessary filters
       let riskAdjustedContracts: number
 
-      if (isORBTrade) {
-        // ORB TRADES: Only Apex safety limits (regulatory requirements)
+      if (isProvenStrategy) {
+        // PROVEN STRATEGY TRADES (ORB, ROC+HA): Only Apex safety limits (regulatory requirements)
         riskAdjustedContracts = baseContracts
           * degradedRiskMultiplier           // APEX SAFETY: Required - account protection
           * propFirmRisk.positionSizeMultiplier  // APEX SAFETY: Required - prop firm rules
-        // NO other multipliers - ORB has its own timing/session logic built in
+        // NO other multipliers - proven strategies have their own internal filters
       } else {
         // NON-ORB TRADES: Apply all the filters
         riskAdjustedContracts = baseContracts
@@ -3403,14 +3518,14 @@ async function processCandle(index: number): Promise<void> {
         stopMultiplierUsed: stopMultiplier,
         targetMultiplierUsed: targetMultiplier,
         strategy: finalStrategy,
-        // PURE ORB MODE: No partials, no trailing, just SL/TP
-        isPureORB: finalStrategy === 'ORB_BREAKOUT',
+        // PURE STRATEGY MODE: No partials, no trailing, just SL/TP (for proven strategies)
+        isProvenStrategy: finalStrategy === 'ORB_BREAKOUT' || finalStrategy === 'ROC_HEIKIN_ASHI',
         entryAnalytics: {
           strategy: finalStrategy,
           rsiAtEntry: lastRsi,
           ema20Distance,
           ema50Distance,
-          regime: 'ORB_TRADING',  // Using ORB strategy
+          regime: finalStrategy,  // Using strategy name for tracking
           hourOfDay: entryHour,
           atrAtEntry: atr,
           trendStrength,

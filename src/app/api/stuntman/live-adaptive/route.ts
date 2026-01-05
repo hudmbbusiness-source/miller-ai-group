@@ -915,6 +915,51 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Close/flatten any open position
+    if (action === 'close') {
+      const client = getPickMyTradeClient()
+
+      if (!client) {
+        return NextResponse.json({
+          success: false,
+          message: 'PickMyTrade not configured',
+          pickMyTradeConnected: false
+        })
+      }
+
+      const contractSymbol = getCurrentContractSymbol('ES')
+      console.log(`[CLOSE] Flattening position on ${contractSymbol}...`)
+
+      try {
+        const result = await client.closePosition(contractSymbol)
+
+        // Clear local position state
+        currentPosition = null
+
+        return NextResponse.json({
+          success: true,
+          message: 'CLOSE ORDER SENT',
+          close: {
+            symbol: contractSymbol,
+            action: 'FLAT'
+          },
+          execution: {
+            success: result.success,
+            message: result.message,
+            orderId: result.orderId,
+            rawResponse: result.response // Include raw response for debugging
+          },
+          pickMyTradeConnected: true
+        })
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          message: error instanceof Error ? error.message : 'Close failed',
+          pickMyTradeConnected: true
+        })
+      }
+    }
+
     // Test trade to verify PickMyTrade connection
     if (action === 'test') {
       const client = getPickMyTradeClient()

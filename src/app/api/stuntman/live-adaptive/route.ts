@@ -991,6 +991,7 @@ export async function POST(request: NextRequest) {
         token: PICKMYTRADE_TOKEN,
         duplicate_position_allow: false,
         platform: 'RITHMIC',
+        connection_name: RITHMIC_CONNECTION_NAME, // CRITICAL: Required for Rithmic routing
         reverse_order_close: true,
         multiple_accounts: [
           {

@@ -415,14 +415,15 @@ let currentDataSource: 'yahoo-spy-realtime' | 'yahoo-spy-chart' | 'yahoo-es-dela
 let dataIsDelayed = false
 
 /**
- * Get REAL-TIME SPY price from Yahoo Finance Quote API
- * Yahoo's quote endpoint is REAL-TIME for stocks (not futures)
+ * Get REAL-TIME SPY price from Yahoo Finance Chart API
+ * Uses the 1-minute chart to get the most recent price
  * SPY * 10 ≈ ES price
  */
 async function getRealtimeSPYPrice(): Promise<{ price: number; change: number; volume: number } | null> {
   try {
-    // Yahoo Finance quote endpoint - REAL-TIME for stocks
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=SPY&fields=regularMarketPrice,regularMarketChange,regularMarketVolume`
+    // Yahoo Finance chart endpoint - get 1-minute data for most recent price
+    // The regularMarketPrice in meta is real-time for stocks
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1m&range=1d`
 
     const response = await fetch(url, {
       headers: {
@@ -434,14 +435,15 @@ async function getRealtimeSPYPrice(): Promise<{ price: number; change: number; v
     if (!response.ok) return null
 
     const data = await response.json()
-    const quote = data.quoteResponse?.result?.[0]
+    const result = data.chart?.result?.[0]
+    const meta = result?.meta
 
-    if (!quote?.regularMarketPrice) return null
+    if (!meta?.regularMarketPrice) return null
 
     return {
-      price: quote.regularMarketPrice * 10, // Scale SPY to ES
-      change: (quote.regularMarketChange || 0) * 10,
-      volume: quote.regularMarketVolume || 0
+      price: meta.regularMarketPrice * 10, // Scale SPY to ES
+      change: (meta.regularMarketDayHigh - meta.regularMarketDayLow) * 10 || 0,
+      volume: meta.regularMarketVolume || 0
     }
   } catch (error) {
     console.error('[Data] SPY quote error:', error)

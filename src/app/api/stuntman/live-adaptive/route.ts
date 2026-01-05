@@ -407,26 +407,63 @@ function detectLongSignal(
 }
 
 // ============================================================================
-// DATA FETCHING - REAL-TIME
+// DATA FETCHING - MULTI-SOURCE WITH REAL-TIME PRIORITY
 // ============================================================================
 
-async function fetchRealtimeData(): Promise<Candle[]> {
-  // Fetch last 100 candles (5-minute) for indicator calculation
+// API keys for real-time data
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || ''
+const POLYGON_API_KEY = process.env.POLYGON_API_KEY || ''
+
+// Track data source for transparency
+let currentDataSource: 'finnhub' | 'polygon' | 'yahoo' = 'yahoo'
+let dataIsDelayed = true
+
+/**
+ * Get REAL-TIME current price from Finnhub (free, real-time for stocks)
+ * Uses SPY as proxy for ES (SPY * 10 ≈ ES)
+ */
+async function getFinnhubRealtimePrice(): Promise<number | null> {
+  if (!FINNHUB_API_KEY) return null
+
+  try {
+    const response = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=SPY&token=${FINNHUB_API_KEY}`,
+      { next: { revalidate: 0 } } // No caching
+    )
+
+    if (!response.ok) return null
+
+    const data = await response.json()
+    if (!data.c) return null
+
+    // SPY * 10 ≈ ES price
+    return data.c * 10
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fetch candles for indicator calculation
+ * Candles can be slightly delayed - indicators work on historical data
+ */
+async function fetchCandleData(): Promise<{ candles: Candle[], source: string, delayed: boolean }> {
   const now = Math.floor(Date.now() / 1000)
   const start = now - (2 * 24 * 60 * 60) // 2 days of data
 
-  try {
-    // Try ES futures first
-    const sources = [
-      { symbol: 'ES=F', scale: 1 },
-      { symbol: 'SPY', scale: 10 }
-    ]
+  // Try Yahoo Finance (ES=F then SPY)
+  const sources = [
+    { symbol: 'ES=F', scale: 1, name: 'ES Futures' },
+    { symbol: 'SPY', scale: 10, name: 'SPY (scaled)' }
+  ]
 
-    for (const source of sources) {
+  for (const source of sources) {
+    try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(source.symbol)}?period1=${start}&period2=${now}&interval=5m&includePrePost=false`
 
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        next: { revalidate: 0 }
       })
 
       if (!response.ok) continue
@@ -456,13 +493,55 @@ async function fetchRealtimeData(): Promise<Candle[]> {
         }
       }
 
-      if (candles.length > 50) return candles
+      if (candles.length > 50) {
+        return {
+          candles,
+          source: source.name,
+          delayed: source.symbol === 'ES=F' // ES=F is 15-20min delayed
+        }
+      }
+    } catch {
+      continue
     }
-
-    throw new Error('Could not fetch real-time data')
-  } catch (error) {
-    throw error
   }
+
+  throw new Error('Could not fetch candle data from any source')
+}
+
+/**
+ * Main data fetch - combines real-time price with candle history
+ */
+async function fetchRealtimeData(): Promise<Candle[]> {
+  const { candles, source, delayed } = await fetchCandleData()
+
+  // Try to get real-time price from Finnhub
+  const realtimePrice = await getFinnhubRealtimePrice()
+
+  if (realtimePrice && candles.length > 0) {
+    // Update the last candle with real-time price
+    const lastCandle = candles[candles.length - 1]
+    const now = new Date()
+    const estDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+
+    // Create a new "real-time" candle with current price
+    candles.push({
+      time: Date.now(),
+      open: lastCandle.close,
+      high: Math.max(lastCandle.close, realtimePrice),
+      low: Math.min(lastCandle.close, realtimePrice),
+      close: realtimePrice,
+      volume: 0,
+      hour: estDate.getHours() + estDate.getMinutes() / 60,
+    })
+
+    currentDataSource = 'finnhub'
+    dataIsDelayed = false
+  } else {
+    currentDataSource = 'yahoo'
+    dataIsDelayed = delayed
+  }
+
+  return candles
 }
 
 // ============================================================================
@@ -559,6 +638,11 @@ export async function GET(request: NextRequest) {
         withinTradingHours,
         estHour: estHour.toFixed(2),
         estTime: now.toLocaleString('en-US', { timeZone: 'America/New_York' }),
+        dataSource: currentDataSource,
+        dataDelayed: dataIsDelayed,
+        dataNote: dataIsDelayed
+          ? '⚠️ Data is 15-20 min delayed. Add FINNHUB_API_KEY to .env.local for real-time.'
+          : '✓ Real-time data via Finnhub',
         indicators: {
           ema20: ema20[lastIndex].toFixed(2),
           ema50: ema50[lastIndex].toFixed(2),

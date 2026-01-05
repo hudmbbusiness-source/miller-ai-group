@@ -241,7 +241,10 @@ export default function StuntManDashboard() {
           pickMyTradeConnected: data.pickMyTrade?.connected,
           pickMyTradeAccount: data.pickMyTrade?.account,
           estHour: data.market?.estHour || '0',
-          estTime: data.market?.estTime || ''
+          estTime: data.market?.estTime || '',
+          dataSource: data.market?.dataSource || 'yahoo',
+          dataDelayed: data.market?.dataDelayed !== false,
+          dataNote: data.market?.dataNote || ''
         })
 
         setTradingDays(1) // Will track properly later
@@ -429,6 +432,28 @@ export default function StuntManDashboard() {
       {/* MAIN CONTENT */}
       {/* ================================================================== */}
       <main className="max-w-[1800px] mx-auto p-4">
+        {/* ================================================================ */}
+        {/* DATA DELAY WARNING */}
+        {/* ================================================================ */}
+        {marketStatus?.dataDelayed && (
+          <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-medium text-amber-400">Market Data Delayed (~15 min)</div>
+              <div className="text-xs text-amber-400/70">
+                Using Yahoo Finance (delayed). Get FREE real-time data: Sign up at finnhub.io, add FINNHUB_API_KEY to .env.local
+              </div>
+            </div>
+            <a
+              href="https://finnhub.io/register"
+              target="_blank"
+              className="px-3 py-1.5 bg-amber-500 text-black text-xs font-medium rounded hover:bg-amber-400 transition flex-shrink-0"
+            >
+              Get Free API Key
+            </a>
+          </div>
+        )}
+
         {/* ================================================================ */}
         {/* APEX STATUS BAR */}
         {/* ================================================================ */}

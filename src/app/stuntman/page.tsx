@@ -184,10 +184,10 @@ export default function StuntManDashboard() {
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
 
-  // TradingView symbols - Use actual futures for REAL-TIME data
-  // CME_MINI:ES1! = E-mini S&P 500 continuous contract (REAL-TIME)
-  // CME_MINI:NQ1! = E-mini Nasdaq continuous contract (REAL-TIME)
-  const tvSymbol = instrument === 'ES' ? 'CME_MINI:ES1!' : 'CME_MINI:NQ1!'
+  // TradingView symbols - Use SPY/QQQ for FREE REAL-TIME data
+  // Futures (CME_MINI:ES1!) are delayed 15min on free TradingView
+  // SPY tracks ES perfectly (ES ≈ SPY × 10), QQQ tracks NQ
+  const tvSymbol = instrument === 'ES' ? 'SPY' : 'QQQ'
 
   // ==========================================================================
   // DATA FETCHING

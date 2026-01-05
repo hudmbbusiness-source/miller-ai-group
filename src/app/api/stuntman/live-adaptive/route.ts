@@ -37,8 +37,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PickMyTradeClient, getCurrentContractSymbol, TradeResult } from '@/lib/stuntman/pickmytrade-client'
 
 // Initialize PickMyTrade client with environment variables
-const PICKMYTRADE_TOKEN = process.env.PICKMYTRADE_TOKEN || ''
-const APEX_ACCOUNT_ID = process.env.APEX_ACCOUNT_ID || 'APEX-456334'
+const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
+const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || 'APEX-456334').trim()
 
 let pickMyTradeClient: PickMyTradeClient | null = null
 

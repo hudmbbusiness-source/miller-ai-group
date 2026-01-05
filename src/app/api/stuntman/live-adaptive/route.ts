@@ -609,6 +609,95 @@ export async function GET(request: NextRequest) {
 
     const withinTradingHours = estHour >= CONFIG.tradingStartHour && estHour <= CONFIG.tradingEndHour
 
+    // Reset daily trades at start of new day
+    const today = new Date().toDateString()
+    if (lastTradeDate !== today) {
+      dailyTrades = 0
+      lastTradeDate = today
+    }
+
+    // ============================================================================
+    // AUTO-EXECUTE: When enabled, signal detected, no position, within hours
+    // ============================================================================
+    let autoExecutionResult: any = null
+
+    if (
+      isEnabled &&
+      signal &&
+      !currentPosition &&
+      withinTradingHours &&
+      dailyTrades < CONFIG.maxDailyTrades
+    ) {
+      const client = getPickMyTradeClient()
+
+      if (client) {
+        const contractSymbol = getCurrentContractSymbol('ES')
+        console.log(`[AUTO-TRADE] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
+
+        try {
+          let executionResult: TradeResult
+
+          if (signal.direction === 'LONG') {
+            executionResult = await client.buyMarket(
+              contractSymbol,
+              1, // Start with 1 contract for safety
+              signal.stopLoss,
+              signal.takeProfit
+            )
+          } else {
+            executionResult = await client.sellMarket(
+              contractSymbol,
+              1, // Start with 1 contract for safety
+              signal.stopLoss,
+              signal.takeProfit
+            )
+          }
+
+          if (executionResult.success) {
+            // Store position
+            currentPosition = {
+              direction: signal.direction,
+              entryPrice: signal.entryPrice,
+              stopLoss: signal.stopLoss,
+              takeProfit: signal.takeProfit,
+              patternId: signal.patternId
+            }
+            dailyTrades++
+
+            autoExecutionResult = {
+              executed: true,
+              success: true,
+              message: `AUTO-EXECUTED: ${signal.direction} via ${signal.patternId}`,
+              orderId: executionResult.orderId,
+              timestamp: executionResult.timestamp
+            }
+
+            console.log(`[AUTO-TRADE] SUCCESS:`, autoExecutionResult)
+          } else {
+            autoExecutionResult = {
+              executed: true,
+              success: false,
+              message: executionResult.message || 'Execution failed'
+            }
+            console.error(`[AUTO-TRADE] FAILED:`, executionResult)
+          }
+        } catch (error) {
+          autoExecutionResult = {
+            executed: true,
+            success: false,
+            message: error instanceof Error ? error.message : 'Execution error'
+          }
+          console.error(`[AUTO-TRADE] ERROR:`, error)
+        }
+      } else {
+        autoExecutionResult = {
+          executed: false,
+          success: false,
+          message: 'PickMyTrade not configured - signal detected but cannot execute'
+        }
+      }
+    }
+
     // Check PickMyTrade connection
     const pmtClient = getPickMyTradeClient()
     const pickMyTradeStatus = pmtClient ? {
@@ -627,8 +716,10 @@ export async function GET(request: NextRequest) {
       success: true,
       status: {
         enabled: isEnabled,
+        autoTrading: isEnabled && withinTradingHours && !currentPosition && dailyTrades < CONFIG.maxDailyTrades,
         currentPosition,
         dailyTrades,
+        maxDailyTrades: CONFIG.maxDailyTrades,
         totalPnL: totalPnL.toFixed(2),
         tradeHistory: tradeHistory.slice(-10)
       },
@@ -652,6 +743,7 @@ export async function GET(request: NextRequest) {
         }
       },
       pickMyTrade: pickMyTradeStatus,
+      autoExecution: autoExecutionResult,
       signal: signal ? {
         pattern: signal.patternId,
         direction: signal.direction,
@@ -661,13 +753,21 @@ export async function GET(request: NextRequest) {
         confidence: signal.confidence,
         reason: signal.reason
       } : null,
-      message: !withinTradingHours
-        ? `Outside trading hours (9:30 AM - 3:30 PM EST) - Current: ${estHour.toFixed(2)} EST`
-        : regime === 'SIDEWAYS'
-          ? 'SIDEWAYS market - NO TRADE (waiting for trend)'
-          : signal
-            ? `${signal.patternId} signal detected`
-            : `No signal in ${regime} market`
+      message: autoExecutionResult?.executed
+        ? autoExecutionResult.message
+        : !withinTradingHours
+          ? `Outside trading hours (9:30 AM - 3:30 PM EST) - Current: ${estHour.toFixed(2)} EST`
+          : !isEnabled
+            ? 'Auto-trading DISABLED - Enable to auto-execute signals'
+            : currentPosition
+              ? `In position: ${currentPosition.direction} from ${currentPosition.entryPrice.toFixed(2)}`
+              : dailyTrades >= CONFIG.maxDailyTrades
+                ? `Daily trade limit reached (${dailyTrades}/${CONFIG.maxDailyTrades})`
+                : regime === 'SIDEWAYS'
+                  ? 'SIDEWAYS market - NO TRADE (waiting for trend)'
+                  : signal
+                    ? `${signal.patternId} signal detected - READY TO EXECUTE`
+                    : `Scanning for signals in ${regime} market`
     })
 
   } catch (error) {

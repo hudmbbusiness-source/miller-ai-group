@@ -554,7 +554,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Insufficient data' })
     }
 
-    const trades = runBacktest(candles)
+    const { trades, dailyDecisions } = runBacktest(candles)
 
     // Calculate stats
     const wins = trades.filter(t => t.netPnL > 0).length

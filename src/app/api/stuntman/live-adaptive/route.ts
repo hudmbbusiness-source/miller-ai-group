@@ -915,6 +915,62 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Test trade to verify PickMyTrade connection
+    if (action === 'test') {
+      const client = getPickMyTradeClient()
+
+      if (!client) {
+        return NextResponse.json({
+          success: false,
+          message: 'PickMyTrade not configured - set PICKMYTRADE_TOKEN',
+          pickMyTradeConnected: false
+        })
+      }
+
+      const contractSymbol = getCurrentContractSymbol('ES')
+      const candles = await fetchRealtimeData()
+      const lastCandle = candles[candles.length - 1]
+      const currentPrice = lastCandle.close
+
+      console.log(`[TEST TRADE] Sending BUY 1 ${contractSymbol} @ market to verify connection...`)
+
+      try {
+        const result = await client.buyMarket(
+          contractSymbol,
+          1,
+          currentPrice - 10, // 10 point stop
+          currentPrice + 5   // 5 point target
+        )
+
+        return NextResponse.json({
+          success: true,
+          message: 'TEST TRADE SENT TO APEX',
+          test: {
+            action: 'BUY',
+            symbol: contractSymbol,
+            quantity: 1,
+            price: currentPrice.toFixed(2),
+            stop: (currentPrice - 10).toFixed(2),
+            target: (currentPrice + 5).toFixed(2)
+          },
+          execution: {
+            success: result.success,
+            message: result.message,
+            orderId: result.orderId,
+            timestamp: result.timestamp
+          },
+          pickMyTradeConnected: true,
+          warning: '⚠️ THIS IS A REAL TRADE - Close it manually if needed!'
+        })
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          message: error instanceof Error ? error.message : 'Test trade failed',
+          pickMyTradeConnected: true
+        })
+      }
+    }
+
     return NextResponse.json({ success: false, message: 'Invalid action' })
 
   } catch (error) {

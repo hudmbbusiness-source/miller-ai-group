@@ -452,57 +452,77 @@ async function getRealtimeSPYPrice(): Promise<{ price: number; change: number; v
 }
 
 /**
- * Fetch candles for indicator calculation (uses SPY for real-time)
+ * Fetch candles for indicator calculation
+ * Tries multiple sources: SPY first (real-time), then ES=F as fallback
  */
 async function fetchCandleData(): Promise<{ candles: Candle[], source: string }> {
   const now = Math.floor(Date.now() / 1000)
-  const start = now - (2 * 24 * 60 * 60) // 2 days of data
+  const start = now - (5 * 24 * 60 * 60) // 5 days of data for safety
 
-  // Use SPY for real-time data (stocks are real-time, futures are delayed)
-  try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=${start}&period2=${now}&interval=5m&includePrePost=false`
+  const sources = [
+    { symbol: 'SPY', scale: 10, name: 'SPY (real-time)' },
+    { symbol: 'ES=F', scale: 1, name: 'ES Futures' }
+  ]
 
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      cache: 'no-store'
-    })
+  for (const source of sources) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(source.symbol)}?period1=${start}&period2=${now}&interval=5m&includePrePost=false`
 
-    if (!response.ok) throw new Error('SPY chart fetch failed')
+      console.log(`[Data] Fetching ${source.symbol}...`)
 
-    const data = await response.json()
-    const result = data.chart?.result?.[0]
-    if (!result?.timestamp) throw new Error('No SPY data')
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json'
+        },
+        cache: 'no-store'
+      })
 
-    const timestamps = result.timestamp
-    const quote = result.indicators.quote[0]
-    const candles: Candle[] = []
-
-    for (let i = 0; i < timestamps.length; i++) {
-      if (quote.open[i] && quote.high[i] && quote.low[i] && quote.close[i]) {
-        const date = new Date(timestamps[i] * 1000)
-        const estDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-
-        // Scale SPY to ES prices (SPY * 10 ≈ ES)
-        candles.push({
-          time: timestamps[i] * 1000,
-          open: quote.open[i] * 10,
-          high: quote.high[i] * 10,
-          low: quote.low[i] * 10,
-          close: quote.close[i] * 10,
-          volume: quote.volume[i] || 0,
-          hour: estDate.getHours() + estDate.getMinutes() / 60,
-        })
+      if (!response.ok) {
+        console.error(`[Data] ${source.symbol} HTTP error: ${response.status}`)
+        continue
       }
-    }
 
-    if (candles.length > 50) {
-      return { candles, source: 'SPY (real-time)' }
+      const data = await response.json()
+      const result = data.chart?.result?.[0]
+
+      if (!result?.timestamp || !result?.indicators?.quote?.[0]) {
+        console.error(`[Data] ${source.symbol} no data in response`)
+        continue
+      }
+
+      const timestamps = result.timestamp
+      const quote = result.indicators.quote[0]
+      const candles: Candle[] = []
+
+      for (let i = 0; i < timestamps.length; i++) {
+        if (quote.open[i] && quote.high[i] && quote.low[i] && quote.close[i]) {
+          const date = new Date(timestamps[i] * 1000)
+          const estDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+
+          candles.push({
+            time: timestamps[i] * 1000,
+            open: quote.open[i] * source.scale,
+            high: quote.high[i] * source.scale,
+            low: quote.low[i] * source.scale,
+            close: quote.close[i] * source.scale,
+            volume: quote.volume[i] || 0,
+            hour: estDate.getHours() + estDate.getMinutes() / 60,
+          })
+        }
+      }
+
+      console.log(`[Data] ${source.symbol} returned ${candles.length} candles`)
+
+      if (candles.length >= 20) {
+        return { candles, source: source.name }
+      }
+    } catch (error) {
+      console.error(`[Data] ${source.symbol} error:`, error)
     }
-  } catch (error) {
-    console.error('[Data] SPY chart error:', error)
   }
 
-  throw new Error('Could not fetch candle data')
+  throw new Error('Could not fetch candle data from any source')
 }
 
 /**

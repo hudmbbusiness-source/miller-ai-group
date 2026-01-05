@@ -1,15 +1,28 @@
 /**
- * StuntMan Auto-Trading API - FULLY INTEGRATED WORLD-CLASS EDITION
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║                    ⚠️  DEPRECATED - DO NOT USE  ⚠️                        ║
+ * ║                                                                           ║
+ * ║  This endpoint uses an UNTESTED complex strategy with ML/Order Flow.      ║
+ * ║  It has NOT been validated and may LOSE MONEY.                            ║
+ * ║                                                                           ║
+ * ║  USE INSTEAD: /api/stuntman/live-adaptive                                 ║
+ * ║  That endpoint uses the PROVEN strategy with:                             ║
+ * ║  - 60 days: $10,244 net profit                                            ║
+ * ║  - 60.3% win rate                                                         ║
+ * ║  - 10/10 tests profitable                                                 ║
+ * ║                                                                           ║
+ * ║  🚨 DO NOT USE THIS ENDPOINT FOR REAL TRADING 🚨                          ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
  *
- * ALL MODULES WORKING TOGETHER:
+ * OLD: StuntMan Auto-Trading API - FULLY INTEGRATED WORLD-CLASS EDITION
+ * STATUS: DEPRECATED - Complex ML system, not validated
+ *
+ * ALL MODULES (UNTESTED):
  * 1. ML Signal Engine - Neural network + ensemble models
  * 2. Order Flow Analysis - VPIN, delta, footprint, iceberg detection
  * 3. Advanced Risk Analytics - VaR, Monte Carlo, Apex safety
  * 4. Smart Execution - TWAP, VWAP, adaptive algorithms
  * 5. Traditional Signal Engine - EMA, RSI, MACD, VWAP strategies
- *
- * POST /api/stuntman/auto-trade - Start/stop auto-trading
- * GET /api/stuntman/auto-trade - Get status and stats
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -2512,6 +2525,21 @@ function recordTradeResult(exitPrice: number, pnl: number, slippage: number, rea
 // =============================================================================
 
 export async function GET(request: NextRequest) {
+  // ⚠️ DEPRECATION WARNING - Return immediately with redirect notice
+  return NextResponse.json({
+    deprecated: true,
+    warning: '⚠️ THIS ENDPOINT IS DEPRECATED - DO NOT USE FOR REAL TRADING',
+    reason: 'This complex ML strategy has NOT been validated and may lose money',
+    useInstead: '/api/stuntman/live-adaptive',
+    provenResults: {
+      netProfit: '$10,244 over 60 days',
+      winRate: '60.3%',
+      testsPasssed: '10/10 profitable'
+    },
+    message: 'Please use /api/stuntman/live-adaptive for the PROVEN trading strategy'
+  })
+
+  /* DISABLED - Original code below
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -2683,6 +2711,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // ⚠️ DEPRECATION WARNING - Return immediately with redirect notice
+  return NextResponse.json({
+    deprecated: true,
+    warning: '⚠️ THIS ENDPOINT IS DEPRECATED - DO NOT USE FOR REAL TRADING',
+    reason: 'This complex ML strategy has NOT been validated and may lose money',
+    useInstead: '/api/stuntman/live-adaptive',
+    message: 'POST to /api/stuntman/live-adaptive with {"action": "execute"} for proven strategy'
+  })
+
+  /* DISABLED - Original code below
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

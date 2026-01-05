@@ -36,6 +36,18 @@ import { NextRequest, NextResponse } from 'next/server'
 // PickMyTrade integration - ENABLED for live execution to Apex
 import { PickMyTradeClient, getCurrentContractSymbol, TradeResult } from '@/lib/stuntman/pickmytrade-client'
 
+// CRITICAL: Supabase state persistence - state survives serverless restarts
+import {
+  loadTradingState,
+  saveTradingState,
+  setAutoTradingEnabled,
+  openPosition,
+  closePosition as closePositionState,
+  getTradingState,
+  TradingState,
+  OpenPosition,
+} from '@/lib/stuntman/trading-state'
+
 // Initialize PickMyTrade client with environment variables
 const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
 const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || 'APEX-456334').trim()
@@ -563,26 +575,11 @@ async function fetchRealtimeData(): Promise<Candle[]> {
 }
 
 // ============================================================================
-// LIVE TRADING STATE
+// LIVE TRADING STATE - NOW PERSISTED IN SUPABASE
 // ============================================================================
-
-let isEnabled = false
-let currentPosition: {
-  direction: 'LONG' | 'SHORT'
-  entryPrice: number
-  stopLoss: number
-  takeProfit: number
-  patternId: string
-} | null = null
-let dailyTrades = 0
-let lastTradeDate = ''
-let totalPnL = 0
-let tradeHistory: Array<{
-  time: string
-  pattern: string
-  direction: string
-  pnl: number
-}> = []
+// ALL state is now stored in Supabase via trading-state.ts
+// This ensures state survives serverless restarts and is consistent
+// across all API calls. NO MORE LOST POSITIONS OR TRADES.
 
 // ============================================================================
 // API HANDLERS
@@ -590,6 +587,10 @@ let tradeHistory: Array<{
 
 export async function GET(request: NextRequest) {
   try {
+    // CRITICAL: Load ALL state from Supabase (survives serverless restarts)
+    const state = await loadTradingState()
+    const { enabled: isEnabled, currentPosition, dailyTrades, dailyPnL, totalPnL, tradeHistory } = state
+
     const candles = await fetchRealtimeData()
     const lastIndex = candles.length - 1
     const lastCandle = candles[lastIndex]
@@ -627,17 +628,13 @@ export async function GET(request: NextRequest) {
 
     const withinTradingHours = estHour >= CONFIG.tradingStartHour && estHour <= CONFIG.tradingEndHour
 
-    // Reset daily trades at start of new day
-    const today = new Date().toDateString()
-    if (lastTradeDate !== today) {
-      dailyTrades = 0
-      lastTradeDate = today
-    }
+    // Note: Daily reset is now handled automatically by loadTradingState()
 
     // ============================================================================
     // AUTO-EXECUTE: When enabled, signal detected, no position, within hours
     // ============================================================================
     let autoExecutionResult: any = null
+    let updatedState = state // Track state updates
 
     if (
       isEnabled &&
@@ -672,25 +669,29 @@ export async function GET(request: NextRequest) {
           }
 
           if (executionResult.success) {
-            // Store position
-            currentPosition = {
+            // CRITICAL: Store position in Supabase (persists across restarts)
+            const newPosition: OpenPosition = {
               direction: signal.direction,
               entryPrice: signal.entryPrice,
               stopLoss: signal.stopLoss,
               takeProfit: signal.takeProfit,
-              patternId: signal.patternId
+              contracts: 1,
+              patternId: signal.patternId,
+              entryTime: new Date().toISOString(),
+              symbol: contractSymbol
             }
-            dailyTrades++
+            updatedState = await openPosition(newPosition)
 
             autoExecutionResult = {
               executed: true,
               success: true,
               message: `AUTO-EXECUTED: ${signal.direction} via ${signal.patternId}`,
               orderId: executionResult.orderId,
-              timestamp: executionResult.timestamp
+              timestamp: executionResult.timestamp,
+              positionSaved: true // Confirm persistence
             }
 
-            console.log(`[AUTO-TRADE] SUCCESS:`, autoExecutionResult)
+            console.log(`[AUTO-TRADE] SUCCESS - Position saved to Supabase:`, autoExecutionResult)
           } else {
             autoExecutionResult = {
               executed: true,
@@ -732,16 +733,26 @@ export async function GET(request: NextRequest) {
       enabled: false
     }
 
+    // Use updated state if position was opened, otherwise use original state
+    const finalState = updatedState
+
     return NextResponse.json({
       success: true,
       status: {
-        enabled: isEnabled,
-        autoTrading: isEnabled && withinTradingHours && !currentPosition && dailyTrades < CONFIG.maxDailyTrades,
-        currentPosition,
-        dailyTrades,
+        enabled: finalState.enabled,
+        autoTrading: finalState.enabled && withinTradingHours && !finalState.currentPosition && finalState.dailyTrades < CONFIG.maxDailyTrades,
+        currentPosition: finalState.currentPosition,
+        dailyTrades: finalState.dailyTrades,
         maxDailyTrades: CONFIG.maxDailyTrades,
-        totalPnL: totalPnL.toFixed(2),
-        tradeHistory: tradeHistory.slice(-10)
+        dailyPnL: finalState.dailyPnL.toFixed(2),
+        totalPnL: finalState.totalPnL.toFixed(2),
+        totalTrades: finalState.totalTrades,
+        totalWins: finalState.totalWins,
+        totalLosses: finalState.totalLosses,
+        winRate: finalState.totalTrades > 0 ? ((finalState.totalWins / finalState.totalTrades) * 100).toFixed(1) + '%' : 'N/A',
+        tradeHistory: finalState.tradeHistory.slice(-10),
+        lastUpdated: finalState.lastUpdated,
+        statePersisted: true // Confirm state is in Supabase
       },
       market: {
         price: lastCandle.close.toFixed(2),
@@ -775,12 +786,12 @@ export async function GET(request: NextRequest) {
         ? autoExecutionResult.message
         : !withinTradingHours
           ? `Outside trading hours (9:30 AM - 3:30 PM EST) - Current: ${estHour.toFixed(2)} EST`
-          : !isEnabled
+          : !finalState.enabled
             ? 'Auto-trading DISABLED - Enable to auto-execute signals'
-            : currentPosition
-              ? `In position: ${currentPosition.direction} from ${currentPosition.entryPrice.toFixed(2)}`
-              : dailyTrades >= CONFIG.maxDailyTrades
-                ? `Daily trade limit reached (${dailyTrades}/${CONFIG.maxDailyTrades})`
+            : finalState.currentPosition
+              ? `In position: ${finalState.currentPosition.direction} from ${finalState.currentPosition.entryPrice.toFixed(2)}`
+              : finalState.dailyTrades >= CONFIG.maxDailyTrades
+                ? `Daily trade limit reached (${finalState.dailyTrades}/${CONFIG.maxDailyTrades})`
                 : regime === 'SIDEWAYS'
                   ? 'SIDEWAYS market - NO TRADE (waiting for trend)'
                   : signal
@@ -801,17 +812,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action } = body
 
+    // Load current state from Supabase
+    const currentState = await loadTradingState()
+
     if (action === 'enable') {
-      isEnabled = true
-      return NextResponse.json({ success: true, message: 'Live trading ENABLED' })
+      await setAutoTradingEnabled(true)
+      return NextResponse.json({ success: true, message: 'Live trading ENABLED', statePersisted: true })
     }
 
     if (action === 'disable') {
-      isEnabled = false
-      return NextResponse.json({ success: true, message: 'Live trading DISABLED' })
+      await setAutoTradingEnabled(false)
+      return NextResponse.json({ success: true, message: 'Live trading DISABLED', statePersisted: true })
     }
 
-    if (action === 'execute' && isEnabled) {
+    if (action === 'execute' && currentState.enabled) {
       // Get current signal
       const candles = await fetchRealtimeData()
       const lastIndex = candles.length - 1
@@ -839,16 +853,20 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Store the signal for execution
-      currentPosition = {
+      const contractSymbol = getCurrentContractSymbol('ES')
+
+      // Store the position in Supabase (persists across restarts)
+      const newPosition: OpenPosition = {
         direction: signal.direction,
         entryPrice: signal.entryPrice,
         stopLoss: signal.stopLoss,
         takeProfit: signal.takeProfit,
-        patternId: signal.patternId
+        contracts: 1,
+        patternId: signal.patternId,
+        entryTime: new Date().toISOString(),
+        symbol: contractSymbol
       }
-
-      dailyTrades++
+      await openPosition(newPosition)
 
       // ============================================================================
       // EXECUTE TRADE VIA PICKMYTRADE TO APEX
@@ -857,7 +875,6 @@ export async function POST(request: NextRequest) {
       let executionResult: TradeResult | null = null
 
       if (client) {
-        const contractSymbol = getCurrentContractSymbol('ES')
         console.log(`[LiveAdaptive] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
 
         try {
@@ -905,7 +922,8 @@ export async function POST(request: NextRequest) {
           target: signal.takeProfit.toFixed(2),
           reason: signal.reason
         },
-        position: currentPosition,
+        position: newPosition,
+        positionSaved: true, // Confirm saved to Supabase
         execution: executionResult ? {
           success: executionResult.success,
           message: executionResult.message,
@@ -937,15 +955,22 @@ export async function POST(request: NextRequest) {
       try {
         const result = await client.closePosition(contractSymbol)
 
-        // Clear local position state
-        currentPosition = null
+        // Get current price for P&L calculation
+        const candles = await fetchRealtimeData()
+        const lastCandle = candles[candles.length - 1]
+        const exitPrice = lastCandle.close
+
+        // Clear position state in Supabase and record the trade with P&L
+        const { state: newState, pnl } = await closePositionState(exitPrice, 'Manual close via CLOSE ALL button')
 
         return NextResponse.json({
           success: true,
           message: 'CLOSE ORDER SENT',
           close: {
             symbol: contractSymbol,
-            action: 'FLAT'
+            action: 'FLAT',
+            exitPrice: exitPrice.toFixed(2),
+            pnl: pnl.toFixed(2)
           },
           execution: {
             success: result.success,
@@ -953,6 +978,8 @@ export async function POST(request: NextRequest) {
             orderId: result.orderId,
             rawResponse: result.response // Include raw response for debugging
           },
+          positionCleared: true,
+          statePersisted: true,
           pickMyTradeConnected: true
         })
       } catch (error) {
@@ -1049,6 +1076,44 @@ export async function POST(request: NextRequest) {
           pickMyTradeConnected: !!PICKMYTRADE_TOKEN
         })
       }
+    }
+
+    // EMERGENCY: Reset all state (use with caution)
+    if (action === 'reset') {
+      const defaultState: TradingState = {
+        enabled: false,
+        currentPosition: null,
+        dailyTrades: 0,
+        dailyPnL: 0,
+        lastTradeDate: new Date().toISOString().split('T')[0],
+        totalPnL: 0,
+        totalTrades: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        tradeHistory: [],
+        lastUpdated: new Date().toISOString(),
+        accountId: 'APEX-456334'
+      }
+      await saveTradingState(defaultState)
+      return NextResponse.json({
+        success: true,
+        message: 'ALL STATE RESET - Trading disabled, position cleared, history wiped',
+        warning: 'This is an emergency reset - all trade history has been cleared',
+        statePersisted: true
+      })
+    }
+
+    // Force clear position without executing a close order (if PickMyTrade already closed it)
+    if (action === 'clear-position') {
+      const state = await loadTradingState()
+      state.currentPosition = null
+      await saveTradingState(state)
+      return NextResponse.json({
+        success: true,
+        message: 'Position cleared from state (no trade executed)',
+        note: 'Use this if PickMyTrade already closed the position but state shows open',
+        statePersisted: true
+      })
     }
 
     return NextResponse.json({ success: false, message: 'Invalid action' })

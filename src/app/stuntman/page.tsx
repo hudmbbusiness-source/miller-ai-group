@@ -220,39 +220,54 @@ export default function StuntManDashboard() {
           lastCheck: Date.now()
         })
 
+        // Use persisted state values from Supabase
+        const totalPnL = parseFloat(data.status?.totalPnL || '0')
+        const dailyPnL = parseFloat(data.status?.dailyPnL || '0')
+        const totalWins = data.status?.totalWins || 0
+        const totalLosses = data.status?.totalLosses || 0
+        const totalTrades = data.status?.totalTrades || 0
+        const calculatedWinRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 60.3
+
         setPerformance({
-          todayPnL: parseFloat(data.status?.totalPnL || '0'),
+          todayPnL: dailyPnL,
           todayTrades: data.status?.dailyTrades || 0,
-          totalTrades: data.status?.tradeHistory?.length || 0,
-          wins: 0,
-          losses: 0,
-          winRate: 60.3, // Proven strategy win rate
+          totalTrades: totalTrades,
+          wins: totalWins,
+          losses: totalLosses,
+          winRate: calculatedWinRate,
           profitFactor: 1.65,
           startBalance: 150000,
-          currentBalance: 150000 + parseFloat(data.status?.totalPnL || '0'),
-          drawdownUsed: 0,
+          currentBalance: 150000 + totalPnL,
+          drawdownUsed: Math.max(0, -totalPnL),
           profitTarget: 9000,
-          targetProgress: (parseFloat(data.status?.totalPnL || '0') / 9000) * 100,
-          withdrawable: Math.max(0, parseFloat(data.status?.totalPnL || '0') - 5000)
+          targetProgress: (totalPnL / 9000) * 100,
+          withdrawable: Math.max(0, totalPnL - 5000)
         })
 
         setRecentTrades(data.status?.tradeHistory || [])
         setConfigured(data.pickMyTrade?.connected || false)
 
-        // Track open positions - if currentPosition exists, show it
+        // Track open positions - if currentPosition exists, show it (FROM SUPABASE)
         if (data.status?.currentPosition) {
+          const pos = data.status.currentPosition
           setOpenPositions([{
-            id: Date.now(),
-            symbol: 'ESH26',
-            direction: data.status.currentPosition.direction,
-            contracts: 1,
-            entryPrice: data.status.currentPosition.entryPrice,
-            stopLoss: data.status.currentPosition.stopLoss,
-            takeProfit: data.status.currentPosition.takeProfit,
-            pattern: data.status.currentPosition.patternId
+            id: pos.entryTime || Date.now(),
+            symbol: pos.symbol || 'ESH26',
+            direction: pos.direction,
+            contracts: pos.contracts || 1,
+            entryPrice: pos.entryPrice,
+            stopLoss: pos.stopLoss,
+            takeProfit: pos.takeProfit,
+            pattern: pos.patternId,
+            entryTime: pos.entryTime // Persist entry time
           }])
         } else {
           setOpenPositions([])
+        }
+
+        // Track state persistence status
+        if (data.status?.statePersisted) {
+          console.log('[StuntMan] State persisted to Supabase:', data.status.lastUpdated)
         }
 
         // Update last refresh time

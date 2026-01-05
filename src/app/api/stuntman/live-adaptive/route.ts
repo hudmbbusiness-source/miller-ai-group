@@ -960,58 +960,88 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Test trade to verify PickMyTrade connection
+    // Test trade to verify PickMyTrade connection - WITH FULL DEBUG
     if (action === 'test') {
-      const client = getPickMyTradeClient()
-
-      if (!client) {
-        return NextResponse.json({
-          success: false,
-          message: 'PickMyTrade not configured - set PICKMYTRADE_TOKEN',
-          pickMyTradeConnected: false
-        })
-      }
-
+      // Direct API test - bypass client to see raw response
       const contractSymbol = getCurrentContractSymbol('ES')
       const candles = await fetchRealtimeData()
       const lastCandle = candles[candles.length - 1]
       const currentPrice = lastCandle.close
 
-      console.log(`[TEST TRADE] Sending BUY 1 ${contractSymbol} @ market to verify connection...`)
+      const payload = {
+        symbol: contractSymbol,
+        date: new Date().toISOString(),
+        data: 'buy',
+        quantity: 1,
+        risk_percentage: 0,
+        price: 0,
+        tp: currentPrice + 5,
+        percentage_tp: 0,
+        dollar_tp: 0,
+        sl: currentPrice - 10,
+        dollar_sl: 0,
+        percentage_sl: 0,
+        order_type: 'MKT',
+        update_tp: false,
+        update_sl: false,
+        token: PICKMYTRADE_TOKEN,
+        duplicate_position_allow: false,
+        platform: 'RITHMIC',
+        reverse_order_close: true,
+        multiple_accounts: [
+          {
+            id: APEX_ACCOUNT_ID,
+            quantity: 1,
+          },
+        ],
+      }
+
+      console.log(`[TEST TRADE] Sending to PickMyTrade API...`)
+      console.log(`[TEST TRADE] Token: ${PICKMYTRADE_TOKEN.substring(0, 8)}...`)
+      console.log(`[TEST TRADE] Account: ${APEX_ACCOUNT_ID}`)
+      console.log(`[TEST TRADE] Payload:`, JSON.stringify(payload, null, 2))
 
       try {
-        const result = await client.buyMarket(
-          contractSymbol,
-          1,
-          currentPrice - 10, // 10 point stop
-          currentPrice + 5   // 5 point target
-        )
+        const response = await fetch('https://api.pickmytrade.io/v2/add-trade-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        })
+
+        const responseText = await response.text()
+        console.log(`[TEST TRADE] Response status: ${response.status}`)
+        console.log(`[TEST TRADE] Response body: ${responseText}`)
+
+        let responseData
+        try {
+          responseData = JSON.parse(responseText)
+        } catch {
+          responseData = { raw: responseText }
+        }
 
         return NextResponse.json({
-          success: true,
-          message: 'TEST TRADE SENT TO APEX',
-          test: {
-            action: 'BUY',
+          success: response.ok,
+          message: response.ok ? 'API call successful' : 'API call failed',
+          debug: {
+            apiEndpoint: 'https://api.pickmytrade.io/v2/add-trade-data',
+            tokenUsed: `${PICKMYTRADE_TOKEN.substring(0, 8)}...`,
+            accountId: APEX_ACCOUNT_ID,
             symbol: contractSymbol,
-            quantity: 1,
-            price: currentPrice.toFixed(2),
-            stop: (currentPrice - 10).toFixed(2),
-            target: (currentPrice + 5).toFixed(2)
+            httpStatus: response.status,
+            httpStatusText: response.statusText
           },
-          execution: {
-            success: result.success,
-            message: result.message,
-            orderId: result.orderId,
-            timestamp: result.timestamp
-          },
-          pickMyTradeConnected: true,
-          warning: '⚠️ THIS IS A REAL TRADE - Close it manually if needed!'
+          payloadSent: payload,
+          apiResponse: responseData,
+          pickMyTradeConnected: !!PICKMYTRADE_TOKEN
         })
       } catch (error) {
         return NextResponse.json({
           success: false,
-          message: error instanceof Error ? error.message : 'Test trade failed',
-          pickMyTradeConnected: true
+          message: error instanceof Error ? error.message : 'Network error',
+          error: error instanceof Error ? error.stack : 'Unknown',
+          pickMyTradeConnected: !!PICKMYTRADE_TOKEN
         })
       }
     }

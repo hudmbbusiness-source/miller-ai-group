@@ -755,6 +755,197 @@ export default function StuntManDashboard() {
             </div>
           </div>
         </div>
+
+        {/* ================================================================ */}
+        {/* STRATEGIES & MARKET DATA ROW */}
+        {/* ================================================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          {/* ============================================================ */}
+          {/* ACTIVE STRATEGIES PANEL */}
+          {/* ============================================================ */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm font-medium text-white/80">Active Strategies</div>
+              <div className={`px-2 py-1 rounded text-xs font-bold ${
+                marketStatus?.regime?.includes('UP') ? 'bg-emerald-500/20 text-emerald-400' :
+                marketStatus?.regime?.includes('DOWN') ? 'bg-red-500/20 text-red-400' :
+                'bg-amber-500/20 text-amber-400'
+              }`}>
+                {marketStatus?.regime || 'SIDEWAYS'}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {/* VWAP Pullback Long */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${
+                    marketStatus?.regime?.includes('UP') ? 'bg-emerald-500' : 'bg-white/20'
+                  }`} />
+                  <div>
+                    <div className="text-sm font-medium">VWAP_PULLBACK_LONG</div>
+                    <div className="text-[10px] text-white/40">Price pulls back to VWAP then bounces</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-emerald-400">71.4%</div>
+                  <div className="text-[10px] text-white/40">win rate</div>
+                </div>
+              </div>
+
+              {/* VWAP Pullback Short */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${
+                    marketStatus?.regime?.includes('DOWN') ? 'bg-red-500' : 'bg-white/20'
+                  }`} />
+                  <div>
+                    <div className="text-sm font-medium">VWAP_PULLBACK_SHORT</div>
+                    <div className="text-[10px] text-white/40">Price rallies to VWAP then rejects</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-emerald-400">57.1%</div>
+                  <div className="text-[10px] text-white/40">win rate</div>
+                </div>
+              </div>
+
+              {/* EMA20 Bounce Long */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${
+                    marketStatus?.regime === 'STRONG_UPTREND' ? 'bg-emerald-500' : 'bg-white/20'
+                  }`} />
+                  <div>
+                    <div className="text-sm font-medium">EMA20_BOUNCE_LONG</div>
+                    <div className="text-[10px] text-white/40">Price touches EMA20 and bounces (strong uptrend only)</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-emerald-400">57.1%</div>
+                  <div className="text-[10px] text-white/40">win rate</div>
+                </div>
+              </div>
+
+              {/* ORB Breakout Short */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${
+                    marketStatus?.regime?.includes('DOWN') ? 'bg-red-500' : 'bg-white/20'
+                  }`} />
+                  <div>
+                    <div className="text-sm font-medium">ORB_BREAKOUT_SHORT</div>
+                    <div className="text-[10px] text-white/40">Opening Range Breakdown (9:45-11:00 AM)</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-emerald-400">100%</div>
+                  <div className="text-[10px] text-white/40">win rate*</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-white/5 text-[10px] text-white/30 text-center">
+              * Based on backtested results. Combined strategy: 60.3% win rate, 1.65 profit factor
+            </div>
+          </div>
+
+          {/* ============================================================ */}
+          {/* LIVE MARKET DATA PANEL */}
+          {/* ============================================================ */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm font-medium text-white/80">Live Market Data</div>
+              <div className={`px-2 py-1 rounded text-xs font-medium ${
+                marketStatus?.pickMyTradeConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+              }`}>
+                {marketStatus?.pickMyTradeConnected ? '● PickMyTrade Connected' : '○ Not Connected'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* ES Price */}
+              <div className="p-3 rounded-lg bg-white/5">
+                <div className="text-[10px] text-white/40 mb-1">ES Price</div>
+                <div className="text-xl font-bold">${marketStatus?.price?.toFixed(2) || '---'}</div>
+              </div>
+
+              {/* VWAP */}
+              <div className="p-3 rounded-lg bg-white/5">
+                <div className="text-[10px] text-white/40 mb-1">VWAP</div>
+                <div className="text-xl font-bold">${marketStatus?.indicators?.vwap || '---'}</div>
+              </div>
+
+              {/* EMA 20 */}
+              <div className="p-3 rounded-lg bg-white/5">
+                <div className="text-[10px] text-white/40 mb-1">EMA 20</div>
+                <div className="text-lg font-medium">${marketStatus?.indicators?.ema20 || '---'}</div>
+              </div>
+
+              {/* EMA 50 */}
+              <div className="p-3 rounded-lg bg-white/5">
+                <div className="text-[10px] text-white/40 mb-1">EMA 50</div>
+                <div className="text-lg font-medium">${marketStatus?.indicators?.ema50 || '---'}</div>
+              </div>
+
+              {/* RSI */}
+              <div className="p-3 rounded-lg bg-white/5">
+                <div className="text-[10px] text-white/40 mb-1">RSI (14)</div>
+                <div className={`text-lg font-medium ${
+                  parseFloat(marketStatus?.indicators?.rsi || '50') > 70 ? 'text-red-400' :
+                  parseFloat(marketStatus?.indicators?.rsi || '50') < 30 ? 'text-emerald-400' : ''
+                }`}>
+                  {marketStatus?.indicators?.rsi || '---'}
+                </div>
+              </div>
+
+              {/* ATR */}
+              <div className="p-3 rounded-lg bg-white/5">
+                <div className="text-[10px] text-white/40 mb-1">ATR (14)</div>
+                <div className="text-lg font-medium">{marketStatus?.indicators?.atr || '---'}</div>
+              </div>
+            </div>
+
+            {/* Price to Key Levels */}
+            <div className="mt-4 pt-3 border-t border-white/5">
+              <div className="text-[10px] text-white/40 mb-2">Distance to Key Levels</div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">Price to VWAP:</span>
+                  <span className={`font-medium ${
+                    (marketStatus?.price - parseFloat(marketStatus?.indicators?.vwap || '0')) > 0 ? 'text-emerald-400' : 'text-red-400'
+                  }`}>
+                    {marketStatus?.price && marketStatus?.indicators?.vwap
+                      ? `${(marketStatus.price - parseFloat(marketStatus.indicators.vwap)).toFixed(2)} pts ($${((marketStatus.price - parseFloat(marketStatus.indicators.vwap)) * 50).toFixed(0)})`
+                      : '---'
+                    }
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">Price to EMA20:</span>
+                  <span className={`font-medium ${
+                    (marketStatus?.price - parseFloat(marketStatus?.indicators?.ema20 || '0')) > 0 ? 'text-emerald-400' : 'text-red-400'
+                  }`}>
+                    {marketStatus?.price && marketStatus?.indicators?.ema20
+                      ? `${(marketStatus.price - parseFloat(marketStatus.indicators.ema20)).toFixed(2)} pts ($${((marketStatus.price - parseFloat(marketStatus.indicators.ema20)) * 50).toFixed(0)})`
+                      : '---'
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* PickMyTrade Account */}
+            {marketStatus?.pickMyTradeConnected && (
+              <div className="mt-4 pt-3 border-t border-white/5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/40">Apex Account:</span>
+                  <span className="font-mono text-emerald-400">{marketStatus?.pickMyTradeAccount}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
     </div>
   )

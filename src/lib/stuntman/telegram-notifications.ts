@@ -239,3 +239,216 @@ You'll receive alerts for:
 export function isTelegramConfigured(): boolean {
   return !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID)
 }
+
+/**
+ * Send 15-minute pre-market warning
+ */
+export async function sendPreMarketAlert(): Promise<boolean> {
+  const message = `
+<b>⏰ 15 MINUTES TO MARKET OPEN</b>
+━━━━━━━━━━━━━━━━━━━━
+🕘 Market opens at <b>9:30 AM EST</b>
+🤖 STUNTMAN is ready to trade
+📊 Instruments: ES & NQ Futures
+⚠️ All positions must close by 4:59 PM
+
+<b>Apex 150K Rules Active:</b>
+• Max Drawdown: $6,000 trailing
+• Profit Target: $9,000
+• Max Contracts: 17
+━━━━━━━━━━━━━━━━━━━━
+<i>Get ready!</i>`
+
+  return sendTelegramMessage(message)
+}
+
+/**
+ * Send enhanced trade entry notification with position size
+ */
+export async function sendTradeEntryNotification(trade: {
+  instrument: 'ES' | 'NQ'
+  direction: 'LONG' | 'SHORT'
+  entryPrice: number
+  stopLoss: number
+  takeProfit: number
+  contracts: number
+  pattern: string
+  riskAmount: number
+  potentialProfit: number
+}): Promise<boolean> {
+  const emoji = trade.direction === 'LONG' ? '🟢' : '🔴'
+  const timestamp = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
+
+  const message = `
+<b>${emoji} NEW ${trade.direction} - ${trade.instrument}</b>
+━━━━━━━━━━━━━━━━━━━━
+💰 <b>Entry:</b> $${trade.entryPrice.toFixed(2)}
+📦 <b>Contracts:</b> ${trade.contracts}
+🛡 <b>Stop Loss:</b> $${trade.stopLoss.toFixed(2)}
+🎯 <b>Take Profit:</b> $${trade.takeProfit.toFixed(2)}
+━━━━━━━━━━━━━━━━━━━━
+⚠️ <b>Risk:</b> $${trade.riskAmount.toFixed(2)}
+💵 <b>Potential:</b> +$${trade.potentialProfit.toFixed(2)}
+📈 <b>Pattern:</b> ${trade.pattern}
+🕐 ${timestamp} EST
+━━━━━━━━━━━━━━━━━━━━
+<i>STUNTMAN Auto-Trader</i>`
+
+  return sendTelegramMessage(message)
+}
+
+/**
+ * Send trade exit notification with profit/loss
+ */
+export async function sendTradeExitNotification(trade: {
+  instrument: 'ES' | 'NQ'
+  direction: 'LONG' | 'SHORT'
+  entryPrice: number
+  exitPrice: number
+  contracts: number
+  pnl: number
+  exitReason: string
+  holdTime: string
+}): Promise<boolean> {
+  const isWin = trade.pnl >= 0
+  const emoji = isWin ? '💰' : '📉'
+  const resultEmoji = isWin ? '✅ WIN' : '❌ LOSS'
+  const pnlSign = isWin ? '+' : ''
+  const timestamp = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
+
+  const message = `
+<b>${emoji} TRADE CLOSED - ${resultEmoji}</b>
+━━━━━━━━━━━━━━━━━━━━
+📊 <b>Instrument:</b> ${trade.instrument} ${trade.direction}
+📦 <b>Contracts:</b> ${trade.contracts}
+━━━━━━━━━━━━━━━━━━━━
+📥 <b>Entry:</b> $${trade.entryPrice.toFixed(2)}
+📤 <b>Exit:</b> $${trade.exitPrice.toFixed(2)}
+${emoji} <b>P&L:</b> ${pnlSign}$${trade.pnl.toFixed(2)}
+━━━━━━━━━━━━━━━━━━━━
+📝 <b>Reason:</b> ${trade.exitReason}
+⏱ <b>Hold Time:</b> ${trade.holdTime}
+🕐 ${timestamp} EST
+━━━━━━━━━━━━━━━━━━━━
+<i>STUNTMAN Auto-Trader</i>`
+
+  return sendTelegramMessage(message)
+}
+
+/**
+ * Send weekly summary (Friday market close)
+ */
+export async function sendWeeklySummary(stats: {
+  weekStart: string
+  weekEnd: string
+  totalTrades: number
+  wins: number
+  losses: number
+  winRate: number
+  grossPnL: number
+  totalCosts: number
+  netPnL: number
+  bestTrade: number
+  worstTrade: number
+  avgTradeSize: number
+  apexProgress: {
+    currentBalance: number
+    profitTarget: number
+    drawdownUsed: number
+    daysTraded: number
+  }
+}): Promise<boolean> {
+  const isProfit = stats.netPnL >= 0
+  const emoji = isProfit ? '💰' : '📉'
+  const pnlSign = isProfit ? '+' : ''
+  const progressPercent = ((stats.apexProgress.currentBalance - 150000) / 9000 * 100).toFixed(1)
+
+  const message = `
+<b>📊 WEEKLY SUMMARY</b>
+━━━━━━━━━━━━━━━━━━━━
+📅 <b>Week:</b> ${stats.weekStart} - ${stats.weekEnd}
+━━━━━━━━━━━━━━━━━━━━
+<b>PERFORMANCE:</b>
+📈 Total Trades: ${stats.totalTrades}
+✅ Wins: ${stats.wins} | ❌ Losses: ${stats.losses}
+📊 Win Rate: ${stats.winRate.toFixed(1)}%
+━━━━━━━━━━━━━━━━━━━━
+<b>PROFIT & LOSS:</b>
+💵 Gross P&L: ${stats.grossPnL >= 0 ? '+' : ''}$${stats.grossPnL.toFixed(2)}
+💳 Costs/Fees: -$${stats.totalCosts.toFixed(2)}
+${emoji} <b>Net P&L: ${pnlSign}$${stats.netPnL.toFixed(2)}</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>TRADE STATS:</b>
+🏆 Best Trade: +$${stats.bestTrade.toFixed(2)}
+😢 Worst Trade: $${stats.worstTrade.toFixed(2)}
+📦 Avg Size: ${stats.avgTradeSize.toFixed(1)} contracts
+━━━━━━━━━━━━━━━━━━━━
+<b>APEX 150K PROGRESS:</b>
+💰 Balance: $${stats.apexProgress.currentBalance.toFixed(2)}
+🎯 Target: $${stats.apexProgress.profitTarget.toFixed(2)} (${progressPercent}%)
+⚠️ Drawdown Used: ${stats.apexProgress.drawdownUsed.toFixed(1)}%
+📅 Days Traded: ${stats.apexProgress.daysTraded}/7+
+━━━━━━━━━━━━━━━━━━━━
+<i>STUNTMAN Auto-Trader</i>`
+
+  return sendTelegramMessage(message)
+}
+
+/**
+ * Send 4:59 PM mandatory close warning
+ */
+export async function sendMandatoryCloseWarning(minutesRemaining: number): Promise<boolean> {
+  const message = `
+<b>⚠️ APEX MANDATORY CLOSE WARNING</b>
+━━━━━━━━━━━━━━━━━━━━
+🕔 <b>${minutesRemaining} MINUTES</b> until 4:59 PM EST
+
+All positions MUST be closed by 4:59 PM
+per Apex Trader Funding rules.
+
+${minutesRemaining <= 5 ? '🚨 <b>CLOSING ALL POSITIONS NOW!</b>' : '⏰ Preparing to close positions...'}
+━━━━━━━━━━━━━━━━━━━━
+<i>STUNTMAN Auto-Trader</i>`
+
+  return sendTelegramMessage(message)
+}
+
+/**
+ * Send market close notification
+ */
+export async function sendMarketCloseNotification(dailyStats: {
+  trades: number
+  wins: number
+  losses: number
+  pnl: number
+  winRate: number
+}): Promise<boolean> {
+  const isProfit = dailyStats.pnl >= 0
+  const emoji = isProfit ? '💰' : '📉'
+  const pnlSign = isProfit ? '+' : ''
+
+  const message = `
+<b>🔔 MARKET CLOSED</b>
+━━━━━━━━━━━━━━━━━━━━
+All positions closed per Apex 4:59 PM rule.
+
+<b>TODAY'S RESULTS:</b>
+📈 Trades: ${dailyStats.trades}
+✅ Wins: ${dailyStats.wins} | ❌ Losses: ${dailyStats.losses}
+📊 Win Rate: ${dailyStats.winRate.toFixed(1)}%
+${emoji} <b>P&L: ${pnlSign}$${dailyStats.pnl.toFixed(2)}</b>
+━━━━━━━━━━━━━━━━━━━━
+<i>See you tomorrow!</i>`
+
+  return sendTelegramMessage(message)
+}

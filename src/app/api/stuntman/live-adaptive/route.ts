@@ -101,6 +101,15 @@ if (!CREDENTIALS_VALID) {
   console.error('[CREDENTIALS] SYSTEM NOT SAFE TO TRADE - Missing or invalid credentials')
 }
 
+// =============================================================================
+// LONG-ONLY MODE - Enable until PickMyTrade SELL permission is fixed
+// Set to false once PickMyTrade connection account is updated to APEX-456334-01
+// =============================================================================
+const LONG_ONLY_MODE = true // SELL orders fail with permission error - only trade LONGs
+if (LONG_ONLY_MODE) {
+  console.log('[MODE] LONG-ONLY MODE ENABLED - SHORT trades blocked until PickMyTrade account fixed')
+}
+
 let pickMyTradeClient: PickMyTradeClient | null = null
 
 function getPickMyTradeClient(): PickMyTradeClient | null {
@@ -1484,6 +1493,18 @@ export async function GET(request: NextRequest) {
             // Get current market price for PickMyTrade reference (fixes "Price Not Found" error)
             const currentPrice = analysis.candles[analysis.candles.length - 1]?.close || instrumentSignal.entryPrice
 
+            // LONG-ONLY MODE: Block SHORT trades until PickMyTrade account is fixed
+            if (LONG_ONLY_MODE && instrumentSignal.direction === 'SHORT') {
+              console.log(`[LONG-ONLY] Blocking SHORT trade - PickMyTrade SELL permission not fixed yet`)
+              autoExecutionResults[instrumentKey] = {
+                executed: false,
+                success: false,
+                instrument: instrumentKey,
+                message: 'SHORT blocked - LONG-ONLY MODE active until PickMyTrade account fixed'
+              }
+              continue // Skip to next instrument
+            }
+
             if (instrumentSignal.direction === 'LONG') {
               executionResult = await client.buyMarket(
                 contractSymbol,
@@ -1609,7 +1630,9 @@ export async function GET(request: NextRequest) {
       connectionName: RITHMIC_CONNECTION_NAME || 'NOT_CONFIGURED',
       enabled: pmtClient.isEnabled,
       safeToTrade: CREDENTIALS_VALID && pmtClient.isEnabled,
-      warning: !CREDENTIALS_VALID ? 'CREDENTIALS INVALID - TRADING BLOCKED' : undefined
+      longOnlyMode: LONG_ONLY_MODE,
+      longOnlyReason: LONG_ONLY_MODE ? 'SELL orders fail - fix PickMyTrade connection account to APEX-456334-01' : undefined,
+      warning: !CREDENTIALS_VALID ? 'CREDENTIALS INVALID - TRADING BLOCKED' : (LONG_ONLY_MODE ? 'LONG-ONLY MODE - SHORT trades blocked' : undefined)
     } : {
       connected: false,
       credentialsValid: false,
@@ -1621,6 +1644,7 @@ export async function GET(request: NextRequest) {
       connectionName: RITHMIC_CONNECTION_NAME || 'NOT_CONFIGURED',
       enabled: false,
       safeToTrade: false,
+      longOnlyMode: LONG_ONLY_MODE,
       warning: 'PICKMYTRADE NOT CONFIGURED - TRADING BLOCKED'
     }
 
@@ -1948,6 +1972,16 @@ export async function POST(request: NextRequest) {
       let executionResult: TradeResult | null = null
 
       if (client) {
+        // LONG-ONLY MODE: Block SHORT trades until PickMyTrade account is fixed
+        if (LONG_ONLY_MODE && signal.direction === 'SHORT') {
+          return NextResponse.json({
+            success: false,
+            message: 'SHORT trades blocked - LONG-ONLY MODE active until PickMyTrade account fixed',
+            reason: 'Change PickMyTrade connection account from APEX-456334 to APEX-456334-01',
+            longOnlyMode: true
+          })
+        }
+
         console.log(`[LiveAdaptive] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
 
         try {

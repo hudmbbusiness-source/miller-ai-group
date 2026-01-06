@@ -3295,9 +3295,68 @@ async function processCandle(index: number): Promise<void> {
       }
     }
 
+    // ==========================================================================
+    // STEP 6C: WORLD-CLASS STRATEGIES (11 STRATEGIES)
+    // If neither ORB nor ROC+HA fired, use the 11 world-class institutional strategies
+    // These include: BOS_CONTINUATION, CHOCH_REVERSAL, FAILED_BREAKOUT, LIQUIDITY_SWEEP,
+    // SESSION_REVERSION, TREND_PULLBACK, VOLATILITY_BREAKOUT, VWAP_DEVIATION,
+    // RANGE_FADE, ORB_BREAKOUT (separate from simple ORB), KILLZONE_REVERSAL
+    // ==========================================================================
+    if (signalToUse === null && allWorldClassSignals?.signals && allWorldClassSignals.signals.length > 0) {
+      // Filter to valid signals with proper direction and confidence
+      const validSignals = allWorldClassSignals.signals.filter(
+        (s: { signal: StrategySignal; quality: any }) => s.signal.confidence >= 65
+      )
+
+      if (validSignals.length > 0) {
+        // Find the highest confidence signal
+        const bestEntry = validSignals.reduce((best: { signal: StrategySignal; quality: any }, current: { signal: StrategySignal; quality: any }) =>
+          current.signal.confidence > best.signal.confidence ? current : best
+        )
+        const bestSignal = bestEntry.signal
+        const bestQuality = bestEntry.quality
+
+        // Trend alignment check for world-class strategies
+        const trendBias = ema20 > ema50 ? 'LONG' : 'SHORT'
+        const alignedWithTrend = bestSignal.direction === trendBias
+
+        // Only trade if aligned with trend OR high confidence (80+)
+        if (alignedWithTrend || bestSignal.confidence >= 80) {
+          // Extract stop loss price
+          const stopPrice = typeof bestSignal.stopLoss === 'object'
+            ? bestSignal.stopLoss.price
+            : bestSignal.stopLoss
+
+          // Extract take profit from first target
+          const targetPrice = bestSignal.targets && bestSignal.targets.length > 0
+            ? bestSignal.targets[0].price
+            : (bestSignal.direction === 'LONG'
+                ? currentPrice + indicators.atr * 2
+                : currentPrice - indicators.atr * 2)
+
+          // Calculate R:R
+          const risk = Math.abs(currentPrice - stopPrice)
+          const reward = Math.abs(targetPrice - currentPrice)
+          const rrRatio = risk > 0 ? reward / risk : 2.0
+
+          signalToUse = {
+            direction: bestSignal.direction as 'LONG' | 'SHORT',
+            confidence: alignedWithTrend ? bestSignal.confidence + 5 : bestSignal.confidence,
+            strategy: bestSignal.type || 'WORLD_CLASS',  // Use 'type' field
+            stopLoss: stopPrice,
+            takeProfit: targetPrice,
+            riskRewardRatio: rrRatio,
+            qualityScore: bestQuality?.overall || bestSignal.qualityScore || 70,
+            sizeFactor: alignedWithTrend ? (bestQuality?.recommendation === 'FULL_SIZE' ? 1.0 : bestQuality?.recommendation === 'HALF_SIZE' ? 0.5 : 0.25) : 0.5,
+          }
+        }
+      }
+    }
+
     const shouldEnter = signalToUse !== null
     const isORBTrade = signalToUse?.strategy === 'ORB_BREAKOUT'
     const isROCHATrade = signalToUse?.strategy === 'ROC_HEIKIN_ASHI'
+    const isWorldClassTrade = !isORBTrade && !isROCHATrade && signalToUse !== null
 
     if (shouldEnter && signalToUse) {
       let entryDir: 'LONG' | 'SHORT' = signalToUse.direction

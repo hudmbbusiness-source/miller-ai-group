@@ -1167,6 +1167,52 @@ export async function GET(request: NextRequest) {
     const withinTradingHours = estHour >= CONFIG.tradingStartHour && estHour <= CONFIG.tradingEndHour
 
     // ============================================================================
+    // APEX MANDATORY CLOSE: Must close all positions by 4:59 PM EST
+    // This is a SAFETY feature required by Apex Trader Funding rules
+    // ============================================================================
+    const MANDATORY_CLOSE_HOUR = 16 + (59 / 60) // 4:59 PM EST = 16.983
+    const CLOSE_WARNING_HOUR = 16 + (55 / 60)   // 4:55 PM EST - send warning
+    const shouldMandatoryClose = estHour >= MANDATORY_CLOSE_HOUR && currentPosition
+    const shouldWarnClose = estHour >= CLOSE_WARNING_HOUR && estHour < MANDATORY_CLOSE_HOUR && currentPosition
+
+    // Auto-close position at 4:59 PM if still open
+    if (shouldMandatoryClose && currentPosition) {
+      console.log(`[MANDATORY CLOSE] 4:59 PM EST - Closing position per Apex rules`)
+      const client = getPickMyTradeClient()
+
+      if (client && currentPosition.symbol) {
+        try {
+          const result = await client.closePosition(currentPosition.symbol)
+          if (result.success) {
+            const exitPrice = esAnalysis.candles[esAnalysis.candles.length - 1]?.close || currentPosition.entryPrice
+            const { state: closedState, pnl } = await closePositionState(exitPrice, 'MANDATORY CLOSE - 4:59 PM Apex Rule')
+
+            // Send Telegram notification
+            sendTradeNotification({
+              type: 'EXIT',
+              instrument: currentPosition.symbol.includes('ES') ? 'ES' : 'NQ',
+              direction: currentPosition.direction,
+              price: exitPrice,
+              pnl: pnl,
+              message: 'MANDATORY CLOSE - 4:59 PM Apex Rule'
+            }).catch(err => console.error('[Telegram] Close notification failed:', err))
+
+            console.log(`[MANDATORY CLOSE] Position closed. PnL: $${pnl.toFixed(2)}`)
+          }
+        } catch (error) {
+          console.error('[MANDATORY CLOSE] Failed to close position:', error)
+        }
+      }
+    }
+
+    // Send warning at 4:55 PM if position is still open
+    if (shouldWarnClose && currentPosition) {
+      const minutesRemaining = Math.round((MANDATORY_CLOSE_HOUR - estHour) * 60)
+      console.log(`[CLOSE WARNING] ${minutesRemaining} minutes until mandatory close`)
+      // Note: sendMandatoryCloseWarning is in telegram-notifications.ts
+    }
+
+    // ============================================================================
     // DUAL INSTRUMENT AUTO-EXECUTE: Trade BOTH ES and NQ when signals detected
     // ============================================================================
     const autoExecutionResults: {

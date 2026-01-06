@@ -1421,6 +1421,25 @@ export async function GET(request: NextRequest) {
         continue
       }
 
+      // CRITICAL: NO TRADES IN SIDEWAYS MARKET - This was causing small losses to add up!
+      const currentRegime = analysis.regime
+      if (currentRegime === 'SIDEWAYS') {
+        console.log(`[REGIME BLOCK] Skipping ${instrumentKey} - SIDEWAYS market, waiting for trend`)
+        continue
+      }
+
+      // CRITICAL: Only trade WITH the trend, not against it
+      if (instrumentSignal) {
+        const isTrendAligned =
+          (currentRegime === 'STRONG_UPTREND' || currentRegime === 'UPTREND') && instrumentSignal.direction === 'LONG' ||
+          (currentRegime === 'STRONG_DOWNTREND' || currentRegime === 'DOWNTREND') && instrumentSignal.direction === 'SHORT'
+
+        if (!isTrendAligned) {
+          console.log(`[TREND BLOCK] Skipping ${instrumentSignal.direction} in ${currentRegime} - counter-trend trade blocked`)
+          continue
+        }
+      }
+
       if (
         isEnabled &&
         instrumentSignal &&

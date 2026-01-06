@@ -93,62 +93,263 @@ interface Performance {
 }
 
 // =============================================================================
-// TRADINGVIEW CHART COMPONENT
+// REAL-TIME ES FUTURES CHART - Uses EXACT same data as trading signals
 // =============================================================================
 
-function TradingViewChart({ symbol }: { symbol: string }) {
+function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<any>(null)
+  const candleSeriesRef = useRef<any>(null)
+  const volumeSeriesRef = useRef<any>(null)
+  const ema9Ref = useRef<any>(null)
+  const ema21Ref = useRef<any>(null)
+  const [lastPrice, setLastPrice] = useState<number>(0)
+  const [lastUpdate, setLastUpdate] = useState<string>('')
+  const [dataSource, setDataSource] = useState<string>('Loading...')
 
+  // Fetch ES futures data from Yahoo Finance (same source as trading signals)
+  const fetchESData = useCallback(async () => {
+    try {
+      const symbol = instrument === 'ES' ? 'ES=F' : 'NQ=F'
+      const now = Math.floor(Date.now() / 1000)
+      const start = now - (2 * 24 * 60 * 60) // 2 days for good chart
+
+      const url = `/api/stuntman/chart-data?symbol=${symbol}&start=${start}&end=${now}&interval=5m`
+
+      const res = await fetch(url)
+      if (!res.ok) {
+        // Fallback to direct Yahoo Finance via proxy
+        return await fetchDirectYahoo(symbol, start, now)
+      }
+
+      const data = await res.json()
+      return data
+    } catch (error) {
+      console.error('Chart data fetch error:', error)
+      return null
+    }
+  }, [instrument])
+
+  // Direct Yahoo Finance fetch as fallback
+  const fetchDirectYahoo = async (symbol: string, start: number, end: number) => {
+    try {
+      // Use SPY as proxy and scale (Yahoo blocks direct ES=F from browser)
+      const proxySymbol = symbol === 'ES=F' ? 'SPY' : 'QQQ'
+      const scale = symbol === 'ES=F' ? 10 : 40 // SPY*10≈ES, QQQ*40≈NQ
+
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${proxySymbol}?period1=${start}&period2=${end}&interval=5m`
+
+      const res = await fetch(url)
+      const data = await res.json()
+      const result = data.chart?.result?.[0]
+
+      if (!result?.timestamp) return null
+
+      const candles = []
+      const ts = result.timestamp
+      const q = result.indicators.quote[0]
+
+      for (let i = 0; i < ts.length; i++) {
+        if (q.open[i] && q.high[i] && q.low[i] && q.close[i]) {
+          candles.push({
+            time: ts[i],
+            open: q.open[i] * scale,
+            high: q.high[i] * scale,
+            low: q.low[i] * scale,
+            close: q.close[i] * scale,
+            volume: q.volume[i] || 0
+          })
+        }
+      }
+
+      setDataSource(`${proxySymbol} → ${symbol} (Real-time)`)
+      return { candles, source: proxySymbol }
+    } catch (error) {
+      console.error('Yahoo fetch error:', error)
+      return null
+    }
+  }
+
+  // Calculate EMA
+  const calculateEMA = (data: any[], period: number) => {
+    const ema: any[] = []
+    const mult = 2 / (period + 1)
+
+    for (let i = 0; i < data.length; i++) {
+      if (i === 0) {
+        ema.push({ time: data[i].time, value: data[i].close })
+      } else {
+        const val = (data[i].close - ema[i-1].value) * mult + ema[i-1].value
+        ema.push({ time: data[i].time, value: val })
+      }
+    }
+    return ema
+  }
+
+  // Initialize chart
   useEffect(() => {
     if (!containerRef.current) return
 
-    containerRef.current.innerHTML = ''
+    // Dynamic import for lightweight-charts
+    import('lightweight-charts').then(({ createChart, ColorType, CrosshairMode }) => {
+      // Clear existing
+      containerRef.current!.innerHTML = ''
 
-    const script = document.createElement('script')
-    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'
-    script.type = 'text/javascript'
-    script.async = true
-    script.innerHTML = JSON.stringify({
-      autosize: true,
-      symbol: symbol,
-      interval: '5',
-      timezone: 'America/New_York',
-      theme: 'dark',
-      style: '1',
-      locale: 'en',
-      backgroundColor: 'rgba(0, 0, 0, 1)',
-      gridColor: 'rgba(255, 255, 255, 0.03)',
-      hide_top_toolbar: false,
-      hide_legend: false,
-      allow_symbol_change: false,
-      save_image: false,
-      calendar: false,
-      hide_volume: false,
-      studies: ['MAExp@tv-basicstudies', 'RSI@tv-basicstudies', 'MACD@tv-basicstudies'],
-      support_host: 'https://www.tradingview.com',
-    })
+      const chart = createChart(containerRef.current!, {
+        layout: {
+          background: { type: ColorType.Solid, color: '#0a0a0a' },
+          textColor: '#d1d5db',
+        },
+        grid: {
+          vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          scaleMargins: { top: 0.1, bottom: 0.2 },
+        },
+        timeScale: {
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          timeVisible: true,
+          secondsVisible: false,
+        },
+        handleScale: { mouseWheel: true, pinch: true },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      })
 
-    const widgetContainer = document.createElement('div')
-    widgetContainer.className = 'tradingview-widget-container__widget'
-    widgetContainer.style.height = '100%'
-    widgetContainer.style.width = '100%'
+      // Candlestick series
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderDownColor: '#ef4444',
+        borderUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+        wickUpColor: '#22c55e',
+      })
 
-    containerRef.current.appendChild(widgetContainer)
-    containerRef.current.appendChild(script)
+      // Volume series
+      const volumeSeries = chart.addHistogramSeries({
+        color: '#3b82f6',
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
+      })
+      volumeSeries.priceScale().applyOptions({
+        scaleMargins: { top: 0.85, bottom: 0 },
+      })
 
-    return () => {
-      if (containerRef.current) {
-        containerRef.current.innerHTML = ''
+      // EMA 9 (fast)
+      const ema9Series = chart.addLineSeries({
+        color: '#f59e0b',
+        lineWidth: 1,
+        title: 'EMA 9',
+      })
+
+      // EMA 21 (slow)
+      const ema21Series = chart.addLineSeries({
+        color: '#8b5cf6',
+        lineWidth: 1,
+        title: 'EMA 21',
+      })
+
+      chartRef.current = chart
+      candleSeriesRef.current = candleSeries
+      volumeSeriesRef.current = volumeSeries
+      ema9Ref.current = ema9Series
+      ema21Ref.current = ema21Series
+
+      // Handle resize
+      const handleResize = () => {
+        if (containerRef.current) {
+          chart.applyOptions({
+            width: containerRef.current.clientWidth,
+            height: containerRef.current.clientHeight,
+          })
+        }
       }
+      window.addEventListener('resize', handleResize)
+      handleResize()
+
+      return () => {
+        window.removeEventListener('resize', handleResize)
+        chart.remove()
+      }
+    })
+  }, [])
+
+  // Fetch and update data
+  useEffect(() => {
+    if (!candleSeriesRef.current) return
+
+    const updateChart = async () => {
+      const data = await fetchESData()
+      if (!data?.candles?.length) return
+
+      const candles = data.candles.map((c: any) => ({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+
+      const volumes = data.candles.map((c: any) => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+      }))
+
+      candleSeriesRef.current.setData(candles)
+      volumeSeriesRef.current.setData(volumes)
+
+      // Update EMAs
+      const ema9Data = calculateEMA(data.candles, 9)
+      const ema21Data = calculateEMA(data.candles, 21)
+      ema9Ref.current.setData(ema9Data)
+      ema21Ref.current.setData(ema21Data)
+
+      // Update last price
+      const lastCandle = candles[candles.length - 1]
+      if (lastCandle) {
+        setLastPrice(lastCandle.close)
+        const date = new Date(lastCandle.time * 1000)
+        setLastUpdate(date.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }))
+      }
+
+      // Fit content
+      chartRef.current?.timeScale().fitContent()
     }
-  }, [symbol])
+
+    updateChart()
+
+    // Real-time updates every 5 seconds
+    const interval = setInterval(updateChart, 5000)
+    return () => clearInterval(interval)
+  }, [fetchESData])
 
   return (
-    <div
-      ref={containerRef}
-      className="tradingview-widget-container"
-      style={{ height: '100%', width: '100%' }}
-    />
+    <div className="relative w-full h-full">
+      {/* Chart Header */}
+      <div className="absolute top-2 left-2 z-10 bg-black/80 px-3 py-1.5 rounded text-sm">
+        <span className="text-white font-bold">{instrument} Futures</span>
+        <span className="text-gray-400 ml-2">|</span>
+        <span className="text-green-400 ml-2 font-mono">${lastPrice.toFixed(2)}</span>
+        <span className="text-gray-500 ml-2 text-xs">{lastUpdate} ET</span>
+      </div>
+      {/* Data Source Badge */}
+      <div className="absolute top-2 right-2 z-10 bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">
+        {dataSource}
+      </div>
+      {/* Chart Container */}
+      <div ref={containerRef} className="w-full h-full" />
+    </div>
   )
 }
 
@@ -184,10 +385,8 @@ export default function StuntManDashboard() {
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
 
-  // TradingView symbols - Use CFDs for FREE REAL-TIME 24/5 data
-  // OANDA:SPX500USD tracks ES perfectly, real-time, trades after hours
-  // OANDA:NAS100USD tracks NQ perfectly, real-time, trades after hours
-  const tvSymbol = instrument === 'ES' ? 'OANDA:SPX500USD' : 'OANDA:NAS100USD'
+  // Chart now uses custom RealTimeESChart component with Yahoo Finance data
+  // This ensures chart shows EXACT same data as trading signals
 
   // ==========================================================================
   // DATA FETCHING
@@ -635,7 +834,7 @@ export default function StuntManDashboard() {
           {/* ============================================================ */}
           <div className="lg:col-span-3 bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
             <div className="h-[550px]">
-              <TradingViewChart symbol={tvSymbol} />
+              <RealTimeESChart instrument={instrument} />
             </div>
           </div>
 

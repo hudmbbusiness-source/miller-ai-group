@@ -897,17 +897,17 @@ export default function StuntManDashboard() {
         {/* OPEN POSITIONS - CRITICAL VISIBILITY WITH LIVE P&L */}
         {/* ================================================================ */}
         {openPositions.length > 0 && (
-          <div className="mb-4 p-4 bg-red-500/10 border-2 border-red-500/50 rounded-xl">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-lg font-bold text-red-400">⚠️ OPEN POSITIONS</span>
+          <div className="mb-4 p-6 bg-gradient-to-r from-red-500/20 to-orange-500/20 border-4 border-red-500 rounded-2xl shadow-2xl shadow-red-500/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-2xl font-black text-white">🔴 LIVE POSITION</span>
               </div>
               <button
                 onClick={closePosition}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold"
+                className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-black text-lg shadow-lg hover:shadow-red-500/50 transition-all transform hover:scale-105"
               >
-                CLOSE ALL
+                ❌ CLOSE NOW
               </button>
             </div>
             <div className="space-y-2">
@@ -937,21 +937,26 @@ export default function StuntManDashboard() {
                   : currentMarketPrice - pos.takeProfit
 
                 return (
-                  <div key={pos.id} className="p-4 bg-black/30 rounded-lg">
-                    <div className="flex items-center justify-between mb-3">
+                  <div key={pos.id} className="p-5 bg-black/50 rounded-xl border border-white/10">
+                    {/* TOP ROW: Position Info + GIANT P&L */}
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-4">
-                        <span className={`text-2xl font-bold ${pos.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {pos.direction}
+                        <span className={`text-3xl font-black px-4 py-2 rounded-lg ${pos.direction === 'LONG' ? 'bg-emerald-500 text-black' : 'bg-red-500 text-white'}`}>
+                          {pos.direction === 'LONG' ? '📈 LONG' : '📉 SHORT'}
                         </span>
-                        <span className="text-white text-lg">{contracts}x {pos.symbol || 'ES'}</span>
-                        <span className="text-white/60">@ ${entryPrice.toFixed(2)}</span>
+                        <div>
+                          <div className="text-white text-xl font-bold">{contracts}x {pos.symbol || 'ES'}</div>
+                          <div className="text-white/60">Entry: ${entryPrice.toFixed(2)}</div>
+                        </div>
                       </div>
-                      {/* UNREALIZED P&L - Big and prominent */}
-                      <div className={`text-right ${unrealizedPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        <div className="text-2xl font-bold">
+                      {/* UNREALIZED P&L - GIANT AND PROMINENT */}
+                      <div className={`text-right p-4 rounded-xl ${unrealizedPnL >= 0 ? 'bg-emerald-500/20 border-2 border-emerald-500' : 'bg-red-500/20 border-2 border-red-500'}`}>
+                        <div className={`text-4xl font-black ${unrealizedPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                           {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toFixed(2)}
                         </div>
-                        <div className="text-xs text-white/40">Unrealized P&L</div>
+                        <div className="text-sm text-white/60 font-medium">
+                          {unrealizedPnL >= 0 ? '💰 PROFIT' : '⚠️ LOSS'} • NOW: ${currentMarketPrice.toFixed(2)}
+                        </div>
                       </div>
                     </div>
 
@@ -1016,7 +1021,8 @@ export default function StuntManDashboard() {
           {/* CHART (3 cols) */}
           {/* ============================================================ */}
           <div className="lg:col-span-3 bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
-            <div className="h-[550px]">
+            {/* BIGGER CHART - 650px for better visibility */}
+            <div className="h-[650px]">
               <RealTimeESChart
                 instrument={instrument}
                 onPriceUpdate={(price) => setCurrentMarketPrice(price)}
@@ -1196,34 +1202,35 @@ export default function StuntManDashboard() {
             )}
 
             {/* ========================================================== */}
-            {/* RECENT TRADES */}
+            {/* RECENT TRADES - Enhanced with bigger P&L */}
             {/* ========================================================== */}
             <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-              <div className="text-xs text-white/40 mb-3">Recent Trades</div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-white/80">Trade History</div>
+                <div className="text-xs text-white/40">{recentTrades.length} trades</div>
+              </div>
               {recentTrades.length === 0 ? (
                 <div className="text-center text-white/20 py-6">No trades yet today</div>
               ) : (
-                <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                <div className="space-y-2 max-h-[280px] overflow-y-auto">
                   {recentTrades.map(trade => (
-                    <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                    <div key={trade.id} className={`flex items-center justify-between p-3 rounded-lg ${
+                      trade.pnl >= 0 ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'
+                    }`}>
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          trade.pnl >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${
+                          trade.pnl >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
                         }`}>
-                          {trade.pnl >= 0 ? (
-                            <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                          ) : (
-                            <ArrowDownRight className="w-4 h-4 text-red-400" />
-                          )}
+                          {trade.pnl >= 0 ? '✓' : '✗'}
                         </div>
                         <div>
-                          <div className="text-sm font-medium">
-                            {trade.direction} {trade.contracts}x {trade.instrument}
+                          <div className="text-sm font-bold">
+                            {trade.direction} {trade.contracts || 1}x {trade.instrument || 'ES'}
                           </div>
-                          <div className="text-[10px] text-white/40">{trade.reason}</div>
+                          <div className="text-[10px] text-white/40">{trade.reason || trade.exitReason || 'Trade'}</div>
                         </div>
                       </div>
-                      <div className={`text-sm font-bold ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <div className={`text-lg font-black ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {trade.pnl >= 0 ? '+' : ''}{fmt(trade.pnl)}
                       </div>
                     </div>

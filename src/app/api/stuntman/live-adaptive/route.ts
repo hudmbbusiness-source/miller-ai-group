@@ -65,6 +65,8 @@ import {
   sendMarketOpenNotification,
   testTelegramConnection,
   isTelegramConfigured,
+  sendErrorNotification,
+  sendSyncNotification,
 } from '@/lib/stuntman/telegram-notifications'
 
 // ============================================================================
@@ -1595,6 +1597,14 @@ export async function GET(request: NextRequest) {
                 message: executionResult.message || 'Execution failed'
               }
               console.error(`[DUAL-TRADE] FAILED ${instrumentKey}:`, executionResult)
+
+              // SEND ERROR NOTIFICATION TO TELEGRAM
+              sendErrorNotification({
+                type: executionResult.message?.includes('permission') ? 'PERMISSION_DENIED' : 'EXECUTION_FAILED',
+                message: `Trade execution failed for ${instrumentKey}`,
+                details: executionResult.message || 'Unknown failure',
+                action: 'Check PickMyTrade and Apex dashboard'
+              }).catch(() => {}) // Fire and forget
             }
           } catch (error) {
             autoExecutionResults[instrumentKey] = {
@@ -1604,6 +1614,14 @@ export async function GET(request: NextRequest) {
               message: error instanceof Error ? error.message : 'Execution error'
             }
             console.error(`[DUAL-TRADE] ERROR ${instrumentKey}:`, error)
+
+            // SEND ERROR NOTIFICATION TO TELEGRAM
+            sendErrorNotification({
+              type: 'EXECUTION_FAILED',
+              message: `Exception during ${instrumentKey} trade`,
+              details: error instanceof Error ? error.message : 'Unknown error',
+              action: 'System may need restart'
+            }).catch(() => {}) // Fire and forget
           }
         } else {
           autoExecutionResults[instrumentKey] = {

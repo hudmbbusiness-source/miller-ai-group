@@ -452,3 +452,82 @@ ${emoji} <b>P&L: ${pnlSign}$${dailyStats.pnl.toFixed(2)}</b>
 
   return sendTelegramMessage(message)
 }
+
+/**
+ * Send error/alert notification for system issues
+ */
+export async function sendErrorNotification(error: {
+  type: 'EXECUTION_FAILED' | 'CREDENTIAL_ERROR' | 'DATA_ERROR' | 'SYSTEM_HALT' | 'PERMISSION_DENIED' | 'CONNECTION_LOST'
+  message: string
+  details?: string
+  action?: string
+}): Promise<boolean> {
+  const timestamp = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  })
+
+  const typeEmoji: Record<string, string> = {
+    'EXECUTION_FAILED': '❌',
+    'CREDENTIAL_ERROR': '🔐',
+    'DATA_ERROR': '📊',
+    'SYSTEM_HALT': '🛑',
+    'PERMISSION_DENIED': '⛔',
+    'CONNECTION_LOST': '🔌'
+  }
+
+  const emoji = typeEmoji[error.type] || '⚠️'
+
+  const message = `
+<b>${emoji} STUNTMAN ERROR</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>Type:</b> ${error.type}
+<b>Message:</b> ${error.message}
+${error.details ? `\n<b>Details:</b> ${error.details}` : ''}
+${error.action ? `\n<b>Action Required:</b> ${error.action}` : ''}
+🕐 <b>Time:</b> ${timestamp} EST
+━━━━━━━━━━━━━━━━━━━━
+<i>Check system immediately!</i>`
+
+  return sendTelegramMessage(message)
+}
+
+/**
+ * Send sync status notification
+ */
+export async function sendSyncNotification(sync: {
+  component: string
+  status: 'OK' | 'MISMATCH' | 'UNAVAILABLE'
+  expected?: string
+  actual?: string
+  message?: string
+}): Promise<boolean> {
+  const statusEmoji = {
+    'OK': '✅',
+    'MISMATCH': '⚠️',
+    'UNAVAILABLE': '❓'
+  }
+
+  const timestamp = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
+
+  const message = `
+<b>${statusEmoji[sync.status]} SYNC STATUS: ${sync.component}</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>Status:</b> ${sync.status}
+${sync.expected ? `<b>Expected:</b> ${sync.expected}` : ''}
+${sync.actual ? `<b>Actual:</b> ${sync.actual}` : ''}
+${sync.message ? `\n<b>Message:</b> ${sync.message}` : ''}
+🕐 ${timestamp} EST
+━━━━━━━━━━━━━━━━━━━━
+<i>STUNTMAN Sync Check</i>`
+
+  return sendTelegramMessage(message)
+}

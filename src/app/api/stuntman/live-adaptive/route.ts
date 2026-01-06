@@ -463,15 +463,24 @@ type Instrument = 'ES' | 'NQ'
 interface InstrumentConfig {
   symbol: string          // Yahoo symbol (SPY or QQQ)
   scale: number           // Price multiplier (10 for SPY→ES, 40 for QQQ→NQ)
+  premium: number         // Futures premium offset (ES ~$55, NQ ~$250)
   name: string            // Display name
   tickValue: number       // $ per tick
   pointValue: number      // $ per point
 }
 
+// FUTURES PREMIUM: ES/NQ trade at a premium to their ETF counterparts (SPY/QQQ)
+// This is due to cost of carry, financing costs, and expected dividends.
+// Premium varies but typically:
+// ES trades ~$50-60 above SPY*10
+// NQ trades ~$200-300 above QQQ*40
+// These values should be calibrated periodically by checking actual ES/NQ vs SPY/QQQ
+
 const INSTRUMENT_CONFIG: Record<Instrument, InstrumentConfig> = {
   ES: {
     symbol: 'SPY',
     scale: 10,
+    premium: 55,        // ES futures premium over SPY*10
     name: 'E-mini S&P 500',
     tickValue: 12.50,
     pointValue: 50
@@ -479,6 +488,7 @@ const INSTRUMENT_CONFIG: Record<Instrument, InstrumentConfig> = {
   NQ: {
     symbol: 'QQQ',
     scale: 40,
+    premium: 250,       // NQ futures premium over QQQ*40
     name: 'E-mini Nasdaq 100',
     tickValue: 5.00,
     pointValue: 20
@@ -509,7 +519,7 @@ async function getRealtimePrice(instrument: Instrument): Promise<{ price: number
     if (!meta?.regularMarketPrice) return null
 
     return {
-      price: meta.regularMarketPrice * config.scale,
+      price: meta.regularMarketPrice * config.scale + config.premium,
       change: (meta.regularMarketDayHigh - meta.regularMarketDayLow) * config.scale || 0,
       volume: meta.regularMarketVolume || 0
     }
@@ -566,10 +576,10 @@ async function fetchInstrumentCandles(instrument: Instrument, interval: '1m' | '
 
         candles.push({
           time: timestamps[i] * 1000,
-          open: quote.open[i] * config.scale,
-          high: quote.high[i] * config.scale,
-          low: quote.low[i] * config.scale,
-          close: quote.close[i] * config.scale,
+          open: quote.open[i] * config.scale + config.premium,
+          high: quote.high[i] * config.scale + config.premium,
+          low: quote.low[i] * config.scale + config.premium,
+          close: quote.close[i] * config.scale + config.premium,
           volume: quote.volume[i] || 0,
           hour: estDate.getHours() + estDate.getMinutes() / 60,
         })

@@ -137,7 +137,7 @@ interface Signal {
 const CONFIG = {
   tradingStartHour: 9.5,
   tradingEndHour: 15.5,
-  maxDailyTrades: 4,
+  maxDailyTrades: 999, // Effectively unlimited - maximize profitability
   minATR: 2,
   maxATR: 15,
   strongTrendSlope: 0.25,

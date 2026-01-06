@@ -184,10 +184,10 @@ export default function StuntManDashboard() {
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
 
-  // TradingView symbols - Use SPY/QQQ for FREE REAL-TIME data
-  // Futures (CME_MINI:ES1!) are delayed 15min on free TradingView
-  // SPY tracks ES perfectly (ES ≈ SPY × 10), QQQ tracks NQ
-  const tvSymbol = instrument === 'ES' ? 'SPY' : 'QQQ'
+  // TradingView symbols - Use CFDs for FREE REAL-TIME 24/5 data
+  // OANDA:SPX500USD tracks ES perfectly, real-time, trades after hours
+  // OANDA:NAS100USD tracks NQ perfectly, real-time, trades after hours
+  const tvSymbol = instrument === 'ES' ? 'OANDA:SPX500USD' : 'OANDA:NAS100USD'
 
   // ==========================================================================
   // DATA FETCHING

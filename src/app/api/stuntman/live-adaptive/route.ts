@@ -1132,6 +1132,69 @@ function buildPropFirmRiskState(state: TradingState, currentPrice: number = 0): 
 // across all API calls. NO MORE LOST POSITIONS OR TRADES.
 
 // ============================================================================
+// DATA LOGGING - Save market data for future strategy testing
+// ============================================================================
+let lastLogTime = 0
+const LOG_INTERVAL = 5 * 60 * 1000 // Log every 5 minutes to avoid excessive writes
+
+async function logMarketData(candles: Candle[], signal: Signal | null, regime: string) {
+  const now = Date.now()
+
+  // Only log every 5 minutes to reduce database writes
+  if (now - lastLogTime < LOG_INTERVAL) return
+
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000'
+
+    // Log recent candles (last 10)
+    const recentCandles = candles.slice(-10).map(c => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+      hour: c.hour || 0,
+      dateStr: new Date(c.time).toISOString().split('T')[0]
+    }))
+
+    await fetch(`${baseUrl}/api/stuntman/data-logger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'candles', data: recentCandles })
+    }).catch(() => {}) // Fire and forget, don't block main flow
+
+    // Log signal if generated
+    if (signal) {
+      await fetch(`${baseUrl}/api/stuntman/data-logger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'signal',
+          data: {
+            patternId: signal.patternId,
+            direction: signal.direction,
+            entryPrice: signal.entryPrice,
+            stopLoss: signal.stopLoss,
+            takeProfit: signal.takeProfit,
+            confidence: signal.confidence,
+            reason: signal.reason,
+            regime
+          }
+        })
+      }).catch(() => {})
+    }
+
+    lastLogTime = now
+    console.log(`[DATA-LOG] Saved ${recentCandles.length} candles and ${signal ? '1 signal' : 'no signal'}`)
+  } catch (error) {
+    console.error('[DATA-LOG] Error logging data:', error)
+  }
+}
+
+// ============================================================================
 // API HANDLERS
 // ============================================================================
 
@@ -1175,6 +1238,9 @@ export async function GET(request: NextRequest) {
 
     // Log dual analysis results
     console.log(`[DUAL-TRADE] ES: ${esAnalysis.signal ? esAnalysis.signal.patternId : 'NO SIGNAL'} | NQ: ${nqAnalysis.signal ? nqAnalysis.signal.patternId : 'NO SIGNAL'}`)
+
+    // LOG MARKET DATA for future strategy testing (every 5 minutes)
+    logMarketData(candles, signal, regime)
 
     // World-class regime from ES analysis
     const worldClassRegime = worldClassResult.regime
@@ -1248,6 +1314,27 @@ export async function GET(request: NextRequest) {
           pnl: pnl,
           message: exitReason
         }).catch(err => console.error('[Telegram] Exit notification failed:', err))
+
+        // LOG TRADE for future analysis
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+        fetch(`${baseUrl}/api/stuntman/data-logger`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'trade',
+            data: {
+              patternId: currentPosition.patternId || 'UNKNOWN',
+              direction: direction,
+              entryPrice: entryPrice,
+              stopLoss: stopLoss,
+              takeProfit: takeProfit,
+              exitPrice: exitPrice,
+              exitReason: exitReason,
+              pnl: pnl,
+              regime: regime
+            }
+          })
+        }).catch(() => {})
 
         console.log(`[POSITION MONITOR] State updated. PnL: $${pnl.toFixed(2)}. Total: $${closedState.totalPnL.toFixed(2)}`)
       }

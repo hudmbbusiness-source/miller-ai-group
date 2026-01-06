@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
     const { type, data } = body
 
     if (type === 'candles') {
-      // Save candle data for future backtesting
+      // Save candle data for future backtesting (using simple table)
       const { error } = await supabase
-        .from('stuntman_market_data')
+        .from('stuntman_market_data_simple')
         .upsert(
           data.map((c: CandleData) => ({
             timestamp: new Date(c.time).toISOString(),
@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (type === 'signal') {
-      // Log signal generated
+      // Log signal generated (using simple table)
       const { error } = await supabase
-        .from('stuntman_signals')
+        .from('stuntman_signals_simple')
         .insert({
           timestamp: new Date().toISOString(),
           pattern_id: data.patternId,
@@ -90,9 +90,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (type === 'trade') {
-      // Log trade executed
+      // Log trade executed (using simple table)
       const { error } = await supabase
-        .from('stuntman_trades')
+        .from('stuntman_trades_simple')
         .insert({
           timestamp: new Date().toISOString(),
           pattern_id: data.patternId,
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     if (type === 'candles') {
       const { data, error } = await supabase
-        .from('stuntman_market_data')
+        .from('stuntman_market_data_simple')
         .select('*')
         .gte('timestamp', since.toISOString())
         .order('timestamp', { ascending: true })
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
 
     if (type === 'signals') {
       const { data, error } = await supabase
-        .from('stuntman_signals')
+        .from('stuntman_signals_simple')
         .select('*')
         .gte('timestamp', since.toISOString())
         .order('timestamp', { ascending: false })
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
 
     if (type === 'trades') {
       const { data, error } = await supabase
-        .from('stuntman_trades')
+        .from('stuntman_trades_simple')
         .select('*')
         .gte('timestamp', since.toISOString())
         .order('timestamp', { ascending: false })
@@ -162,9 +162,9 @@ export async function GET(request: NextRequest) {
 
     // Summary
     const [candles, signals, trades] = await Promise.all([
-      supabase.from('stuntman_market_data').select('*', { count: 'exact', head: true }).gte('timestamp', since.toISOString()),
-      supabase.from('stuntman_signals').select('*', { count: 'exact', head: true }).gte('timestamp', since.toISOString()),
-      supabase.from('stuntman_trades').select('*').gte('timestamp', since.toISOString()),
+      supabase.from('stuntman_market_data_simple').select('*', { count: 'exact', head: true }).gte('timestamp', since.toISOString()),
+      supabase.from('stuntman_signals_simple').select('*', { count: 'exact', head: true }).gte('timestamp', since.toISOString()),
+      supabase.from('stuntman_trades_simple').select('*').gte('timestamp', since.toISOString()),
     ])
 
     const tradeData = trades.data || []

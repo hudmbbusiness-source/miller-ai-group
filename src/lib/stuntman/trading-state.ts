@@ -75,9 +75,9 @@ export interface TradingState {
   accountId: string
 }
 
-// Default state
+// Default state - NOTE: accountId should be set from environment, not hardcoded
 const DEFAULT_STATE: TradingState = {
-  enabled: false,
+  enabled: false, // CRITICAL: Default to DISABLED for safety
   currentPosition: null,
   dailyTrades: 0,
   dailyPnL: 0,
@@ -88,7 +88,7 @@ const DEFAULT_STATE: TradingState = {
   totalLosses: 0,
   tradeHistory: [],
   lastUpdated: new Date().toISOString(),
-  accountId: 'APEX-456334'
+  accountId: process.env.APEX_ACCOUNT_ID || 'NOT_CONFIGURED' // NO hardcoded fallback
 }
 
 // In-memory cache

@@ -65,12 +65,19 @@ export interface PickMyTradePayload {
 }
 
 export interface TradeResult {
-  success: boolean;
-  orderId?: string;
-  message: string;
+  // EXECUTION STATE - Based on PickMyTrade response ONLY
+  // NOTE: This does NOT confirm Rithmic fill - only that PickMyTrade accepted the request
+  success: boolean;              // True = PickMyTrade accepted (HTTP 200 + no error message)
+  orderId?: string;              // Order ID from PickMyTrade (NOT Rithmic order ID)
+  message: string;               // Human-readable status
   timestamp: number;
   signal: TradeSignal;
-  response?: any;
+  response?: any;                // Raw PickMyTrade response for debugging
+
+  // EXECUTION VERIFICATION FLAGS
+  pickMyTradeAccepted: boolean;  // PickMyTrade API returned success
+  rithmicConfirmed: boolean;     // ALWAYS FALSE - we cannot verify Rithmic fills via API
+  warningMessage?: string;       // Any warning from PickMyTrade (e.g., "USER HAS NO PERMISSION")
 }
 
 // =============================================================================
@@ -164,41 +171,82 @@ export class PickMyTradeClient {
 
       const responseData = await response.json();
 
-      if (response.ok) {
+      // =======================================================================
+      // CRITICAL: Parse PickMyTrade response and check for ACTUAL success
+      // HTTP 200 does NOT mean the order was filled by Rithmic!
+      // =======================================================================
+
+      // Check for error messages in response (PickMyTrade returns 200 even for failures)
+      const responseMessage = responseData?.message || responseData?.msg || '';
+      const hasPermissionError = responseMessage.toLowerCase().includes('permission') ||
+                                  responseMessage.toLowerCase().includes('denied') ||
+                                  responseMessage.toLowerCase().includes('not allowed');
+      const hasPriceError = responseMessage.toLowerCase().includes('price not found') ||
+                            responseMessage.toLowerCase().includes('invalid price');
+      const hasAccountError = responseMessage.toLowerCase().includes('account') ||
+                              responseMessage.toLowerCase().includes('invalid') ||
+                              responseMessage.toLowerCase().includes('not found');
+
+      const hasAnyError = hasPermissionError || hasPriceError || hasAccountError ||
+                          responseMessage.toLowerCase().includes('error') ||
+                          responseMessage.toLowerCase().includes('fail') ||
+                          responseMessage.toLowerCase().includes('reject');
+
+      if (response.ok && !hasAnyError) {
         this.lastTradeTime = Date.now();
         this.dailyTrades++;
 
         const result: TradeResult = {
           success: true,
-          orderId: responseData.orderId || `PMT-${Date.now()}`,
-          message: `Order executed: ${signal.action} ${quantity}x ${signal.symbol}`,
+          orderId: responseData.orderId, // DO NOT generate fake IDs
+          message: `Order SENT to PickMyTrade: ${signal.action} ${quantity}x ${signal.symbol} (VERIFY IN RITHMIC/APEX)`,
           timestamp: Date.now(),
           signal,
           response: responseData,
+          pickMyTradeAccepted: true,
+          rithmicConfirmed: false, // WE CANNOT VERIFY THIS
+          warningMessage: undefined,
         };
 
         this.tradeHistory.push(result);
-        console.log(`[PickMyTrade] Success:`, result.message);
+        console.log(`[PickMyTrade] SENT (not confirmed):`, result.message);
+        console.warn(`[PickMyTrade] WARNING: Order sent but Rithmic fill NOT verified. Check Apex account manually.`);
         return result;
       } else {
+        // CRITICAL: Order was REJECTED - halt trading immediately
+        console.error(`[PickMyTrade] ORDER REJECTED:`, responseMessage);
+
+        // HALT AUTO-TRADING ON ANY REJECTION
+        this.config.enabled = false;
+        console.error(`[PickMyTrade] AUTO-TRADING HALTED due to order rejection`);
+
         const result: TradeResult = {
           success: false,
-          message: responseData.message || 'Order rejected',
+          message: responseMessage || 'Order rejected by PickMyTrade',
           timestamp: Date.now(),
           signal,
           response: responseData,
+          pickMyTradeAccepted: false,
+          rithmicConfirmed: false,
+          warningMessage: responseMessage,
         };
 
         this.tradeHistory.push(result);
-        console.error(`[PickMyTrade] Failed:`, result.message);
         return result;
       }
     } catch (error) {
+      // CRITICAL: Network error - halt trading
+      console.error(`[PickMyTrade] NETWORK ERROR - HALTING TRADING`);
+      this.config.enabled = false;
+
       const result: TradeResult = {
         success: false,
         message: error instanceof Error ? error.message : 'Network error',
         timestamp: Date.now(),
         signal,
+        pickMyTradeAccepted: false,
+        rithmicConfirmed: false,
+        warningMessage: 'Network error - trading halted',
       };
 
       this.tradeHistory.push(result);

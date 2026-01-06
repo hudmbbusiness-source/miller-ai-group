@@ -74,15 +74,32 @@ import {
 // SESSION_REVERSION, TREND_PULLBACK, VOLATILITY_BREAKOUT, VWAP_DEVIATION,
 // RANGE_FADE, ORB_BREAKOUT, KILLZONE_REVERSAL
 
-// Initialize PickMyTrade client with environment variables
-const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
-const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || 'APEX-456334').trim()
-const RITHMIC_CONNECTION_NAME = (process.env.RITHMIC_CONNECTION_NAME || 'RITHMIC1').trim()
+// =============================================================================
+// CREDENTIAL VALIDATION - FAIL CLOSED IF INVALID
+// =============================================================================
 
-// DEBUG: Log what we're getting from env vars (first 4 chars only for security)
-console.log('[ENV DEBUG] PICKMYTRADE_TOKEN exists:', !!process.env.PICKMYTRADE_TOKEN)
-console.log('[ENV DEBUG] PICKMYTRADE_TOKEN length:', process.env.PICKMYTRADE_TOKEN?.length || 0)
-console.log('[ENV DEBUG] PICKMYTRADE_TOKEN preview:', process.env.PICKMYTRADE_TOKEN?.substring(0, 4) || 'EMPTY')
+const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
+const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || '').trim() // NO FALLBACK - must be explicitly set
+const RITHMIC_CONNECTION_NAME = (process.env.RITHMIC_CONNECTION_NAME || '').trim()
+
+// CRITICAL: Validate credentials at module load - FAIL CLOSED
+const CREDENTIALS_VALID = Boolean(
+  PICKMYTRADE_TOKEN &&
+  PICKMYTRADE_TOKEN.length >= 10 &&
+  APEX_ACCOUNT_ID &&
+  APEX_ACCOUNT_ID.includes('-') && // Must have format like APEX-456334-01
+  RITHMIC_CONNECTION_NAME
+)
+
+// Log credential status (masked for security)
+console.log('[CREDENTIALS] Validation:', CREDENTIALS_VALID ? 'VALID' : 'INVALID')
+console.log('[CREDENTIALS] Token:', PICKMYTRADE_TOKEN ? `${PICKMYTRADE_TOKEN.substring(0, 4)}...` : 'MISSING')
+console.log('[CREDENTIALS] Account:', APEX_ACCOUNT_ID || 'MISSING')
+console.log('[CREDENTIALS] Connection:', RITHMIC_CONNECTION_NAME || 'MISSING')
+
+if (!CREDENTIALS_VALID) {
+  console.error('[CREDENTIALS] SYSTEM NOT SAFE TO TRADE - Missing or invalid credentials')
+}
 
 let pickMyTradeClient: PickMyTradeClient | null = null
 
@@ -1440,6 +1457,14 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // =======================================================================
+      // CREDENTIAL VALIDATION - FAIL CLOSED
+      // =======================================================================
+      if (!CREDENTIALS_VALID) {
+        console.error('[SAFETY] BLOCKING TRADE - Credentials not valid')
+        continue // Skip this instrument
+      }
+
       if (
         isEnabled &&
         instrumentSignal &&
@@ -1573,24 +1598,30 @@ export async function GET(request: NextRequest) {
       }
     } // End of dual instrument loop
 
-    // Check PickMyTrade connection
+    // Check PickMyTrade connection and credential validity
     const pmtClient = getPickMyTradeClient()
     const pickMyTradeStatus = pmtClient ? {
       connected: true,
+      credentialsValid: CREDENTIALS_VALID,
       token: PICKMYTRADE_TOKEN ? `${PICKMYTRADE_TOKEN.substring(0, 4)}...${PICKMYTRADE_TOKEN.slice(-4)}` : 'NOT SET',
       tokenLength: PICKMYTRADE_TOKEN?.length || 0,
-      account: APEX_ACCOUNT_ID,
-      connectionName: RITHMIC_CONNECTION_NAME,
-      enabled: pmtClient.isEnabled
+      account: APEX_ACCOUNT_ID || 'NOT_CONFIGURED',
+      connectionName: RITHMIC_CONNECTION_NAME || 'NOT_CONFIGURED',
+      enabled: pmtClient.isEnabled,
+      safeToTrade: CREDENTIALS_VALID && pmtClient.isEnabled,
+      warning: !CREDENTIALS_VALID ? 'CREDENTIALS INVALID - TRADING BLOCKED' : undefined
     } : {
       connected: false,
+      credentialsValid: false,
       token: 'NOT SET',
       tokenLength: process.env.PICKMYTRADE_TOKEN?.length || 0,
       tokenExists: !!process.env.PICKMYTRADE_TOKEN,
       rawEnvPreview: process.env.PICKMYTRADE_TOKEN?.substring(0, 8) || 'EMPTY',
-      account: APEX_ACCOUNT_ID,
-      connectionName: RITHMIC_CONNECTION_NAME,
-      enabled: false
+      account: APEX_ACCOUNT_ID || 'NOT_CONFIGURED',
+      connectionName: RITHMIC_CONNECTION_NAME || 'NOT_CONFIGURED',
+      enabled: false,
+      safeToTrade: false,
+      warning: 'PICKMYTRADE NOT CONFIGURED - TRADING BLOCKED'
     }
 
     // Use updated state if position was opened, otherwise use original state

@@ -48,6 +48,24 @@ import {
   OpenPosition,
 } from '@/lib/stuntman/trading-state'
 
+// WORLD-CLASS STRATEGIES - All 11 tested strategies
+import {
+  generateAllWorldClassSignals,
+  classifyMarketRegime,
+  StrategySignal,
+  RegimeAnalysis,
+  MarketRegimeType,
+  PropFirmRiskState,
+  TradeQualityScore,
+} from '@/lib/stuntman/world-class-strategies'
+
+// ============================================================================
+// WORLD-CLASS STRATEGY INTEGRATION - ALL 11 STRATEGIES
+// ============================================================================
+// BOS_CONTINUATION, CHOCH_REVERSAL, FAILED_BREAKOUT, LIQUIDITY_SWEEP,
+// SESSION_REVERSION, TREND_PULLBACK, VOLATILITY_BREAKOUT, VWAP_DEVIATION,
+// RANGE_FADE, ORB_BREAKOUT, KILLZONE_REVERSAL
+
 // Initialize PickMyTrade client with environment variables
 const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
 const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || 'APEX-456334').trim()
@@ -575,6 +593,304 @@ async function fetchRealtimeData(): Promise<Candle[]> {
 }
 
 // ============================================================================
+// MULTI-TIMEFRAME DATA FETCHING FOR WORLD-CLASS STRATEGIES
+// ============================================================================
+
+/**
+ * Fetch candles at a specific interval
+ */
+async function fetchCandlesAtInterval(interval: '1m' | '5m' | '15m'): Promise<Candle[]> {
+  const now = Math.floor(Date.now() / 1000)
+  const start = now - (5 * 24 * 60 * 60) // 5 days
+
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=${start}&period2=${now}&interval=${interval}&includePrePost=false`
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+      },
+      cache: 'no-store'
+    })
+
+    if (!response.ok) {
+      console.error(`[Data] SPY ${interval} HTTP error: ${response.status}`)
+      return []
+    }
+
+    const data = await response.json()
+    const result = data.chart?.result?.[0]
+
+    if (!result?.timestamp || !result?.indicators?.quote?.[0]) {
+      return []
+    }
+
+    const timestamps = result.timestamp
+    const quote = result.indicators.quote[0]
+    const candles: Candle[] = []
+
+    for (let i = 0; i < timestamps.length; i++) {
+      if (quote.open[i] && quote.high[i] && quote.low[i] && quote.close[i]) {
+        const date = new Date(timestamps[i] * 1000)
+        const estDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+
+        candles.push({
+          time: timestamps[i] * 1000,
+          open: quote.open[i] * 10, // Scale SPY to ES
+          high: quote.high[i] * 10,
+          low: quote.low[i] * 10,
+          close: quote.close[i] * 10,
+          volume: quote.volume[i] || 0,
+          hour: estDate.getHours() + estDate.getMinutes() / 60,
+        })
+      }
+    }
+
+    return candles
+  } catch (error) {
+    console.error(`[Data] SPY ${interval} error:`, error)
+    return []
+  }
+}
+
+/**
+ * Fetch all timeframes for world-class strategies
+ */
+async function fetchMultiTimeframeData(): Promise<{
+  candles1m: Candle[]
+  candles5m: Candle[]
+  candles15m: Candle[]
+}> {
+  // Fetch all timeframes in parallel
+  const [candles1m, candles5m, candles15m] = await Promise.all([
+    fetchCandlesAtInterval('1m'),
+    fetchCandlesAtInterval('5m'),
+    fetchCandlesAtInterval('15m')
+  ])
+
+  return { candles1m, candles5m, candles15m }
+}
+
+/**
+ * Calculate Opening Range Breakout data (9:30-9:45 AM EST)
+ */
+function calculateORBData(candles: Candle[]): { high: number; low: number; formed: boolean } {
+  const now = new Date()
+  const estDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const today = estDate.toDateString()
+
+  let orbHigh = 0
+  let orbLow = Infinity
+  let hasORBCandles = false
+
+  for (const candle of candles) {
+    const candleDate = new Date(candle.time)
+    const candleEST = new Date(candleDate.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+
+    // Only today's 9:30-9:45 AM candles
+    if (candleEST.toDateString() === today && candle.hour >= 9.5 && candle.hour < 9.75) {
+      orbHigh = Math.max(orbHigh, candle.high)
+      orbLow = Math.min(orbLow, candle.low)
+      hasORBCandles = true
+    }
+  }
+
+  const estHour = estDate.getHours() + estDate.getMinutes() / 60
+  const orbFormed = hasORBCandles && estHour >= 9.75 // ORB formed after 9:45 AM
+
+  return {
+    high: orbHigh > 0 ? orbHigh : 0,
+    low: orbLow < Infinity ? orbLow : 0,
+    formed: orbFormed
+  }
+}
+
+/**
+ * Calculate session highs/lows (Asia, London, NY)
+ */
+function calculateSessionData(candles: Candle[]): {
+  asia: { high: number; low: number }
+  london: { high: number; low: number }
+  ny: { high: number; low: number }
+} {
+  const now = new Date()
+  const estDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const today = estDate.toDateString()
+
+  const sessions = {
+    asia: { high: 0, low: Infinity },    // 7pm - 2am ET (previous day evening to early morning)
+    london: { high: 0, low: Infinity },  // 2am - 8am ET
+    ny: { high: 0, low: Infinity }       // 8am - 4pm ET
+  }
+
+  for (const candle of candles) {
+    const candleDate = new Date(candle.time)
+    const candleEST = new Date(candleDate.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+
+    // Only recent candles (today and yesterday for Asia session)
+    const dayDiff = Math.abs(estDate.getDate() - candleEST.getDate())
+    if (dayDiff > 1) continue
+
+    const hour = candle.hour
+
+    // Asia: 7pm-2am (19:00 - 02:00)
+    if (hour >= 19 || hour < 2) {
+      sessions.asia.high = Math.max(sessions.asia.high, candle.high)
+      sessions.asia.low = Math.min(sessions.asia.low, candle.low)
+    }
+    // London: 2am-8am
+    else if (hour >= 2 && hour < 8) {
+      sessions.london.high = Math.max(sessions.london.high, candle.high)
+      sessions.london.low = Math.min(sessions.london.low, candle.low)
+    }
+    // NY: 8am-4pm (today only)
+    else if (hour >= 8 && hour < 16 && candleEST.toDateString() === today) {
+      sessions.ny.high = Math.max(sessions.ny.high, candle.high)
+      sessions.ny.low = Math.min(sessions.ny.low, candle.low)
+    }
+  }
+
+  // Fix infinities
+  return {
+    asia: {
+      high: sessions.asia.high || 0,
+      low: sessions.asia.low === Infinity ? 0 : sessions.asia.low
+    },
+    london: {
+      high: sessions.london.high || 0,
+      low: sessions.london.low === Infinity ? 0 : sessions.london.low
+    },
+    ny: {
+      high: sessions.ny.high || 0,
+      low: sessions.ny.low === Infinity ? 0 : sessions.ny.low
+    }
+  }
+}
+
+/**
+ * Calculate VWAP with standard deviation for world-class strategies
+ */
+function calculateVWAPData(candles: Candle[]): { vwap: number; stdDev: number } {
+  if (candles.length === 0) return { vwap: 0, stdDev: 0 }
+
+  const now = new Date()
+  const estDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const today = estDate.toDateString()
+
+  // Filter to today's RTH candles only
+  const todayCandles = candles.filter(c => {
+    const candleDate = new Date(c.time)
+    const candleEST = new Date(candleDate.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    return candleEST.toDateString() === today && c.hour >= 9.5 && c.hour < 16
+  })
+
+  if (todayCandles.length === 0) {
+    // Use last 50 candles if no today candles
+    const recentCandles = candles.slice(-50)
+    const avgPrice = recentCandles.reduce((s, c) => s + c.close, 0) / recentCandles.length
+    const variance = recentCandles.reduce((s, c) => s + Math.pow(c.close - avgPrice, 2), 0) / recentCandles.length
+    return { vwap: avgPrice, stdDev: Math.sqrt(variance) }
+  }
+
+  // Calculate VWAP
+  let cumVolume = 0
+  let cumTP = 0
+  const typicalPrices: number[] = []
+
+  for (const candle of todayCandles) {
+    const tp = (candle.high + candle.low + candle.close) / 3
+    const vol = candle.volume || 1
+    cumVolume += vol
+    cumTP += tp * vol
+    typicalPrices.push(tp)
+  }
+
+  const vwap = cumTP / cumVolume
+
+  // Calculate standard deviation of typical prices from VWAP
+  const variance = typicalPrices.reduce((s, tp) => s + Math.pow(tp - vwap, 2), 0) / typicalPrices.length
+  const stdDev = Math.sqrt(variance)
+
+  return { vwap, stdDev }
+}
+
+/**
+ * Build PropFirmRiskState for Apex 150K evaluation
+ */
+function buildPropFirmRiskState(state: TradingState): PropFirmRiskState {
+  const APEX_150K_CONFIG = {
+    startingBalance: 150000,
+    maxDrawdown: 6000, // Trailing drawdown
+    profitTarget: 9000
+  }
+
+  const accountBalance = APEX_150K_CONFIG.startingBalance + state.totalPnL
+  const currentDrawdown = state.totalPnL < 0 ? Math.abs(state.totalPnL) : 0
+  const drawdownPercentUsed = (currentDrawdown / APEX_150K_CONFIG.maxDrawdown) * 100
+
+  // Determine risk level
+  let riskLevel: 'SAFE' | 'CAUTION' | 'WARNING' | 'DANGER' | 'STOPPED'
+  let positionSizeMultiplier = 1.0
+  let canTrade = true
+  let recommendation = 'Trading allowed'
+
+  if (drawdownPercentUsed >= 100) {
+    riskLevel = 'STOPPED'
+    canTrade = false
+    positionSizeMultiplier = 0
+    recommendation = 'MAX DRAWDOWN REACHED - STOP TRADING'
+  } else if (drawdownPercentUsed >= 80) {
+    riskLevel = 'DANGER'
+    positionSizeMultiplier = 0.25
+    recommendation = 'DANGER: 80%+ drawdown used - minimal size only'
+  } else if (drawdownPercentUsed >= 60) {
+    riskLevel = 'WARNING'
+    positionSizeMultiplier = 0.5
+    recommendation = 'WARNING: 60%+ drawdown - reduce size'
+  } else if (drawdownPercentUsed >= 40) {
+    riskLevel = 'CAUTION'
+    positionSizeMultiplier = 0.75
+    recommendation = 'CAUTION: 40%+ drawdown - trade carefully'
+  } else {
+    riskLevel = 'SAFE'
+    positionSizeMultiplier = 1.0
+    recommendation = 'Safe to trade full size'
+  }
+
+  // Count consecutive losses
+  let consecutiveLosses = 0
+  for (let i = state.tradeHistory.length - 1; i >= 0; i--) {
+    if (state.tradeHistory[i].pnl < 0) {
+      consecutiveLosses++
+    } else {
+      break
+    }
+  }
+
+  // Reduce size after consecutive losses
+  if (consecutiveLosses >= 3) {
+    positionSizeMultiplier *= 0.5
+    recommendation += ` (${consecutiveLosses} consecutive losses - half size)`
+  }
+
+  return {
+    accountBalance,
+    startingBalance: APEX_150K_CONFIG.startingBalance,
+    trailingDrawdown: APEX_150K_CONFIG.maxDrawdown,
+    currentDrawdown,
+    drawdownPercentUsed,
+    dailyPnL: state.dailyPnL,
+    consecutiveLosses,
+    dailyTradeCount: state.dailyTrades,
+    canTrade,
+    riskLevel,
+    positionSizeMultiplier,
+    recommendation
+  }
+}
+
+// ============================================================================
 // LIVE TRADING STATE - NOW PERSISTED IN SUPABASE
 // ============================================================================
 // ALL state is now stored in Supabase via trading-state.ts
@@ -591,11 +907,17 @@ export async function GET(request: NextRequest) {
     const state = await loadTradingState()
     const { enabled: isEnabled, currentPosition, dailyTrades, dailyPnL, totalPnL, tradeHistory } = state
 
-    const candles = await fetchRealtimeData()
+    // ========================================================================
+    // WORLD-CLASS STRATEGIES: FETCH MULTI-TIMEFRAME DATA
+    // ========================================================================
+    const { candles1m, candles5m, candles15m } = await fetchMultiTimeframeData()
+
+    // Use 5m as primary candles for indicator calculation (best balance)
+    const candles = candles5m.length > 20 ? candles5m : await fetchRealtimeData()
     const lastIndex = candles.length - 1
     const lastCandle = candles[lastIndex]
 
-    // Calculate indicators
+    // Calculate indicators for display
     const ema20 = calculateEMA(candles, 20)
     const ema50 = calculateEMA(candles, 50)
     const rsi = calculateRSI(candles, 14)
@@ -603,18 +925,59 @@ export async function GET(request: NextRequest) {
     const vwap = calculateVWAP(candles)
     const bb = calculateBB(candles, 20)
 
-    // Detect current regime
-    const regime = detectRegime(ema20, ema50, rsi, lastIndex)
+    // ========================================================================
+    // WORLD-CLASS STRATEGIES: PREPARE ALL REQUIRED DATA
+    // ========================================================================
+    const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
+    const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
+    const vwapData = calculateVWAPData(candles5m.length > 0 ? candles5m : candles)
+    const propFirmRisk = buildPropFirmRiskState(state)
 
-    // Check for signal
+    // ========================================================================
+    // WORLD-CLASS STRATEGIES: GENERATE ALL 11 STRATEGY SIGNALS
+    // ========================================================================
+    // BOS_CONTINUATION, CHOCH_REVERSAL, FAILED_BREAKOUT, LIQUIDITY_SWEEP,
+    // SESSION_REVERSION, TREND_PULLBACK, VOLATILITY_BREAKOUT, VWAP_DEVIATION,
+    // RANGE_FADE, ORB_BREAKOUT, KILLZONE_REVERSAL
+
+    const worldClassResult = generateAllWorldClassSignals(
+      candles1m.length >= 100 ? candles1m : candles,
+      candles5m.length >= 50 ? candles5m : candles,
+      candles15m.length >= 20 ? candles15m : candles,
+      orbData,
+      sessionData,
+      vwapData,
+      propFirmRisk
+    )
+
+    // Get best signal (highest quality score)
     let signal: Signal | null = null
+    let bestWorldClassSignal: StrategySignal | null = null
+    let signalQuality: TradeQualityScore | null = null
 
-    if (regime === 'STRONG_UPTREND' || regime === 'UPTREND') {
-      signal = detectLongSignal(candles, lastIndex, ema20, ema50, bb, vwap, atr, rsi, regime)
-    } else if (regime === 'DOWNTREND' || regime === 'STRONG_DOWNTREND') {
-      signal = detectShortSignal(candles, lastIndex, ema20, ema50, bb, vwap, atr, regime)
+    if (worldClassResult.signals.length > 0) {
+      // Sort by quality score, take the best
+      const sortedSignals = worldClassResult.signals.sort((a, b) => b.quality.overall - a.quality.overall)
+      const best = sortedSignals[0]
+      bestWorldClassSignal = best.signal
+      signalQuality = best.quality
+
+      // Convert to Signal format for execution
+      signal = {
+        patternId: best.signal.type,
+        direction: best.signal.direction,
+        entryPrice: best.signal.entry.price,
+        stopLoss: best.signal.stopLoss.price,
+        takeProfit: best.signal.targets[0]?.price || best.signal.entry.price + (best.signal.direction === 'LONG' ? atr[lastIndex] * 2 : -atr[lastIndex] * 2),
+        confidence: best.signal.confidence,
+        reason: `${best.signal.type} (Quality: ${best.quality.overall}/100, Regime: ${worldClassResult.regime.current})`,
+        regime: detectRegime(ema20, ema50, rsi, lastIndex)
+      }
     }
-    // SIDEWAYS = no signal (never forces trades)
+
+    // Regime from world-class classifier
+    const worldClassRegime = worldClassResult.regime
+    const regime = detectRegime(ema20, ema50, rsi, lastIndex) // Keep old regime for UI compatibility
 
     const now = new Date()
     const estHour = parseFloat(now.toLocaleString('en-US', {
@@ -782,6 +1145,40 @@ export async function GET(request: NextRequest) {
         confidence: signal.confidence,
         reason: signal.reason
       } : null,
+      // WORLD-CLASS STRATEGIES INFO
+      worldClassStrategies: {
+        active: true,
+        strategiesAvailable: [
+          'BOS_CONTINUATION', 'CHOCH_REVERSAL', 'FAILED_BREAKOUT', 'LIQUIDITY_SWEEP',
+          'SESSION_REVERSION', 'TREND_PULLBACK', 'VOLATILITY_BREAKOUT', 'VWAP_DEVIATION',
+          'RANGE_FADE', 'ORB_BREAKOUT', 'KILLZONE_REVERSAL'
+        ],
+        signalsFound: worldClassResult.signals.length,
+        allSignals: worldClassResult.signals.map(s => ({
+          type: s.signal.type,
+          direction: s.signal.direction,
+          quality: s.quality.overall,
+          confidence: s.signal.confidence,
+          recommendation: s.quality.recommendation
+        })),
+        regime: {
+          current: worldClassRegime.current,
+          confidence: worldClassRegime.confidence,
+          trendStrength: worldClassRegime.trendStrength,
+          volatilityPercentile: worldClassRegime.volatilityPercentile,
+          tradingRecommendation: worldClassRegime.tradingRecommendation
+        },
+        propFirmRisk: {
+          riskLevel: propFirmRisk.riskLevel,
+          drawdownUsed: propFirmRisk.drawdownPercentUsed.toFixed(1) + '%',
+          positionMultiplier: propFirmRisk.positionSizeMultiplier,
+          canTrade: propFirmRisk.canTrade,
+          recommendation: propFirmRisk.recommendation
+        },
+        orbData: orbData,
+        sessionData: sessionData,
+        bestSignalQuality: signalQuality
+      },
       message: autoExecutionResult?.executed
         ? autoExecutionResult.message
         : !withinTradingHours
@@ -826,8 +1223,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'execute' && currentState.enabled) {
-      // Get current signal
-      const candles = await fetchRealtimeData()
+      // ========================================================================
+      // WORLD-CLASS STRATEGIES: GET SIGNAL FOR EXECUTION
+      // ========================================================================
+      const { candles1m, candles5m, candles15m } = await fetchMultiTimeframeData()
+      const candles = candles5m.length > 20 ? candles5m : await fetchRealtimeData()
       const lastIndex = candles.length - 1
 
       const ema20 = calculateEMA(candles, 20)
@@ -837,19 +1237,47 @@ export async function POST(request: NextRequest) {
       const vwap = calculateVWAP(candles)
       const bb = calculateBB(candles, 20)
 
-      const regime = detectRegime(ema20, ema50, rsi, lastIndex)
+      // Prepare world-class data
+      const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
+      const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
+      const vwapData = calculateVWAPData(candles5m.length > 0 ? candles5m : candles)
+      const propFirmRisk = buildPropFirmRiskState(currentState)
 
+      // Generate all 11 strategy signals
+      const worldClassResult = generateAllWorldClassSignals(
+        candles1m.length >= 100 ? candles1m : candles,
+        candles5m.length >= 50 ? candles5m : candles,
+        candles15m.length >= 20 ? candles15m : candles,
+        orbData,
+        sessionData,
+        vwapData,
+        propFirmRisk
+      )
+
+      // Get best signal
       let signal: Signal | null = null
-      if (regime === 'STRONG_UPTREND' || regime === 'UPTREND') {
-        signal = detectLongSignal(candles, lastIndex, ema20, ema50, bb, vwap, atr, rsi, regime)
-      } else if (regime === 'DOWNTREND' || regime === 'STRONG_DOWNTREND') {
-        signal = detectShortSignal(candles, lastIndex, ema20, ema50, bb, vwap, atr, regime)
+      if (worldClassResult.signals.length > 0) {
+        const sortedSignals = worldClassResult.signals.sort((a, b) => b.quality.overall - a.quality.overall)
+        const best = sortedSignals[0]
+
+        signal = {
+          patternId: best.signal.type,
+          direction: best.signal.direction,
+          entryPrice: best.signal.entry.price,
+          stopLoss: best.signal.stopLoss.price,
+          takeProfit: best.signal.targets[0]?.price || best.signal.entry.price + (best.signal.direction === 'LONG' ? atr[lastIndex] * 2 : -atr[lastIndex] * 2),
+          confidence: best.signal.confidence,
+          reason: `${best.signal.type} (Quality: ${best.quality.overall}/100)`,
+          regime: detectRegime(ema20, ema50, rsi, lastIndex)
+        }
       }
 
       if (!signal) {
         return NextResponse.json({
           success: false,
-          message: `No signal available - ${regime === 'SIDEWAYS' ? 'SIDEWAYS market, not trading' : 'waiting for setup'}`
+          message: `No signal available - ${worldClassResult.reason || 'waiting for setup'}`,
+          worldClassRegime: worldClassResult.regime.current,
+          strategiesChecked: 11
         })
       }
 

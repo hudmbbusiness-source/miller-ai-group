@@ -2127,6 +2127,94 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Test SELL order specifically - to diagnose permission issue
+    if (action === 'test_sell') {
+      const contractSymbol = getCurrentContractSymbol('ES')
+      const candles = await fetchRealtimeData()
+      const lastCandle = candles[candles.length - 1]
+      const currentPrice = lastCandle.close
+
+      const payload = {
+        symbol: contractSymbol,
+        date: new Date().toISOString(),
+        data: 'sell',  // SELL instead of buy
+        quantity: 1,
+        risk_percentage: 0,
+        price: currentPrice,
+        tp: currentPrice - 5,  // TP below for short
+        percentage_tp: 0,
+        dollar_tp: 0,
+        sl: currentPrice + 10,  // SL above for short
+        dollar_sl: 0,
+        percentage_sl: 0,
+        order_type: 'MKT',
+        update_tp: false,
+        update_sl: false,
+        token: PICKMYTRADE_TOKEN,
+        duplicate_position_allow: false,
+        platform: 'RITHMIC',
+        connection_name: RITHMIC_CONNECTION_NAME,
+        reverse_order_close: true,
+        multiple_accounts: [
+          {
+            token: PICKMYTRADE_TOKEN,
+            account_id: APEX_ACCOUNT_ID,
+            connection_name: RITHMIC_CONNECTION_NAME,
+            quantity_multiplier: 1,
+          },
+        ],
+      }
+
+      console.log(`[TEST SELL] Sending to PickMyTrade API...`)
+      console.log(`[TEST SELL] Account: ${APEX_ACCOUNT_ID}`)
+      console.log(`[TEST SELL] Payload:`, JSON.stringify(payload, null, 2))
+
+      try {
+        const response = await fetch('https://api.pickmytrade.io/v2/add-trade-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        })
+
+        const responseText = await response.text()
+        console.log(`[TEST SELL] Response status: ${response.status}`)
+        console.log(`[TEST SELL] Response body: ${responseText}`)
+
+        let responseData
+        try {
+          responseData = JSON.parse(responseText)
+        } catch {
+          responseData = { raw: responseText }
+        }
+
+        return NextResponse.json({
+          success: response.ok,
+          message: response.ok ? 'SELL API call successful' : 'SELL API call failed',
+          orderType: 'SELL',
+          debug: {
+            apiEndpoint: 'https://api.pickmytrade.io/v2/add-trade-data',
+            tokenUsed: `${PICKMYTRADE_TOKEN.substring(0, 8)}...`,
+            accountId: APEX_ACCOUNT_ID,
+            symbol: contractSymbol,
+            price: currentPrice,
+            httpStatus: response.status,
+            httpStatusText: response.statusText
+          },
+          payloadSent: payload,
+          apiResponse: responseData,
+          hint: 'If this fails with permission error but test (BUY) works, check PickMyTrade connection settings'
+        })
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          message: error instanceof Error ? error.message : 'Network error',
+          error: error instanceof Error ? error.stack : 'Unknown'
+        })
+      }
+    }
+
     // Test Telegram notifications
     if (action === 'test_telegram') {
       const result = await testTelegramConnection()

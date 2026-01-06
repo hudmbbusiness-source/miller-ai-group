@@ -146,6 +146,14 @@ export class PickMyTradeClient {
     try {
       console.log(`[PickMyTrade] Executing: ${signal.action} ${quantity}x ${signal.symbol}`);
 
+      // CRITICAL DEBUG: Log full payload for SELL orders to diagnose permission issue
+      if (signal.action === 'SELL') {
+        console.log(`[PickMyTrade SELL DEBUG] Full payload:`, JSON.stringify(payload, null, 2));
+        console.log(`[PickMyTrade SELL DEBUG] account_id in payload: ${payload.multiple_accounts[0].account_id}`);
+        console.log(`[PickMyTrade SELL DEBUG] connection_name: ${payload.connection_name}`);
+        console.log(`[PickMyTrade SELL DEBUG] price: ${payload.price}`);
+      }
+
       const response = await fetch(PICKMYTRADE_API, {
         method: 'POST',
         headers: {

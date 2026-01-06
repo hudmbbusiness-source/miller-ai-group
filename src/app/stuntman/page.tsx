@@ -96,7 +96,7 @@ interface Performance {
 // REAL-TIME ES FUTURES CHART - Uses EXACT same data as trading signals
 // =============================================================================
 
-function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
+function RealTimeESChart({ instrument, onPriceUpdate }: { instrument: 'ES' | 'NQ', onPriceUpdate?: (price: number) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<any>(null)
   const candleSeriesRef = useRef<any>(null)
@@ -109,6 +109,45 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
   const [chartReady, setChartReady] = useState(false)
   const [chartError, setChartError] = useState<string | null>(null)
   const [initialLoadDone, setInitialLoadDone] = useState(false)
+
+  // Zoom controls
+  const zoomIn = useCallback(() => {
+    if (chartRef.current) {
+      const timeScale = chartRef.current.timeScale()
+      const visibleRange = timeScale.getVisibleLogicalRange()
+      if (visibleRange) {
+        const rangeSize = visibleRange.to - visibleRange.from
+        const newSize = rangeSize * 0.7
+        const center = (visibleRange.from + visibleRange.to) / 2
+        timeScale.setVisibleLogicalRange({
+          from: center - newSize / 2,
+          to: center + newSize / 2
+        })
+      }
+    }
+  }, [])
+
+  const zoomOut = useCallback(() => {
+    if (chartRef.current) {
+      const timeScale = chartRef.current.timeScale()
+      const visibleRange = timeScale.getVisibleLogicalRange()
+      if (visibleRange) {
+        const rangeSize = visibleRange.to - visibleRange.from
+        const newSize = rangeSize * 1.3
+        const center = (visibleRange.from + visibleRange.to) / 2
+        timeScale.setVisibleLogicalRange({
+          from: center - newSize / 2,
+          to: center + newSize / 2
+        })
+      }
+    }
+  }, [])
+
+  const resetZoom = useCallback(() => {
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent()
+    }
+  }, [])
 
   // Fetch ES futures data from Yahoo Finance (same source as trading signals)
   const fetchESData = useCallback(async () => {
@@ -334,6 +373,10 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
       const lastCandle = candles[candles.length - 1]
       if (lastCandle) {
         setLastPrice(lastCandle.close)
+        // Notify parent of price update for P&L calculation
+        if (onPriceUpdate) {
+          onPriceUpdate(lastCandle.close)
+        }
         const date = new Date(lastCandle.time * 1000)
         setLastUpdate(date.toLocaleString('en-US', {
           timeZone: 'America/New_York',
@@ -388,6 +431,30 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
         <span className="text-green-400 ml-2 font-mono">${lastPrice.toFixed(2)}</span>
         <span className="text-gray-500 ml-2 text-xs">{lastUpdate} ET</span>
       </div>
+      {/* Zoom Controls */}
+      <div className="absolute top-2 right-36 z-10 flex items-center gap-1">
+        <button
+          onClick={zoomIn}
+          className="w-7 h-7 bg-black/80 hover:bg-white/10 rounded flex items-center justify-center text-white/70 hover:text-white text-sm font-bold"
+          title="Zoom In"
+        >
+          +
+        </button>
+        <button
+          onClick={zoomOut}
+          className="w-7 h-7 bg-black/80 hover:bg-white/10 rounded flex items-center justify-center text-white/70 hover:text-white text-sm font-bold"
+          title="Zoom Out"
+        >
+          −
+        </button>
+        <button
+          onClick={resetZoom}
+          className="px-2 h-7 bg-black/80 hover:bg-white/10 rounded flex items-center justify-center text-white/70 hover:text-white text-xs"
+          title="Reset View"
+        >
+          FIT
+        </button>
+      </div>
       {/* Data Source Badge */}
       <div className="absolute top-2 right-2 z-10 bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">
         {dataSource}
@@ -425,6 +492,9 @@ export default function StuntManDashboard() {
   // Open Positions State - CRITICAL for tracking live trades
   const [openPositions, setOpenPositions] = useState<any[]>([])
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+
+  // Current market price for P&L calculation
+  const [currentMarketPrice, setCurrentMarketPrice] = useState<number>(0)
 
   // Manual Trading State
   const [contracts, setContracts] = useState(1)
@@ -824,7 +894,7 @@ export default function StuntManDashboard() {
         </div>
 
         {/* ================================================================ */}
-        {/* OPEN POSITIONS - CRITICAL VISIBILITY */}
+        {/* OPEN POSITIONS - CRITICAL VISIBILITY WITH LIVE P&L */}
         {/* ================================================================ */}
         {openPositions.length > 0 && (
           <div className="mb-4 p-4 bg-red-500/10 border-2 border-red-500/50 rounded-xl">
@@ -841,22 +911,90 @@ export default function StuntManDashboard() {
               </button>
             </div>
             <div className="space-y-2">
-              {openPositions.map(pos => (
-                <div key={pos.id} className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <span className={`text-xl font-bold ${pos.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {pos.direction}
-                    </span>
-                    <span className="text-white">{pos.contracts}x {pos.symbol}</span>
-                    <span className="text-white/60">@ {pos.entryPrice?.toFixed(2)}</span>
+              {openPositions.map(pos => {
+                // Calculate unrealized P&L based on current market price
+                const entryPrice = pos.entryPrice || 0
+                const contracts = pos.contracts || 1
+                const pointValue = 50 // ES point value ($50 per point)
+
+                // Calculate P&L: (currentPrice - entryPrice) * pointValue * contracts
+                // For SHORT: (entryPrice - currentPrice) * pointValue * contracts
+                let unrealizedPnL = 0
+                if (currentMarketPrice > 0 && entryPrice > 0) {
+                  if (pos.direction === 'LONG') {
+                    unrealizedPnL = (currentMarketPrice - entryPrice) * pointValue * contracts
+                  } else {
+                    unrealizedPnL = (entryPrice - currentMarketPrice) * pointValue * contracts
+                  }
+                }
+
+                // Calculate distance to SL and TP in points and dollars
+                const distanceToSL = pos.direction === 'LONG'
+                  ? currentMarketPrice - pos.stopLoss
+                  : pos.stopLoss - currentMarketPrice
+                const distanceToTP = pos.direction === 'LONG'
+                  ? pos.takeProfit - currentMarketPrice
+                  : currentMarketPrice - pos.takeProfit
+
+                return (
+                  <div key={pos.id} className="p-4 bg-black/30 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-4">
+                        <span className={`text-2xl font-bold ${pos.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {pos.direction}
+                        </span>
+                        <span className="text-white text-lg">{contracts}x {pos.symbol || 'ES'}</span>
+                        <span className="text-white/60">@ ${entryPrice.toFixed(2)}</span>
+                      </div>
+                      {/* UNREALIZED P&L - Big and prominent */}
+                      <div className={`text-right ${unrealizedPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <div className="text-2xl font-bold">
+                          {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-white/40">Unrealized P&L</div>
+                      </div>
+                    </div>
+
+                    {/* Progress bars to SL and TP */}
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                      {/* Stop Loss Info */}
+                      <div className="bg-red-500/10 p-2 rounded">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-red-400 font-medium">STOP LOSS</span>
+                          <span className="text-red-400">${pos.stopLoss?.toFixed(2)}</span>
+                        </div>
+                        <div className="text-xs text-white/50">
+                          {distanceToSL > 0 ? (
+                            <span className="text-emerald-400">{distanceToSL.toFixed(2)} pts safe (${(distanceToSL * pointValue * contracts).toFixed(0)})</span>
+                          ) : (
+                            <span className="text-red-400 font-bold">⚠️ STOP HIT!</span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Take Profit Info */}
+                      <div className="bg-emerald-500/10 p-2 rounded">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-emerald-400 font-medium">TAKE PROFIT</span>
+                          <span className="text-emerald-400">${pos.takeProfit?.toFixed(2)}</span>
+                        </div>
+                        <div className="text-xs text-white/50">
+                          {distanceToTP > 0 ? (
+                            <span>{distanceToTP.toFixed(2)} pts away (${(distanceToTP * pointValue * contracts).toFixed(0)})</span>
+                          ) : (
+                            <span className="text-emerald-400 font-bold">✓ TARGET HIT!</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current market price and pattern */}
+                    <div className="flex justify-between text-xs text-white/50">
+                      <span>Pattern: {pos.pattern || 'Unknown'}</span>
+                      <span>Market: ${currentMarketPrice.toFixed(2)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-red-400">SL: {pos.stopLoss?.toFixed(2)}</span>
-                    <span className="text-emerald-400">TP: {pos.takeProfit?.toFixed(2)}</span>
-                    <span className="text-white/40">{pos.pattern}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -879,7 +1017,10 @@ export default function StuntManDashboard() {
           {/* ============================================================ */}
           <div className="lg:col-span-3 bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
             <div className="h-[550px]">
-              <RealTimeESChart instrument={instrument} />
+              <RealTimeESChart
+                instrument={instrument}
+                onPriceUpdate={(price) => setCurrentMarketPrice(price)}
+              />
             </div>
           </div>
 

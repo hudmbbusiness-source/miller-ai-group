@@ -2031,8 +2031,10 @@ export async function POST(request: NextRequest) {
         reverse_order_close: true,
         multiple_accounts: [
           {
-            account_id: APEX_ACCOUNT_ID,  // FIXED: Was "id", docs say "account_id"
-            quantity: 1,
+            token: PICKMYTRADE_TOKEN,                // Required per docs
+            account_id: APEX_ACCOUNT_ID,             // Account identifier
+            connection_name: RITHMIC_CONNECTION_NAME, // Required per docs
+            quantity_multiplier: 1,                  // Was "quantity", docs say "quantity_multiplier"
           },
         ],
       }

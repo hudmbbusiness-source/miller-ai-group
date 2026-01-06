@@ -57,8 +57,10 @@ export interface PickMyTradePayload {
   connection_name: string;          // CRITICAL: Must match your Rithmic connection name
   reverse_order_close: boolean;
   multiple_accounts: {
-    account_id: string;           // FIXED: Was "id", should be "account_id"
-    quantity: number;
+    token: string;                // Required per docs
+    account_id: string;           // Account identifier
+    connection_name: string;      // Rithmic connection name
+    quantity_multiplier: number;  // Was "quantity", docs say "quantity_multiplier"
   }[];
 }
 
@@ -224,8 +226,10 @@ export class PickMyTradeClient {
       reverse_order_close: true, // Close opposite position when entering
       multiple_accounts: [
         {
-          account_id: this.config.accountId,  // FIXED: Was "id", docs say "account_id"
-          quantity: quantity,
+          token: this.config.token,                    // Required per docs
+          account_id: this.config.accountId,           // Account identifier
+          connection_name: this.config.connectionName, // Required per docs
+          quantity_multiplier: quantity,               // Was "quantity", docs say "quantity_multiplier"
         },
       ],
     };

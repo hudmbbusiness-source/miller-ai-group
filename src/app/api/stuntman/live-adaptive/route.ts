@@ -1593,8 +1593,8 @@ export async function GET(request: NextRequest) {
         takeProfit: finalState.currentPosition.takeProfit.toFixed(2),
         unrealizedPnL: propFirmRisk.unrealizedPnL.toFixed(2),
         unrealizedPnLPercent: ((propFirmRisk.unrealizedPnL / propFirmRisk.startingBalance) * 100).toFixed(3) + '%',
-        openedAt: finalState.currentPosition.openedAt || finalState.lastUpdated,
-        pattern: finalState.currentPosition.pattern || 'N/A',
+        openedAt: finalState.currentPosition.entryTime || finalState.lastUpdated,
+        pattern: finalState.currentPosition.patternId || 'N/A',
         canClose: true,
         closeAction: 'POST /api/stuntman/live-adaptive { "action": "close" }'
       }] : [],

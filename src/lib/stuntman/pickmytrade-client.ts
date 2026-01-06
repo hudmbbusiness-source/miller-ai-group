@@ -238,7 +238,7 @@ export class PickMyTradeClient {
   /**
    * Quick methods for common operations
    */
-  async buyMarket(symbol: string, quantity: number, stopLoss?: number, takeProfit?: number): Promise<TradeResult> {
+  async buyMarket(symbol: string, quantity: number, stopLoss?: number, takeProfit?: number, referencePrice?: number): Promise<TradeResult> {
     return this.executeSignal({
       action: 'BUY',
       symbol,
@@ -246,10 +246,11 @@ export class PickMyTradeClient {
       orderType: 'MKT',
       stopLoss,
       takeProfit,
+      price: referencePrice, // PickMyTrade needs reference price to avoid "Price Not Found"
     });
   }
 
-  async sellMarket(symbol: string, quantity: number, stopLoss?: number, takeProfit?: number): Promise<TradeResult> {
+  async sellMarket(symbol: string, quantity: number, stopLoss?: number, takeProfit?: number, referencePrice?: number): Promise<TradeResult> {
     return this.executeSignal({
       action: 'SELL',
       symbol,
@@ -257,6 +258,7 @@ export class PickMyTradeClient {
       orderType: 'MKT',
       stopLoss,
       takeProfit,
+      price: referencePrice, // PickMyTrade needs reference price to avoid "Price Not Found"
     });
   }
 

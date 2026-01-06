@@ -1432,19 +1432,24 @@ export async function GET(request: NextRequest) {
           try {
             let executionResult: TradeResult
 
+            // Get current market price for PickMyTrade reference (fixes "Price Not Found" error)
+            const currentPrice = analysis.candles[analysis.candles.length - 1]?.close || instrumentSignal.entryPrice
+
             if (instrumentSignal.direction === 'LONG') {
               executionResult = await client.buyMarket(
                 contractSymbol,
                 1, // Start with 1 contract per instrument
                 instrumentSignal.stopLoss,
-                instrumentSignal.takeProfit
+                instrumentSignal.takeProfit,
+                currentPrice // Reference price for PickMyTrade
               )
             } else {
               executionResult = await client.sellMarket(
                 contractSymbol,
                 1,
                 instrumentSignal.stopLoss,
-                instrumentSignal.takeProfit
+                instrumentSignal.takeProfit,
+                currentPrice // Reference price for PickMyTrade
               )
             }
 
@@ -1887,19 +1892,24 @@ export async function POST(request: NextRequest) {
         console.log(`[LiveAdaptive] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
 
         try {
+          // Use entry price as reference for PickMyTrade (fixes "Price Not Found" error)
+          const referencePrice = signal.entryPrice
+
           if (signal.direction === 'LONG') {
             executionResult = await client.buyMarket(
               contractSymbol,
               1, // Start with 1 contract for safety
               signal.stopLoss,
-              signal.takeProfit
+              signal.takeProfit,
+              referencePrice // Reference price for PickMyTrade
             )
           } else {
             executionResult = await client.sellMarket(
               contractSymbol,
               1, // Start with 1 contract for safety
               signal.stopLoss,
-              signal.takeProfit
+              signal.takeProfit,
+              referencePrice // Reference price for PickMyTrade
             )
           }
 

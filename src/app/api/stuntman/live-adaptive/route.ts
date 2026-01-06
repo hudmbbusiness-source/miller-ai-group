@@ -1534,6 +1534,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       // ========================================================================
+      // ACCOUNT BALANCE - Real-time with unrealized P&L
+      // ========================================================================
+      account: {
+        startingBalance: propFirmRisk.startingBalance,
+        currentBalance: propFirmRisk.accountBalance.toFixed(2),
+        realizedPnL: propFirmRisk.realizedPnL.toFixed(2),
+        unrealizedPnL: propFirmRisk.unrealizedPnL.toFixed(2),
+        dailyPnL: finalState.dailyPnL.toFixed(2),
+        totalPnL: finalState.totalPnL.toFixed(2),
+        drawdownUsed: propFirmRisk.drawdownPercentUsed.toFixed(1) + '%',
+        maxDrawdown: propFirmRisk.trailingDrawdown,
+        riskLevel: propFirmRisk.riskLevel,
+        canTrade: propFirmRisk.canTrade
+      },
+      // ========================================================================
       // DUAL INSTRUMENT MODE: ES AND NQ ANALYZED SIMULTANEOUSLY
       // ========================================================================
       dualTradingEnabled: true,

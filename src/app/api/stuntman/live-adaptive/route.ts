@@ -446,16 +446,44 @@ function detectLongSignal(
 let currentDataSource: 'yahoo-spy-realtime' | 'yahoo-spy-chart' | 'yahoo-es-delayed' = 'yahoo-spy-realtime'
 let dataIsDelayed = false
 
+// ============================================================================
+// DUAL INSTRUMENT TRADING - ES (S&P) AND NQ (NASDAQ) SIMULTANEOUS
+// ============================================================================
+
+type Instrument = 'ES' | 'NQ'
+
+interface InstrumentConfig {
+  symbol: string          // Yahoo symbol (SPY or QQQ)
+  scale: number           // Price multiplier (10 for SPY→ES, 40 for QQQ→NQ)
+  name: string            // Display name
+  tickValue: number       // $ per tick
+  pointValue: number      // $ per point
+}
+
+const INSTRUMENT_CONFIG: Record<Instrument, InstrumentConfig> = {
+  ES: {
+    symbol: 'SPY',
+    scale: 10,
+    name: 'E-mini S&P 500',
+    tickValue: 12.50,
+    pointValue: 50
+  },
+  NQ: {
+    symbol: 'QQQ',
+    scale: 40,
+    name: 'E-mini Nasdaq 100',
+    tickValue: 5.00,
+    pointValue: 20
+  }
+}
+
 /**
- * Get REAL-TIME SPY price from Yahoo Finance Chart API
- * Uses the 1-minute chart to get the most recent price
- * SPY * 10 ≈ ES price
+ * Get REAL-TIME price for any instrument from Yahoo Finance
  */
-async function getRealtimeSPYPrice(): Promise<{ price: number; change: number; volume: number } | null> {
+async function getRealtimePrice(instrument: Instrument): Promise<{ price: number; change: number; volume: number } | null> {
+  const config = INSTRUMENT_CONFIG[instrument]
   try {
-    // Yahoo Finance chart endpoint - get 1-minute data for most recent price
-    // The regularMarketPrice in meta is real-time for stocks
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1m&range=1d`
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${config.symbol}?interval=1m&range=1d`
 
     const response = await fetch(url, {
       headers: {
@@ -473,14 +501,186 @@ async function getRealtimeSPYPrice(): Promise<{ price: number; change: number; v
     if (!meta?.regularMarketPrice) return null
 
     return {
-      price: meta.regularMarketPrice * 10, // Scale SPY to ES
-      change: (meta.regularMarketDayHigh - meta.regularMarketDayLow) * 10 || 0,
+      price: meta.regularMarketPrice * config.scale,
+      change: (meta.regularMarketDayHigh - meta.regularMarketDayLow) * config.scale || 0,
       volume: meta.regularMarketVolume || 0
     }
   } catch (error) {
-    console.error('[Data] SPY quote error:', error)
+    console.error(`[Data] ${instrument} quote error:`, error)
     return null
   }
+}
+
+// Keep old function for backward compatibility
+async function getRealtimeSPYPrice(): Promise<{ price: number; change: number; volume: number } | null> {
+  return getRealtimePrice('ES')
+}
+
+/**
+ * Fetch candles for a specific instrument
+ */
+async function fetchInstrumentCandles(instrument: Instrument, interval: '1m' | '5m' | '15m' = '5m'): Promise<Candle[]> {
+  const config = INSTRUMENT_CONFIG[instrument]
+  const now = Math.floor(Date.now() / 1000)
+  const start = now - (5 * 24 * 60 * 60) // 5 days
+
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${config.symbol}?period1=${start}&period2=${now}&interval=${interval}&includePrePost=false`
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+      },
+      cache: 'no-store'
+    })
+
+    if (!response.ok) {
+      console.error(`[Data] ${instrument} ${interval} HTTP error: ${response.status}`)
+      return []
+    }
+
+    const data = await response.json()
+    const result = data.chart?.result?.[0]
+
+    if (!result?.timestamp || !result?.indicators?.quote?.[0]) {
+      return []
+    }
+
+    const timestamps = result.timestamp
+    const quote = result.indicators.quote[0]
+    const candles: Candle[] = []
+
+    for (let i = 0; i < timestamps.length; i++) {
+      if (quote.open[i] && quote.high[i] && quote.low[i] && quote.close[i]) {
+        const date = new Date(timestamps[i] * 1000)
+        const estDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+
+        candles.push({
+          time: timestamps[i] * 1000,
+          open: quote.open[i] * config.scale,
+          high: quote.high[i] * config.scale,
+          low: quote.low[i] * config.scale,
+          close: quote.close[i] * config.scale,
+          volume: quote.volume[i] || 0,
+          hour: estDate.getHours() + estDate.getMinutes() / 60,
+        })
+      }
+    }
+
+    console.log(`[Data] ${instrument} ${interval}: ${candles.length} candles`)
+    return candles
+  } catch (error) {
+    console.error(`[Data] ${instrument} ${interval} error:`, error)
+    return []
+  }
+}
+
+/**
+ * Analyze a single instrument - returns signal and market data
+ */
+async function analyzeInstrument(instrument: Instrument, state: TradingState): Promise<{
+  instrument: Instrument
+  config: InstrumentConfig
+  candles: Candle[]
+  indicators: {
+    ema20: number
+    ema50: number
+    rsi: number
+    atr: number
+    vwap: number
+  }
+  regime: MarketRegime
+  signal: Signal | null
+  worldClassResult: any
+  propFirmRisk: PropFirmRiskState
+}> {
+  // Fetch multi-timeframe data for this instrument
+  const [candles1m, candles5m, candles15m] = await Promise.all([
+    fetchInstrumentCandles(instrument, '1m'),
+    fetchInstrumentCandles(instrument, '5m'),
+    fetchInstrumentCandles(instrument, '15m')
+  ])
+
+  const candles = candles5m.length > 20 ? candles5m : candles1m
+  const lastIndex = candles.length - 1
+
+  // Calculate indicators
+  const ema20 = calculateEMA(candles, 20)
+  const ema50 = calculateEMA(candles, 50)
+  const rsi = calculateRSI(candles, 14)
+  const atr = calculateATR(candles, 14)
+  const vwap = calculateVWAP(candles)
+
+  // Detect regime
+  const regime = detectRegime(ema20, ema50, rsi, lastIndex)
+
+  // World-class strategy data
+  const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
+  const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
+  const vwapData = calculateVWAPData(candles5m.length > 0 ? candles5m : candles)
+  const propFirmRisk = buildPropFirmRiskState(state)
+
+  // Generate signals
+  const worldClassResult = generateAllWorldClassSignals(
+    candles1m.length >= 100 ? candles1m : candles,
+    candles5m.length >= 50 ? candles5m : candles,
+    candles15m.length >= 20 ? candles15m : candles,
+    orbData,
+    sessionData,
+    vwapData,
+    propFirmRisk
+  )
+
+  // Get best signal
+  let signal: Signal | null = null
+  if (worldClassResult.signals.length > 0) {
+    const sortedSignals = worldClassResult.signals.sort((a: any, b: any) => b.quality.overall - a.quality.overall)
+    const best = sortedSignals[0]
+
+    signal = {
+      patternId: best.signal.type,
+      direction: best.signal.direction,
+      entryPrice: best.signal.entry.price,
+      stopLoss: best.signal.stopLoss.price,
+      takeProfit: best.signal.targets[0]?.price || best.signal.entry.price + (best.signal.direction === 'LONG' ? atr[lastIndex] * 2 : -atr[lastIndex] * 2),
+      confidence: best.signal.confidence,
+      reason: `${best.signal.type} (Quality: ${best.quality.overall}/100)`,
+      regime
+    }
+  }
+
+  return {
+    instrument,
+    config: INSTRUMENT_CONFIG[instrument],
+    candles,
+    indicators: {
+      ema20: ema20[lastIndex],
+      ema50: ema50[lastIndex],
+      rsi: rsi[lastIndex],
+      atr: atr[lastIndex],
+      vwap: vwap[lastIndex]
+    },
+    regime,
+    signal,
+    worldClassResult,
+    propFirmRisk
+  }
+}
+
+/**
+ * Analyze BOTH ES and NQ simultaneously
+ */
+async function analyzeDualInstruments(state: TradingState): Promise<{
+  ES: Awaited<ReturnType<typeof analyzeInstrument>>
+  NQ: Awaited<ReturnType<typeof analyzeInstrument>>
+}> {
+  const [esResult, nqResult] = await Promise.all([
+    analyzeInstrument('ES', state),
+    analyzeInstrument('NQ', state)
+  ])
+
+  return { ES: esResult, NQ: nqResult }
 }
 
 /**
@@ -908,77 +1108,44 @@ export async function GET(request: NextRequest) {
     const { enabled: isEnabled, currentPosition, dailyTrades, dailyPnL, totalPnL, tradeHistory } = state
 
     // ========================================================================
-    // WORLD-CLASS STRATEGIES: FETCH MULTI-TIMEFRAME DATA
+    // DUAL INSTRUMENT ANALYSIS - ES AND NQ SIMULTANEOUSLY
     // ========================================================================
-    const { candles1m, candles5m, candles15m } = await fetchMultiTimeframeData()
+    console.log('[DUAL-TRADE] Analyzing ES and NQ simultaneously...')
+    const dualAnalysis = await analyzeDualInstruments(state)
 
-    // Use 5m as primary candles for indicator calculation (best balance)
-    const candles = candles5m.length > 20 ? candles5m : await fetchRealtimeData()
+    // Extract ES data for backward compatibility with existing response format
+    const esAnalysis = dualAnalysis.ES
+    const nqAnalysis = dualAnalysis.NQ
+
+    // Use ES as primary for backward compatible fields
+    const candles = esAnalysis.candles
     const lastIndex = candles.length - 1
     const lastCandle = candles[lastIndex]
+    const signal = esAnalysis.signal // Primary signal from ES
 
-    // Calculate indicators for display
-    const ema20 = calculateEMA(candles, 20)
-    const ema50 = calculateEMA(candles, 50)
-    const rsi = calculateRSI(candles, 14)
-    const atr = calculateATR(candles, 14)
-    const vwap = calculateVWAP(candles)
-    const bb = calculateBB(candles, 20)
+    // Calculate combined data
+    const ema20 = [esAnalysis.indicators.ema20]
+    const ema50 = [esAnalysis.indicators.ema50]
+    const rsi = [esAnalysis.indicators.rsi]
+    const atr = [esAnalysis.indicators.atr]
+    const vwap = [esAnalysis.indicators.vwap]
 
-    // ========================================================================
-    // WORLD-CLASS STRATEGIES: PREPARE ALL REQUIRED DATA
-    // ========================================================================
+    const propFirmRisk = esAnalysis.propFirmRisk
+    const worldClassResult = esAnalysis.worldClassResult
+    const regime = esAnalysis.regime
+
+    // Backward compatible data structures
+    const { candles1m, candles5m, candles15m } = await fetchMultiTimeframeData()
     const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
     const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
-    const vwapData = calculateVWAPData(candles5m.length > 0 ? candles5m : candles)
-    const propFirmRisk = buildPropFirmRiskState(state)
 
-    // ========================================================================
-    // WORLD-CLASS STRATEGIES: GENERATE ALL 11 STRATEGY SIGNALS
-    // ========================================================================
-    // BOS_CONTINUATION, CHOCH_REVERSAL, FAILED_BREAKOUT, LIQUIDITY_SWEEP,
-    // SESSION_REVERSION, TREND_PULLBACK, VOLATILITY_BREAKOUT, VWAP_DEVIATION,
-    // RANGE_FADE, ORB_BREAKOUT, KILLZONE_REVERSAL
+    // Log dual analysis results
+    console.log(`[DUAL-TRADE] ES: ${esAnalysis.signal ? esAnalysis.signal.patternId : 'NO SIGNAL'} | NQ: ${nqAnalysis.signal ? nqAnalysis.signal.patternId : 'NO SIGNAL'}`)
 
-    const worldClassResult = generateAllWorldClassSignals(
-      candles1m.length >= 100 ? candles1m : candles,
-      candles5m.length >= 50 ? candles5m : candles,
-      candles15m.length >= 20 ? candles15m : candles,
-      orbData,
-      sessionData,
-      vwapData,
-      propFirmRisk
-    )
-
-    // Get best signal (highest quality score)
-    let signal: Signal | null = null
-    let bestWorldClassSignal: StrategySignal | null = null
-    let signalQuality: TradeQualityScore | null = null
-
-    if (worldClassResult.signals.length > 0) {
-      // Sort by quality score, take the best
-      const sortedSignals = worldClassResult.signals.sort((a, b) => b.quality.overall - a.quality.overall)
-      const best = sortedSignals[0]
-      bestWorldClassSignal = best.signal
-      signalQuality = best.quality
-
-      // Convert to Signal format for execution
-      signal = {
-        patternId: best.signal.type,
-        direction: best.signal.direction,
-        entryPrice: best.signal.entry.price,
-        stopLoss: best.signal.stopLoss.price,
-        takeProfit: best.signal.targets[0]?.price || best.signal.entry.price + (best.signal.direction === 'LONG' ? atr[lastIndex] * 2 : -atr[lastIndex] * 2),
-        confidence: best.signal.confidence,
-        reason: `${best.signal.type} (Quality: ${best.quality.overall}/100, Regime: ${worldClassResult.regime.current})`,
-        regime: detectRegime(ema20, ema50, rsi, lastIndex)
-      }
-    }
-
-    // Regime from world-class classifier
+    // World-class regime from ES analysis
     const worldClassRegime = worldClassResult.regime
-    const regime = detectRegime(ema20, ema50, rsi, lastIndex) // Keep old regime for UI compatibility
 
+    // Calculate time
     const now = new Date()
     const estHour = parseFloat(now.toLocaleString('en-US', {
       timeZone: 'America/New_York',
@@ -991,94 +1158,104 @@ export async function GET(request: NextRequest) {
 
     const withinTradingHours = estHour >= CONFIG.tradingStartHour && estHour <= CONFIG.tradingEndHour
 
-    // Note: Daily reset is now handled automatically by loadTradingState()
-
     // ============================================================================
-    // AUTO-EXECUTE: When enabled, signal detected, no position, within hours
+    // DUAL INSTRUMENT AUTO-EXECUTE: Trade BOTH ES and NQ when signals detected
     // ============================================================================
-    let autoExecutionResult: any = null
-    let updatedState = state // Track state updates
+    const autoExecutionResults: {
+      ES: any
+      NQ: any
+    } = { ES: null, NQ: null }
+    let updatedState = state
 
-    if (
-      isEnabled &&
-      signal &&
-      !currentPosition &&
-      withinTradingHours &&
-      dailyTrades < CONFIG.maxDailyTrades
-    ) {
-      const client = getPickMyTradeClient()
+    // Execute trades for BOTH instruments
+    for (const instrumentKey of ['ES', 'NQ'] as Instrument[]) {
+      const analysis = instrumentKey === 'ES' ? esAnalysis : nqAnalysis
+      const instrumentSignal = analysis.signal
 
-      if (client) {
-        const contractSymbol = getCurrentContractSymbol('ES')
-        console.log(`[AUTO-TRADE] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
+      if (
+        isEnabled &&
+        instrumentSignal &&
+        !currentPosition && // TODO: Track separate positions per instrument
+        withinTradingHours &&
+        dailyTrades < CONFIG.maxDailyTrades * 2 // Allow 2x trades for dual instruments
+      ) {
+        const client = getPickMyTradeClient()
 
-        try {
-          let executionResult: TradeResult
+        if (client) {
+          const contractSymbol = getCurrentContractSymbol(instrumentKey)
+          console.log(`[DUAL-TRADE] Executing ${instrumentSignal.direction} ${contractSymbol} via PickMyTrade...`)
 
-          if (signal.direction === 'LONG') {
-            executionResult = await client.buyMarket(
-              contractSymbol,
-              1, // Start with 1 contract for safety
-              signal.stopLoss,
-              signal.takeProfit
-            )
-          } else {
-            executionResult = await client.sellMarket(
-              contractSymbol,
-              1, // Start with 1 contract for safety
-              signal.stopLoss,
-              signal.takeProfit
-            )
-          }
+          try {
+            let executionResult: TradeResult
 
-          if (executionResult.success) {
-            // CRITICAL: Store position in Supabase (persists across restarts)
-            const newPosition: OpenPosition = {
-              direction: signal.direction,
-              entryPrice: signal.entryPrice,
-              stopLoss: signal.stopLoss,
-              takeProfit: signal.takeProfit,
-              contracts: 1,
-              patternId: signal.patternId,
-              entryTime: new Date().toISOString(),
-              symbol: contractSymbol
+            if (instrumentSignal.direction === 'LONG') {
+              executionResult = await client.buyMarket(
+                contractSymbol,
+                1, // Start with 1 contract per instrument
+                instrumentSignal.stopLoss,
+                instrumentSignal.takeProfit
+              )
+            } else {
+              executionResult = await client.sellMarket(
+                contractSymbol,
+                1,
+                instrumentSignal.stopLoss,
+                instrumentSignal.takeProfit
+              )
             }
+
+            if (executionResult.success) {
+              const newPosition: OpenPosition = {
+                direction: instrumentSignal.direction,
+                entryPrice: instrumentSignal.entryPrice,
+                stopLoss: instrumentSignal.stopLoss,
+                takeProfit: instrumentSignal.takeProfit,
+                contracts: 1,
+                patternId: instrumentSignal.patternId,
+                entryTime: new Date().toISOString(),
+                symbol: contractSymbol
+              }
             updatedState = await openPosition(newPosition)
 
-            autoExecutionResult = {
-              executed: true,
-              success: true,
-              message: `AUTO-EXECUTED: ${signal.direction} via ${signal.patternId}`,
-              orderId: executionResult.orderId,
-              timestamp: executionResult.timestamp,
-              positionSaved: true // Confirm persistence
-            }
+              autoExecutionResults[instrumentKey] = {
+                executed: true,
+                success: true,
+                instrument: instrumentKey,
+                message: `AUTO-EXECUTED: ${instrumentSignal.direction} ${instrumentKey} via ${instrumentSignal.patternId}`,
+                orderId: executionResult.orderId,
+                timestamp: executionResult.timestamp,
+                positionSaved: true
+              }
 
-            console.log(`[AUTO-TRADE] SUCCESS - Position saved to Supabase:`, autoExecutionResult)
-          } else {
-            autoExecutionResult = {
+              console.log(`[DUAL-TRADE] SUCCESS ${instrumentKey}:`, autoExecutionResults[instrumentKey])
+            } else {
+              autoExecutionResults[instrumentKey] = {
+                executed: true,
+                success: false,
+                instrument: instrumentKey,
+                message: executionResult.message || 'Execution failed'
+              }
+              console.error(`[DUAL-TRADE] FAILED ${instrumentKey}:`, executionResult)
+            }
+          } catch (error) {
+            autoExecutionResults[instrumentKey] = {
               executed: true,
               success: false,
-              message: executionResult.message || 'Execution failed'
+              instrument: instrumentKey,
+              message: error instanceof Error ? error.message : 'Execution error'
             }
-            console.error(`[AUTO-TRADE] FAILED:`, executionResult)
+            console.error(`[DUAL-TRADE] ERROR ${instrumentKey}:`, error)
           }
-        } catch (error) {
-          autoExecutionResult = {
-            executed: true,
+        } else {
+          autoExecutionResults[instrumentKey] = {
+            executed: false,
             success: false,
-            message: error instanceof Error ? error.message : 'Execution error'
+            instrument: instrumentKey,
+            message: 'PickMyTrade not configured'
           }
-          console.error(`[AUTO-TRADE] ERROR:`, error)
-        }
-      } else {
-        autoExecutionResult = {
-          executed: false,
-          success: false,
-          message: 'PickMyTrade not configured - signal detected but cannot execute'
         }
       }
-    }
+    } // End of dual instrument loop
 
     // Check PickMyTrade connection
     const pmtClient = getPickMyTradeClient()
@@ -1101,12 +1278,16 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      // ========================================================================
+      // DUAL INSTRUMENT MODE: ES AND NQ ANALYZED SIMULTANEOUSLY
+      // ========================================================================
+      dualTradingEnabled: true,
       status: {
         enabled: finalState.enabled,
-        autoTrading: finalState.enabled && withinTradingHours && !finalState.currentPosition && finalState.dailyTrades < CONFIG.maxDailyTrades,
+        autoTrading: finalState.enabled && withinTradingHours && !finalState.currentPosition && finalState.dailyTrades < CONFIG.maxDailyTrades * 2,
         currentPosition: finalState.currentPosition,
         dailyTrades: finalState.dailyTrades,
-        maxDailyTrades: CONFIG.maxDailyTrades,
+        maxDailyTrades: CONFIG.maxDailyTrades * 2, // 2x for dual instruments
         dailyPnL: finalState.dailyPnL.toFixed(2),
         totalPnL: finalState.totalPnL.toFixed(2),
         totalTrades: finalState.totalTrades,
@@ -1115,8 +1296,59 @@ export async function GET(request: NextRequest) {
         winRate: finalState.totalTrades > 0 ? ((finalState.totalWins / finalState.totalTrades) * 100).toFixed(1) + '%' : 'N/A',
         tradeHistory: finalState.tradeHistory.slice(-10),
         lastUpdated: finalState.lastUpdated,
-        statePersisted: true // Confirm state is in Supabase
+        statePersisted: true
       },
+      // ========================================================================
+      // ES (S&P 500 E-MINI) MARKET DATA
+      // ========================================================================
+      ES: {
+        price: esAnalysis.candles[esAnalysis.candles.length - 1]?.close.toFixed(2) || '0',
+        regime: esAnalysis.regime,
+        signal: esAnalysis.signal ? {
+          pattern: esAnalysis.signal.patternId,
+          direction: esAnalysis.signal.direction,
+          entry: esAnalysis.signal.entryPrice.toFixed(2),
+          stop: esAnalysis.signal.stopLoss.toFixed(2),
+          target: esAnalysis.signal.takeProfit.toFixed(2),
+          confidence: esAnalysis.signal.confidence,
+          reason: esAnalysis.signal.reason
+        } : null,
+        indicators: {
+          ema20: esAnalysis.indicators.ema20.toFixed(2),
+          ema50: esAnalysis.indicators.ema50.toFixed(2),
+          rsi: esAnalysis.indicators.rsi.toFixed(1),
+          atr: esAnalysis.indicators.atr.toFixed(2),
+          vwap: esAnalysis.indicators.vwap.toFixed(2)
+        },
+        signalsFound: esAnalysis.worldClassResult.signals.length,
+        autoExecution: autoExecutionResults.ES
+      },
+      // ========================================================================
+      // NQ (NASDAQ 100 E-MINI) MARKET DATA
+      // ========================================================================
+      NQ: {
+        price: nqAnalysis.candles[nqAnalysis.candles.length - 1]?.close.toFixed(2) || '0',
+        regime: nqAnalysis.regime,
+        signal: nqAnalysis.signal ? {
+          pattern: nqAnalysis.signal.patternId,
+          direction: nqAnalysis.signal.direction,
+          entry: nqAnalysis.signal.entryPrice.toFixed(2),
+          stop: nqAnalysis.signal.stopLoss.toFixed(2),
+          target: nqAnalysis.signal.takeProfit.toFixed(2),
+          confidence: nqAnalysis.signal.confidence,
+          reason: nqAnalysis.signal.reason
+        } : null,
+        indicators: {
+          ema20: nqAnalysis.indicators.ema20.toFixed(2),
+          ema50: nqAnalysis.indicators.ema50.toFixed(2),
+          rsi: nqAnalysis.indicators.rsi.toFixed(1),
+          atr: nqAnalysis.indicators.atr.toFixed(2),
+          vwap: nqAnalysis.indicators.vwap.toFixed(2)
+        },
+        signalsFound: nqAnalysis.worldClassResult.signals.length,
+        autoExecution: autoExecutionResults.NQ
+      },
+      // BACKWARD COMPATIBLE: Primary market data (ES)
       market: {
         price: lastCandle.close.toFixed(2),
         regime,
@@ -1125,17 +1357,17 @@ export async function GET(request: NextRequest) {
         estTime: now.toLocaleString('en-US', { timeZone: 'America/New_York' }),
         dataSource: currentDataSource,
         dataDelayed: dataIsDelayed,
-        dataNote: '✓ Real-time SPY data (scaled to ES)',
+        dataNote: '✓ DUAL TRADING: ES + NQ analyzed simultaneously',
         indicators: {
-          ema20: ema20[lastIndex].toFixed(2),
-          ema50: ema50[lastIndex].toFixed(2),
-          rsi: rsi[lastIndex].toFixed(1),
-          atr: atr[lastIndex].toFixed(2),
-          vwap: vwap[lastIndex].toFixed(2)
+          ema20: esAnalysis.indicators.ema20.toFixed(2),
+          ema50: esAnalysis.indicators.ema50.toFixed(2),
+          rsi: esAnalysis.indicators.rsi.toFixed(1),
+          atr: esAnalysis.indicators.atr.toFixed(2),
+          vwap: esAnalysis.indicators.vwap.toFixed(2)
         }
       },
       pickMyTrade: pickMyTradeStatus,
-      autoExecution: autoExecutionResult,
+      autoExecution: autoExecutionResults, // Now contains both ES and NQ
       signal: signal ? {
         pattern: signal.patternId,
         direction: signal.direction,

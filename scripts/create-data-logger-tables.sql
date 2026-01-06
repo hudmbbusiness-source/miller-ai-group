@@ -46,12 +46,32 @@ CREATE TABLE IF NOT EXISTS stuntman_trades_simple (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Execution logs (for live vs backtest analysis)
+CREATE TABLE IF NOT EXISTS stuntman_executions_simple (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  instrument TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('LONG', 'SHORT')),
+  pattern_id TEXT,
+  confidence INTEGER,
+  expected_entry DECIMAL(20, 2),
+  market_price DECIMAL(20, 2),
+  stop_loss DECIMAL(20, 2),
+  take_profit DECIMAL(20, 2),
+  regime TEXT,
+  order_id TEXT,
+  pickmytrade_response TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_market_data_simple_timestamp ON stuntman_market_data_simple(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_signals_simple_timestamp ON stuntman_signals_simple(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_trades_simple_timestamp ON stuntman_trades_simple(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_executions_simple_timestamp ON stuntman_executions_simple(timestamp DESC);
 
 -- No RLS - open for service role access
 ALTER TABLE stuntman_market_data_simple DISABLE ROW LEVEL SECURITY;
 ALTER TABLE stuntman_signals_simple DISABLE ROW LEVEL SECURITY;
 ALTER TABLE stuntman_trades_simple DISABLE ROW LEVEL SECURITY;
+ALTER TABLE stuntman_executions_simple DISABLE ROW LEVEL SECURITY;

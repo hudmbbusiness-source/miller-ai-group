@@ -1483,6 +1483,38 @@ export async function GET(request: NextRequest) {
                 takeProfit: instrumentSignal.takeProfit,
                 pattern: instrumentSignal.patternId
               }).catch(err => console.error('[Telegram] Notification failed:', err))
+
+              // ================================================================
+              // EXECUTION LOGGING - Save detailed data for analysis
+              // ================================================================
+              const executionLog = {
+                timestamp: new Date().toISOString(),
+                instrument: instrumentKey,
+                direction: instrumentSignal.direction,
+                pattern: instrumentSignal.patternId,
+                confidence: instrumentSignal.confidence,
+                expectedEntry: instrumentSignal.entryPrice.toFixed(2),
+                stopLoss: instrumentSignal.stopLoss.toFixed(2),
+                takeProfit: instrumentSignal.takeProfit.toFixed(2),
+                regime: instrumentKey === 'ES' ? esAnalysis.regime : nqAnalysis.regime,
+                orderId: executionResult.orderId,
+                pickMyTradeResponse: executionResult.message,
+                marketPrice: (instrumentKey === 'ES' ? esAnalysis.candles : nqAnalysis.candles)[
+                  (instrumentKey === 'ES' ? esAnalysis.candles : nqAnalysis.candles).length - 1
+                ]?.close.toFixed(2),
+              }
+              console.log('[EXECUTION LOG]', JSON.stringify(executionLog))
+
+              // Log to data-logger for future analysis
+              fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'https://miller-ai-group.vercel.app'}/api/stuntman/data-logger`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'execution',
+                  data: executionLog
+                })
+              }).catch(err => console.error('[Data Logger] Failed to log execution:', err))
+
             } else {
               autoExecutionResults[instrumentKey] = {
                 executed: true,
@@ -1583,7 +1615,15 @@ export async function GET(request: NextRequest) {
         totalWins: finalState.totalWins,
         totalLosses: finalState.totalLosses,
         winRate: finalState.totalTrades > 0 ? ((finalState.totalWins / finalState.totalTrades) * 100).toFixed(1) + '%' : 'N/A',
-        tradeHistory: finalState.tradeHistory.slice(-10),
+        // Format trade history with exact cents (2 decimal places)
+        tradeHistory: finalState.tradeHistory.slice(-10).map((t: any) => ({
+          ...t,
+          entryPrice: typeof t.entryPrice === 'number' ? t.entryPrice.toFixed(2) : t.entryPrice,
+          exitPrice: typeof t.exitPrice === 'number' ? t.exitPrice.toFixed(2) : t.exitPrice,
+          stopLoss: typeof t.stopLoss === 'number' ? t.stopLoss.toFixed(2) : t.stopLoss,
+          takeProfit: typeof t.takeProfit === 'number' ? t.takeProfit.toFixed(2) : t.takeProfit,
+          pnl: typeof t.pnl === 'number' ? t.pnl.toFixed(2) : t.pnl,
+        })),
         lastUpdated: finalState.lastUpdated,
         statePersisted: true
       },

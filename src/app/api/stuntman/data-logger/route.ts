@@ -110,6 +110,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, logged: 'trade' })
     }
 
+    if (type === 'execution') {
+      // Log execution details for live vs backtest analysis
+      const { error } = await supabase
+        .from('stuntman_executions_simple')
+        .insert({
+          timestamp: data.timestamp || new Date().toISOString(),
+          instrument: data.instrument,
+          direction: data.direction,
+          pattern_id: data.pattern,
+          confidence: data.confidence,
+          expected_entry: data.expectedEntry,
+          market_price: data.marketPrice,
+          stop_loss: data.stopLoss,
+          take_profit: data.takeProfit,
+          regime: data.regime,
+          order_id: data.orderId,
+          pickmytrade_response: data.pickMyTradeResponse,
+        })
+
+      if (error) {
+        console.error('Execution log error:', error)
+        // Don't fail the request, just log
+        return NextResponse.json({ success: true, logged: 'execution', warning: error.message })
+      }
+      return NextResponse.json({ success: true, logged: 'execution' })
+    }
+
     return NextResponse.json({ success: false, error: 'Unknown type' })
   } catch (error) {
     console.error('Data logger error:', error)

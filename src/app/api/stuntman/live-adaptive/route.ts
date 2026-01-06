@@ -1549,6 +1549,25 @@ export async function GET(request: NextRequest) {
         canTrade: propFirmRisk.canTrade
       },
       // ========================================================================
+      // OPEN POSITIONS - Show all with unrealized P&L for manual closing
+      // ========================================================================
+      openPositions: finalState.currentPosition ? [{
+        symbol: finalState.currentPosition.symbol || 'ES',
+        direction: finalState.currentPosition.direction,
+        contracts: finalState.currentPosition.contracts || 1,
+        entryPrice: finalState.currentPosition.entryPrice.toFixed(2),
+        currentPrice: lastCandle.close.toFixed(2),
+        stopLoss: finalState.currentPosition.stopLoss.toFixed(2),
+        takeProfit: finalState.currentPosition.takeProfit.toFixed(2),
+        unrealizedPnL: propFirmRisk.unrealizedPnL.toFixed(2),
+        unrealizedPnLPercent: ((propFirmRisk.unrealizedPnL / propFirmRisk.startingBalance) * 100).toFixed(3) + '%',
+        openedAt: finalState.currentPosition.openedAt || finalState.lastUpdated,
+        pattern: finalState.currentPosition.pattern || 'N/A',
+        canClose: true,
+        closeAction: 'POST /api/stuntman/live-adaptive { "action": "close" }'
+      }] : [],
+      hasOpenPosition: !!finalState.currentPosition,
+      // ========================================================================
       // DUAL INSTRUMENT MODE: ES AND NQ ANALYZED SIMULTANEOUSLY
       // ========================================================================
       dualTradingEnabled: true,

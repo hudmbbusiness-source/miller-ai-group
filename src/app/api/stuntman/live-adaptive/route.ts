@@ -1226,6 +1226,12 @@ export async function GET(request: NextRequest) {
       const analysis = instrumentKey === 'ES' ? esAnalysis : nqAnalysis
       const instrumentSignal = analysis.signal
 
+      // CRITICAL SAFETY CHECK: Block trades if max drawdown reached
+      if (!propFirmRisk.canTrade) {
+        console.log(`[SAFETY] BLOCKING TRADE - Max drawdown reached. Risk level: ${propFirmRisk.riskLevel}`)
+        continue
+      }
+
       if (
         isEnabled &&
         instrumentSignal &&
@@ -1524,6 +1530,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'execute' && currentState.enabled) {
+      // CRITICAL SAFETY: Check drawdown BEFORE any execution
+      const preCheckRisk = buildPropFirmRiskState(currentState)
+      if (!preCheckRisk.canTrade) {
+        return NextResponse.json({
+          success: false,
+          error: 'BLOCKED BY SAFETY: Max drawdown reached',
+          riskLevel: preCheckRisk.riskLevel,
+          drawdownUsed: preCheckRisk.drawdownPercentUsed.toFixed(1) + '%',
+          recommendation: preCheckRisk.recommendation
+        }, { status: 403 })
+      }
+
       // ========================================================================
       // WORLD-CLASS STRATEGIES: GET SIGNAL FOR EXECUTION
       // ========================================================================

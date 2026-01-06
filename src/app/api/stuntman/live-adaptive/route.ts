@@ -79,6 +79,11 @@ const PICKMYTRADE_TOKEN = (process.env.PICKMYTRADE_TOKEN || '').trim()
 const APEX_ACCOUNT_ID = (process.env.APEX_ACCOUNT_ID || 'APEX-456334').trim()
 const RITHMIC_CONNECTION_NAME = (process.env.RITHMIC_CONNECTION_NAME || 'RITHMIC1').trim()
 
+// DEBUG: Log what we're getting from env vars (first 4 chars only for security)
+console.log('[ENV DEBUG] PICKMYTRADE_TOKEN exists:', !!process.env.PICKMYTRADE_TOKEN)
+console.log('[ENV DEBUG] PICKMYTRADE_TOKEN length:', process.env.PICKMYTRADE_TOKEN?.length || 0)
+console.log('[ENV DEBUG] PICKMYTRADE_TOKEN preview:', process.env.PICKMYTRADE_TOKEN?.substring(0, 4) || 'EMPTY')
+
 let pickMyTradeClient: PickMyTradeClient | null = null
 
 function getPickMyTradeClient(): PickMyTradeClient | null {
@@ -1554,12 +1559,16 @@ export async function GET(request: NextRequest) {
     const pickMyTradeStatus = pmtClient ? {
       connected: true,
       token: PICKMYTRADE_TOKEN ? `${PICKMYTRADE_TOKEN.substring(0, 4)}...${PICKMYTRADE_TOKEN.slice(-4)}` : 'NOT SET',
+      tokenLength: PICKMYTRADE_TOKEN?.length || 0,
       account: APEX_ACCOUNT_ID,
       connectionName: RITHMIC_CONNECTION_NAME,
       enabled: pmtClient.isEnabled
     } : {
       connected: false,
       token: 'NOT SET',
+      tokenLength: process.env.PICKMYTRADE_TOKEN?.length || 0,
+      tokenExists: !!process.env.PICKMYTRADE_TOKEN,
+      rawEnvPreview: process.env.PICKMYTRADE_TOKEN?.substring(0, 8) || 'EMPTY',
       account: APEX_ACCOUNT_ID,
       connectionName: RITHMIC_CONNECTION_NAME,
       enabled: false

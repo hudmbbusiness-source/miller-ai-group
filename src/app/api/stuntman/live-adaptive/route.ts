@@ -1029,12 +1029,18 @@ function calculateVWAPData(candles: Candle[]): { vwap: number; stdDev: number } 
 function buildPropFirmRiskState(state: TradingState): PropFirmRiskState {
   const APEX_150K_CONFIG = {
     startingBalance: 150000,
-    maxDrawdown: 6000, // Trailing drawdown
+    maxDrawdown: 5000, // CORRECT: $5,000 trailing drawdown for 150K
     profitTarget: 9000
   }
 
   const accountBalance = APEX_150K_CONFIG.startingBalance + state.totalPnL
-  const currentDrawdown = state.totalPnL < 0 ? Math.abs(state.totalPnL) : 0
+
+  // TRAILING DRAWDOWN: Drawdown trails $5,000 behind PEAK balance
+  // If peak was $152,000, drawdown threshold is $147,000
+  // The "peakBalance" should be tracked in state, but for now use max of starting + totalPnL
+  const peakBalance = Math.max(APEX_150K_CONFIG.startingBalance, APEX_150K_CONFIG.startingBalance + state.totalPnL)
+  const drawdownThreshold = peakBalance - APEX_150K_CONFIG.maxDrawdown
+  const currentDrawdown = Math.max(0, peakBalance - accountBalance)
   const drawdownPercentUsed = (currentDrawdown / APEX_150K_CONFIG.maxDrawdown) * 100
 
   // Determine risk level

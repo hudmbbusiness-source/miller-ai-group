@@ -1992,12 +1992,14 @@ export function calculateTradeQuality(
 // =============================================================================
 
 export interface PropFirmRiskState {
-  accountBalance: number
+  accountBalance: number      // Starting + realized + unrealized P&L
   startingBalance: number
   trailingDrawdown: number
   currentDrawdown: number
   drawdownPercentUsed: number
   dailyPnL: number
+  realizedPnL: number         // Closed trade profits/losses
+  unrealizedPnL: number       // Open position profits/losses (updates with market)
   consecutiveLosses: number
   dailyTradeCount: number
   canTrade: boolean

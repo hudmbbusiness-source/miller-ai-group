@@ -627,7 +627,8 @@ async function analyzeInstrument(instrument: Instrument, state: TradingState): P
   const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
   const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
   const vwapData = calculateVWAPData(candles5m.length > 0 ? candles5m : candles)
-  const propFirmRisk = buildPropFirmRiskState(state)
+  const currentPrice = candles[lastIndex]?.close || 0
+  const propFirmRisk = buildPropFirmRiskState(state, currentPrice)
 
   // Generate signals
   const worldClassResult = generateAllWorldClassSignals(
@@ -1025,15 +1026,32 @@ function calculateVWAPData(candles: Candle[]): { vwap: number; stdDev: number } 
 
 /**
  * Build PropFirmRiskState for Apex 150K evaluation
+ * @param currentPrice - Current market price (needed for unrealized P&L calculation)
  */
-function buildPropFirmRiskState(state: TradingState): PropFirmRiskState {
+function buildPropFirmRiskState(state: TradingState, currentPrice: number = 0): PropFirmRiskState {
   const APEX_150K_CONFIG = {
     startingBalance: 150000,
     maxDrawdown: 5000, // CORRECT: $5,000 trailing drawdown for 150K
     profitTarget: 9000
   }
 
-  const accountBalance = APEX_150K_CONFIG.startingBalance + state.totalPnL
+  // Calculate UNREALIZED P&L from any open position
+  let unrealizedPnL = 0
+  if (state.currentPosition && currentPrice > 0) {
+    const { direction, entryPrice, contracts = 1 } = state.currentPosition
+    const pointValue = 50 // ES point value ($50 per point)
+    const priceDiff = currentPrice - entryPrice
+
+    if (direction === 'LONG') {
+      unrealizedPnL = priceDiff * pointValue * contracts
+    } else { // SHORT
+      unrealizedPnL = -priceDiff * pointValue * contracts
+    }
+  }
+
+  // Account balance = realized P&L + unrealized P&L
+  const realizedPnL = state.totalPnL
+  const accountBalance = APEX_150K_CONFIG.startingBalance + realizedPnL + unrealizedPnL
 
   // TRAILING DRAWDOWN: Drawdown trails $5,000 behind PEAK balance
   // If peak was $152,000, drawdown threshold is $147,000
@@ -1095,6 +1113,8 @@ function buildPropFirmRiskState(state: TradingState): PropFirmRiskState {
     currentDrawdown,
     drawdownPercentUsed,
     dailyPnL: state.dailyPnL,
+    realizedPnL,
+    unrealizedPnL,
     consecutiveLosses,
     dailyTradeCount: state.dailyTrades,
     canTrade,
@@ -1171,6 +1191,67 @@ export async function GET(request: NextRequest) {
     })) / 60
 
     const withinTradingHours = estHour >= CONFIG.tradingStartHour && estHour <= CONFIG.tradingEndHour
+
+    // ============================================================================
+    // POSITION EXIT MONITORING - Check if PickMyTrade bracket orders were filled
+    // ============================================================================
+    // Since PickMyTrade handles SL/TP via bracket orders, we need to detect when
+    // price has moved past our SL or TP levels and update our local state.
+    // This ensures our state stays in sync with the actual position on Apex.
+    // ============================================================================
+    if (currentPosition && lastCandle) {
+      const currentPrice = lastCandle.close
+      const { direction, entryPrice, stopLoss, takeProfit, symbol } = currentPosition
+      let exitTriggered = false
+      let exitReason = ''
+      let exitPrice = currentPrice
+
+      if (direction === 'LONG') {
+        // LONG: SL hit if price dropped below stopLoss, TP hit if price rose above takeProfit
+        if (currentPrice <= stopLoss) {
+          exitTriggered = true
+          exitReason = 'STOP LOSS HIT'
+          exitPrice = stopLoss // Assume filled at stop level
+          console.log(`[POSITION MONITOR] LONG stop loss hit: Price ${currentPrice} <= SL ${stopLoss}`)
+        } else if (currentPrice >= takeProfit) {
+          exitTriggered = true
+          exitReason = 'TAKE PROFIT HIT'
+          exitPrice = takeProfit // Assume filled at target level
+          console.log(`[POSITION MONITOR] LONG take profit hit: Price ${currentPrice} >= TP ${takeProfit}`)
+        }
+      } else { // SHORT
+        // SHORT: SL hit if price rose above stopLoss, TP hit if price dropped below takeProfit
+        if (currentPrice >= stopLoss) {
+          exitTriggered = true
+          exitReason = 'STOP LOSS HIT'
+          exitPrice = stopLoss
+          console.log(`[POSITION MONITOR] SHORT stop loss hit: Price ${currentPrice} >= SL ${stopLoss}`)
+        } else if (currentPrice <= takeProfit) {
+          exitTriggered = true
+          exitReason = 'TAKE PROFIT HIT'
+          exitPrice = takeProfit
+          console.log(`[POSITION MONITOR] SHORT take profit hit: Price ${currentPrice} <= TP ${takeProfit}`)
+        }
+      }
+
+      // If exit was triggered, update our state to match PickMyTrade's execution
+      if (exitTriggered) {
+        console.log(`[POSITION MONITOR] Exit detected: ${exitReason} at ${exitPrice}`)
+        const { state: closedState, pnl } = await closePositionState(exitPrice, exitReason)
+
+        // Send Telegram notification
+        sendTradeNotification({
+          type: 'EXIT',
+          instrument: symbol?.includes('ES') ? 'ES' : 'NQ',
+          direction: direction,
+          price: exitPrice,
+          pnl: pnl,
+          message: exitReason
+        }).catch(err => console.error('[Telegram] Exit notification failed:', err))
+
+        console.log(`[POSITION MONITOR] State updated. PnL: $${pnl.toFixed(2)}. Total: $${closedState.totalPnL.toFixed(2)}`)
+      }
+    }
 
     // ============================================================================
     // APEX MANDATORY CLOSE: Must close all positions by 4:59 PM EST
@@ -1536,8 +1617,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'execute' && currentState.enabled) {
+      // Get current market price first for safety check
+      const realtimeData = await getRealtimeSPYPrice()
+      const executeCurrentPrice = realtimeData?.price || 0
+
       // CRITICAL SAFETY: Check drawdown BEFORE any execution
-      const preCheckRisk = buildPropFirmRiskState(currentState)
+      const preCheckRisk = buildPropFirmRiskState(currentState, executeCurrentPrice)
       if (!preCheckRisk.canTrade) {
         return NextResponse.json({
           success: false,
@@ -1566,7 +1651,7 @@ export async function POST(request: NextRequest) {
       const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
       const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
       const vwapData = calculateVWAPData(candles5m.length > 0 ? candles5m : candles)
-      const propFirmRisk = buildPropFirmRiskState(currentState)
+      const propFirmRisk = buildPropFirmRiskState(currentState, executeCurrentPrice)
 
       // Generate all 11 strategy signals
       const worldClassResult = generateAllWorldClassSignals(

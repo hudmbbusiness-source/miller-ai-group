@@ -348,7 +348,7 @@ export function initializePickMyTrade(config: PickMyTradeConfig): PickMyTradeCli
 export function getCurrentContractSymbol(instrument: 'ES' | 'NQ'): string {
   const now = new Date();
   const month = now.getMonth(); // 0-11
-  const year = now.getFullYear() % 100; // Last 2 digits
+  const year = now.getFullYear() % 10; // FIXED: Single digit year (6 for 2026, not 26)
 
   // Futures contract months: H (Mar), M (Jun), U (Sep), Z (Dec)
   // Roll typically happens ~1 week before expiration
@@ -368,7 +368,7 @@ export function getCurrentContractSymbol(instrument: 'ES' | 'NQ'): string {
   }
 
   // Roll to next year's March contract
-  return `${instrument}H${year + 1}`;
+  return `${instrument}H${(year + 1) % 10}`;
 }
 
 // =============================================================================

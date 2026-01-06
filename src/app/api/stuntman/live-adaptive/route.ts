@@ -2033,7 +2033,7 @@ export async function POST(request: NextRequest) {
         data: 'buy',
         quantity: 1,
         risk_percentage: 0,
-        price: 0,
+        price: currentPrice,  // CRITICAL: Must include price for PickMyTrade
         tp: currentPrice + 5,
         percentage_tp: 0,
         dollar_tp: 0,

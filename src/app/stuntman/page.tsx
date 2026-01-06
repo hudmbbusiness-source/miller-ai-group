@@ -106,6 +106,8 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
   const [lastPrice, setLastPrice] = useState<number>(0)
   const [lastUpdate, setLastUpdate] = useState<string>('')
   const [dataSource, setDataSource] = useState<string>('Loading...')
+  const [chartReady, setChartReady] = useState(false)
+  const [chartError, setChartError] = useState<string | null>(null)
 
   // Fetch ES futures data from Yahoo Finance (same source as trading signals)
   const fetchESData = useCallback(async () => {
@@ -260,6 +262,9 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
       ema9Ref.current = ema9Series
       ema21Ref.current = ema21Series
 
+      // Mark chart as ready for data
+      setChartReady(true)
+
       // Handle resize
       const handleResize = () => {
         if (containerRef.current) {
@@ -279,13 +284,19 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
     })
   }, [])
 
-  // Fetch and update data
+  // Fetch and update data - wait for chart to be ready
   useEffect(() => {
-    if (!candleSeriesRef.current) return
+    if (!chartReady || !candleSeriesRef.current) return
 
     const updateChart = async () => {
-      const data = await fetchESData()
-      if (!data?.candles?.length) return
+      try {
+        const data = await fetchESData()
+        if (!data?.candles?.length) {
+          setChartError('No market data available')
+          return
+        }
+        setChartError(null)
+        setDataSource(data.sourceSymbol ? `${data.sourceSymbol} → ${instrument}=F (Real-time)` : 'Yahoo Finance')
 
       const candles = data.candles.map((c: any) => ({
         time: c.time,
@@ -325,6 +336,10 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
 
       // Fit content
       chartRef.current?.timeScale().fitContent()
+      } catch (err) {
+        console.error('Chart update error:', err)
+        setChartError('Failed to load chart data')
+      }
     }
 
     updateChart()
@@ -332,10 +347,28 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
     // Real-time updates every 5 seconds
     const interval = setInterval(updateChart, 5000)
     return () => clearInterval(interval)
-  }, [fetchESData])
+  }, [chartReady, fetchESData])
 
   return (
     <div className="relative w-full h-full">
+      {/* Loading Overlay */}
+      {!chartReady && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-20">
+          <div className="text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+            <p className="text-gray-400 text-sm">Loading chart...</p>
+          </div>
+        </div>
+      )}
+      {/* Error Overlay */}
+      {chartError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-20">
+          <div className="text-center">
+            <p className="text-red-400 text-sm">{chartError}</p>
+            <p className="text-gray-500 text-xs mt-1">Market may be closed</p>
+          </div>
+        </div>
+      )}
       {/* Chart Header */}
       <div className="absolute top-2 left-2 z-10 bg-black/80 px-3 py-1.5 rounded text-sm">
         <span className="text-white font-bold">{instrument} Futures</span>

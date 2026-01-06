@@ -2085,6 +2085,8 @@ export function calculatePropFirmRisk(
     currentDrawdown,
     drawdownPercentUsed,
     dailyPnL,
+    realizedPnL: 0,       // Not tracked in this helper, use buildPropFirmRiskState for live
+    unrealizedPnL: 0,     // Not tracked in this helper, use buildPropFirmRiskState for live
     consecutiveLosses,
     dailyTradeCount: dailyTrades,
     canTrade,

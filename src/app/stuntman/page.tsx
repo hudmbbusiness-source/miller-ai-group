@@ -192,8 +192,11 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
   useEffect(() => {
     if (!containerRef.current) return
 
+    console.log('[Chart] Initializing lightweight-charts...')
+
     // Dynamic import for lightweight-charts
     import('lightweight-charts').then(({ createChart, ColorType, CrosshairMode }) => {
+      console.log('[Chart] Library loaded successfully')
       // Clear existing
       containerRef.current!.innerHTML = ''
 
@@ -281,6 +284,9 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
         window.removeEventListener('resize', handleResize)
         chart.remove()
       }
+    }).catch(err => {
+      console.error('[Chart] Failed to load lightweight-charts:', err)
+      setChartError('Failed to load chart library')
     })
   }, [])
 
@@ -290,7 +296,9 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
 
     const updateChart = async () => {
       try {
+        console.log('[Chart] Fetching data...')
         const data = await fetchESData()
+        console.log('[Chart] Data received:', data?.candles?.length, 'candles')
         if (!data?.candles?.length) {
           setChartError('No market data available')
           return

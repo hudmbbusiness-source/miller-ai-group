@@ -2031,7 +2031,7 @@ export async function POST(request: NextRequest) {
         reverse_order_close: true,
         multiple_accounts: [
           {
-            id: APEX_ACCOUNT_ID,
+            account_id: APEX_ACCOUNT_ID,  // FIXED: Was "id", docs say "account_id"
             quantity: 1,
           },
         ],

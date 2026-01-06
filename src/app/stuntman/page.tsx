@@ -194,15 +194,15 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
 
     console.log('[Chart] Initializing lightweight-charts...')
 
-    // Dynamic import for lightweight-charts
-    import('lightweight-charts').then(({ createChart, ColorType, CrosshairMode }) => {
+    // Dynamic import for lightweight-charts v5
+    import('lightweight-charts').then((lc) => {
       console.log('[Chart] Library loaded successfully')
       // Clear existing
       containerRef.current!.innerHTML = ''
 
-      const chart = createChart(containerRef.current!, {
+      const chart = lc.createChart(containerRef.current!, {
         layout: {
-          background: { type: ColorType.Solid, color: '#0a0a0a' },
+          background: { type: lc.ColorType.Solid, color: '#0a0a0a' },
           textColor: '#d1d5db',
         },
         grid: {
@@ -210,7 +210,7 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
           horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
         },
         crosshair: {
-          mode: CrosshairMode.Normal,
+          mode: lc.CrosshairMode.Normal,
         },
         rightPriceScale: {
           borderColor: 'rgba(255, 255, 255, 0.1)',
@@ -225,8 +225,8 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
         handleScroll: { mouseWheel: true, pressedMouseMove: true },
       })
 
-      // Candlestick series
-      const candleSeries = chart.addCandlestickSeries({
+      // Candlestick series - v5 API uses addSeries with type
+      const candleSeries = chart.addSeries(lc.CandlestickSeries, {
         upColor: '#22c55e',
         downColor: '#ef4444',
         borderDownColor: '#ef4444',
@@ -235,25 +235,25 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
         wickUpColor: '#22c55e',
       })
 
-      // Volume series
-      const volumeSeries = chart.addHistogramSeries({
+      // Volume series - v5 API
+      const volumeSeries = chart.addSeries(lc.HistogramSeries, {
         color: '#3b82f6',
         priceFormat: { type: 'volume' },
-        priceScaleId: '',
+        priceScaleId: 'volume',
       })
       volumeSeries.priceScale().applyOptions({
         scaleMargins: { top: 0.85, bottom: 0 },
       })
 
-      // EMA 9 (fast)
-      const ema9Series = chart.addLineSeries({
+      // EMA 9 (fast) - v5 API
+      const ema9Series = chart.addSeries(lc.LineSeries, {
         color: '#f59e0b',
         lineWidth: 1,
         title: 'EMA 9',
       })
 
-      // EMA 21 (slow)
-      const ema21Series = chart.addLineSeries({
+      // EMA 21 (slow) - v5 API
+      const ema21Series = chart.addSeries(lc.LineSeries, {
         color: '#8b5cf6',
         lineWidth: 1,
         title: 'EMA 21',

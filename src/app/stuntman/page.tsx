@@ -108,6 +108,7 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
   const [dataSource, setDataSource] = useState<string>('Loading...')
   const [chartReady, setChartReady] = useState(false)
   const [chartError, setChartError] = useState<string | null>(null)
+  const [initialLoadDone, setInitialLoadDone] = useState(false)
 
   // Fetch ES futures data from Yahoo Finance (same source as trading signals)
   const fetchESData = useCallback(async () => {
@@ -304,7 +305,7 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
           return
         }
         setChartError(null)
-        setDataSource(data.sourceSymbol ? `${data.sourceSymbol} → ${instrument}=F (Real-time)` : 'Yahoo Finance')
+        setDataSource(data.dataNote || (data.sourceSymbol ? `${data.sourceSymbol} → ${instrument}=F` : 'Yahoo Finance'))
 
       const candles = data.candles.map((c: any) => ({
         time: c.time,
@@ -342,8 +343,11 @@ function RealTimeESChart({ instrument }: { instrument: 'ES' | 'NQ' }) {
         }))
       }
 
-      // Fit content
-      chartRef.current?.timeScale().fitContent()
+      // Only fit content on initial load - preserve user's zoom afterwards
+      if (!initialLoadDone) {
+        chartRef.current?.timeScale().fitContent()
+        setInitialLoadDone(true)
+      }
       } catch (err) {
         console.error('Chart update error:', err)
         setChartError('Failed to load chart data')

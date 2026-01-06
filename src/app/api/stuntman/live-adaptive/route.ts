@@ -1386,7 +1386,7 @@ export async function GET(request: NextRequest) {
           'RANGE_FADE', 'ORB_BREAKOUT', 'KILLZONE_REVERSAL'
         ],
         signalsFound: worldClassResult.signals.length,
-        allSignals: worldClassResult.signals.map(s => ({
+        allSignals: worldClassResult.signals.map((s: any) => ({
           type: s.signal.type,
           direction: s.signal.direction,
           quality: s.quality.overall,
@@ -1409,10 +1409,10 @@ export async function GET(request: NextRequest) {
         },
         orbData: orbData,
         sessionData: sessionData,
-        bestSignalQuality: signalQuality
+        bestSignalQuality: worldClassResult.signals.length > 0 ? worldClassResult.signals[0].quality.overall : 'NONE'
       },
-      message: autoExecutionResult?.executed
-        ? autoExecutionResult.message
+      message: (autoExecutionResults.ES?.executed || autoExecutionResults.NQ?.executed)
+        ? `Executed: ${autoExecutionResults.ES?.executed ? 'ES ' + autoExecutionResults.ES.message : ''} ${autoExecutionResults.NQ?.executed ? 'NQ ' + autoExecutionResults.NQ.message : ''}`.trim()
         : !withinTradingHours
           ? `Outside trading hours (9:30 AM - 3:30 PM EST) - Current: ${estHour.toFixed(2)} EST`
           : !finalState.enabled
@@ -1425,7 +1425,7 @@ export async function GET(request: NextRequest) {
                   ? 'SIDEWAYS market - NO TRADE (waiting for trend)'
                   : signal
                     ? `${signal.patternId} signal detected - READY TO EXECUTE`
-                    : `Scanning for signals in ${regime} market`
+                    : `Scanning ES/NQ for signals in ${regime} market`
     })
 
   } catch (error) {

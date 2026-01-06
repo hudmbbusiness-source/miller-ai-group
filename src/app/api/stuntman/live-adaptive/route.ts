@@ -59,6 +59,14 @@ import {
   TradeQualityScore,
 } from '@/lib/stuntman/world-class-strategies'
 
+// TELEGRAM NOTIFICATIONS - Real-time trade alerts to phone
+import {
+  sendTradeNotification,
+  sendMarketOpenNotification,
+  testTelegramConnection,
+  isTelegramConfigured,
+} from '@/lib/stuntman/telegram-notifications'
+
 // ============================================================================
 // WORLD-CLASS STRATEGY INTEGRATION - ALL 11 STRATEGIES
 // ============================================================================
@@ -1228,6 +1236,17 @@ export async function GET(request: NextRequest) {
               }
 
               console.log(`[DUAL-TRADE] SUCCESS ${instrumentKey}:`, autoExecutionResults[instrumentKey])
+
+              // Send Telegram notification for successful trade entry
+              sendTradeNotification({
+                type: 'ENTRY',
+                instrument: instrumentKey,
+                direction: instrumentSignal.direction,
+                price: instrumentSignal.entryPrice,
+                stopLoss: instrumentSignal.stopLoss,
+                takeProfit: instrumentSignal.takeProfit,
+                pattern: instrumentSignal.patternId
+              }).catch(err => console.error('[Telegram] Notification failed:', err))
             } else {
               autoExecutionResults[instrumentKey] = {
                 executed: true,
@@ -1367,6 +1386,10 @@ export async function GET(request: NextRequest) {
         }
       },
       pickMyTrade: pickMyTradeStatus,
+      telegram: {
+        configured: isTelegramConfigured(),
+        note: isTelegramConfigured() ? 'Notifications enabled' : 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Vercel'
+      },
       autoExecution: autoExecutionResults, // Now contains both ES and NQ
       signal: signal ? {
         pattern: signal.patternId,
@@ -1736,6 +1759,16 @@ export async function POST(request: NextRequest) {
           pickMyTradeConnected: !!PICKMYTRADE_TOKEN
         })
       }
+    }
+
+    // Test Telegram notifications
+    if (action === 'test_telegram') {
+      const result = await testTelegramConnection()
+      return NextResponse.json({
+        success: result.success,
+        message: result.message,
+        telegramConfigured: isTelegramConfigured()
+      })
     }
 
     // EMERGENCY: Reset all state (use with caution)

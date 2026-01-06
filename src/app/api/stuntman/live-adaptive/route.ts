@@ -102,13 +102,10 @@ if (!CREDENTIALS_VALID) {
 }
 
 // =============================================================================
-// LONG-ONLY MODE - Enable until PickMyTrade SELL permission is fixed
-// Set to false once PickMyTrade connection account is updated to APEX-456334-01
+// LONG-ONLY MODE - DISABLED (SELL orders now working)
+// Tested 2026-01-06: PickMyTrade accepted SELL order successfully
 // =============================================================================
-const LONG_ONLY_MODE = true // SELL orders fail with permission error - only trade LONGs
-if (LONG_ONLY_MODE) {
-  console.log('[MODE] LONG-ONLY MODE ENABLED - SHORT trades blocked until PickMyTrade account fixed')
-}
+const LONG_ONLY_MODE = false // SELL orders working - full strategy active
 
 let pickMyTradeClient: PickMyTradeClient | null = null
 

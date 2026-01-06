@@ -292,8 +292,10 @@ export function detectBOSSignal(
   regime: RegimeAnalysis,
   htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide, regime affects quality score only
-  // Suboptimal regime will reduce quality score but won't block signal
+  // Regime filter - only trade in trending markets
+  if (!regime.current.startsWith('TREND')) {
+    return null
+  }
 
   const structure = analyzeSwingStructure(candles.slice(-50))
   const current = candles[candles.length - 1]
@@ -439,8 +441,10 @@ export function detectCHoCHSignal(
   regime: RegimeAnalysis,
   htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide via structure analysis
-  // CHoCH depends on swing structure, not regime classification
+  // Only look for CHoCH after established trends
+  if (regime.trendStrength < 40) {
+    return null // Need established trend to reverse
+  }
 
   const structure = analyzeSwingStructure(candles.slice(-50))
   const current = candles[candles.length - 1]
@@ -581,8 +585,10 @@ export function detectFailedBreakoutSignal(
   regime: RegimeAnalysis,
   htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide, regime affects quality score only
-  // Best in ranging markets but can work in any regime
+  // Best in ranging markets
+  if (!regime.current.startsWith('RANGE') && regime.current !== 'LOW_VOLATILITY') {
+    return null
+  }
 
   const atr = calculateATR(candles.slice(-20), 14)
   const current = candles[candles.length - 1]
@@ -862,8 +868,10 @@ export function detectSessionReversionSignal(
   sessionHighs: { asia: number; london: number; ny: number },
   sessionLows: { asia: number; london: number; ny: number }
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide via session level analysis
-  // Session levels matter regardless of regime classification
+  // Skip in strong trends
+  if (regime.trendStrength > 60) {
+    return null
+  }
 
   const current = candles[candles.length - 1]
   const atr = calculateATR(candles.slice(-20), 14)
@@ -992,8 +1000,10 @@ export function detectTrendPullbackSignal(
   regime: RegimeAnalysis,
   htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL'
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide, regime affects quality score only
-  // Works best in trends but pullbacks can occur in any market
+  // Only trade in trending regimes
+  if (!regime.current.includes('TREND')) {
+    return null
+  }
 
   const atr = calculateATR(candles.slice(-20), 14)
   const current = candles[candles.length - 1]
@@ -1290,8 +1300,10 @@ export function detectVWAPReversionSignal(
   vwap: number,
   vwapStdDev: number
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide, regime affects quality score only
-  // Mean reversion can work in any market when price deviates far from VWAP
+  // Don't trade mean reversion in trends
+  if (regime.current.startsWith('TREND_STRONG')) {
+    return null
+  }
 
   const current = candles[candles.length - 1]
   const atr = calculateATR(candles.slice(-20), 14)
@@ -1433,8 +1445,10 @@ export function detectRangeFadeSignal(
   candles: Candle[],
   regime: RegimeAnalysis
 ): StrategySignal | null {
-  // REMOVED REGIME BLOCKING - Let pattern decide via range detection
-  // Range fades work when price reaches established levels regardless of regime
+  // Only in ranging markets
+  if (!regime.current.startsWith('RANGE')) {
+    return null
+  }
 
   const atr = calculateATR(candles.slice(-20), 14)
   const current = candles[candles.length - 1]
@@ -1716,11 +1730,13 @@ export function detectKillZoneReversalSignal(
   // Extended Kill Zones: Now includes NY_MORNING (was too restrictive)
   const isKillZone = session === 'NY_OPEN' || session === 'NY_MORNING' || session === 'NY_AFTERNOON'
   if (!isKillZone) {
-    return null // Time-based filter is valid - Kill Zones are specific time windows
+    return null
   }
 
-  // REMOVED REGIME BLOCKING - Let pattern decide via price action
-  // Kill zone reversals are about session timing + price action, not regime
+  // Skip strong trends - raised threshold from 70 to 80
+  if (regime.trendStrength > 80) {
+    return null
+  }
 
   const current = candles[candles.length - 1]
   const atr = calculateATR(candles.slice(-20), 14)

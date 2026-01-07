@@ -455,9 +455,16 @@ function RealTimeESChart({ instrument, onPriceUpdate }: { instrument: 'ES' | 'NQ
           FIT
         </button>
       </div>
-      {/* Data Source Badge */}
-      <div className="absolute top-2 right-2 z-10 bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">
-        {dataSource}
+      {/* Data Source Badge - Shows proxy warning */}
+      <div className={`absolute top-2 right-2 z-10 px-2 py-1 rounded text-xs ${
+        dataSource.includes('proxy') || dataSource.includes('SPY') || dataSource.includes('QQQ')
+          ? 'bg-amber-500/20 text-amber-400'
+          : 'bg-green-500/20 text-green-400'
+      }`}>
+        {dataSource.includes('proxy') || dataSource.includes('SPY') || dataSource.includes('QQQ')
+          ? `⚠️ ${dataSource}`
+          : dataSource
+        }
       </div>
       {/* Chart Container */}
       <div ref={containerRef} className="w-full h-full" />
@@ -587,7 +594,7 @@ export default function StuntManDashboard() {
         // Update last refresh time
         setLastRefresh(new Date())
 
-        // Market data
+        // Market data + Data Quality (AUDIT FIX 2026-01-06)
         setMarketStatus({
           ...data.market,
           price: parseFloat(data.market?.price || '0'),
@@ -599,7 +606,15 @@ export default function StuntManDashboard() {
           estTime: data.market?.estTime || '',
           dataSource: data.market?.dataSource || 'yahoo',
           dataDelayed: data.market?.dataDelayed !== false,
-          dataNote: data.market?.dataNote || ''
+          dataNote: data.market?.dataNote || '',
+          // NEW: Data Quality Fields from Audit
+          dataIsProxy: data.market?.dataIsProxy || false,
+          dataIsStale: data.market?.dataIsStale || false,
+          dataAgeSeconds: data.market?.dataAgeSeconds || 0,
+          dataSafeToTrade: data.market?.dataSafeToTrade !== false,
+          dataQualityWarnings: data.market?.dataQualityWarnings || [],
+          // Execution Warning
+          executionWarning: data.executionWarning || null
         })
 
         setTradingDays(1) // Will track properly later
@@ -787,6 +802,72 @@ export default function StuntManDashboard() {
       {/* MAIN CONTENT */}
       {/* ================================================================== */}
       <main className="max-w-[1800px] mx-auto p-4">
+        {/* ================================================================ */}
+        {/* DATA QUALITY WARNING BANNER - AUDIT FIX 2026-01-06 */}
+        {/* ================================================================ */}
+        {marketStatus?.dataQualityWarnings?.length > 0 && (
+          <div className={`mb-4 p-3 rounded-xl border ${
+            marketStatus?.dataSafeToTrade
+              ? 'bg-amber-500/10 border-amber-500/30'
+              : 'bg-red-500/10 border-red-500/30'
+          }`}>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${
+                marketStatus?.dataSafeToTrade ? 'text-amber-400' : 'text-red-400'
+              }`} />
+              <div className="flex-1">
+                <div className={`font-bold text-sm ${
+                  marketStatus?.dataSafeToTrade ? 'text-amber-400' : 'text-red-400'
+                }`}>
+                  {marketStatus?.dataSafeToTrade ? 'DATA QUALITY WARNING' : '⛔ TRADING BLOCKED - DATA UNSAFE'}
+                </div>
+                <ul className="mt-1 text-xs text-white/70 space-y-1">
+                  {marketStatus.dataQualityWarnings.map((warning: string, i: number) => (
+                    <li key={i}>• {warning}</li>
+                  ))}
+                </ul>
+                {marketStatus?.dataIsProxy && (
+                  <div className="mt-2 text-xs text-amber-400/80">
+                    💡 For real ES futures data, configure POLYGON_API_KEY in Vercel ($29/mo)
+                  </div>
+                )}
+                {marketStatus?.dataAgeSeconds > 0 && (
+                  <div className="mt-1 text-xs text-white/50">
+                    Data age: {Math.round(marketStatus.dataAgeSeconds / 60)} minutes
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================ */}
+        {/* EXECUTION VERIFICATION WARNING - AUDIT FIX 2026-01-06 */}
+        {/* ================================================================ */}
+        {marketStatus?.executionWarning && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <div className="flex items-start gap-3">
+              <Shield className="w-5 h-5 text-blue-400 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="font-bold text-sm text-blue-400">
+                  {marketStatus.executionWarning.message}
+                </div>
+                <div className="mt-1 text-xs text-white/70">
+                  {marketStatus.executionWarning.note}
+                </div>
+                <a
+                  href={marketStatus.executionWarning.verificationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-300 underline"
+                >
+                  Open Apex Dashboard to verify trades <ArrowUpRight className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ================================================================ */}
         {/* APEX STATUS BAR */}
         {/* ================================================================ */}

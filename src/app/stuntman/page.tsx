@@ -507,6 +507,14 @@ export default function StuntManDashboard() {
   const [contracts, setContracts] = useState(1)
   const [executing, setExecuting] = useState(false)
 
+  // Apex Sync State
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [syncBalance, setSyncBalance] = useState('')
+  const [syncDrawdown, setSyncDrawdown] = useState('')
+  const [syncPnL, setSyncPnL] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+
   // Chart now uses custom RealTimeESChart component with Yahoo Finance data
   // This ensures chart shows EXACT same data as trading signals
 
@@ -683,6 +691,49 @@ export default function StuntManDashboard() {
   }
 
   // ==========================================================================
+  // APEX SYNC - Manual verification of Apex account state
+  // ==========================================================================
+  const syncApexAccount = async () => {
+    setSyncing(true)
+    try {
+      // Calculate the P&L from balance if not provided
+      const balanceNum = parseFloat(syncBalance) || 0
+      const pnlNum = syncPnL ? parseFloat(syncPnL) : (balanceNum - 150000)
+      const drawdownNum = parseFloat(syncDrawdown) || Math.max(0, -pnlNum)
+
+      const res = await fetch('/api/stuntman/live-adaptive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          syncData: {
+            balance: balanceNum,
+            totalPnL: pnlNum,
+            drawdownUsed: drawdownNum,
+            syncTime: new Date().toISOString(),
+            source: 'manual_apex_sync'
+          }
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setLastSyncTime(new Date().toLocaleString())
+        setShowSyncModal(false)
+        setSyncBalance('')
+        setSyncDrawdown('')
+        setSyncPnL('')
+        alert('Apex account synced successfully!')
+        await fetchData() // Refresh data after sync
+      } else {
+        alert('Sync failed: ' + (data.error || 'Unknown error'))
+      }
+    } catch (e) {
+      alert('Sync failed: Network error')
+    }
+    setSyncing(false)
+  }
+
+  // ==========================================================================
   // HELPERS
   // ==========================================================================
 
@@ -773,6 +824,16 @@ export default function StuntManDashboard() {
 
           {/* Right */}
           <div className="flex items-center gap-3">
+            {/* Apex Sync Button */}
+            <button
+              onClick={() => setShowSyncModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition"
+              title="Manually sync your Apex account balance"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Sync Apex
+            </button>
+
             {/* Session */}
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${
               autoStatus?.session === 'RTH' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
@@ -1656,6 +1717,124 @@ export default function StuntManDashboard() {
             </div>
           </div>
         </div>
+
+        {/* ================================================================ */}
+        {/* APEX SYNC MODAL */}
+        {/* ================================================================ */}
+        {showSyncModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+            <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-blue-400" />
+                  Sync Apex Account
+                </h3>
+                <button
+                  onClick={() => setShowSyncModal(false)}
+                  className="text-white/40 hover:text-white p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-sm text-blue-200">
+                <p className="font-medium mb-1">Why sync manually?</p>
+                <p className="text-xs text-blue-200/70">
+                  PickMyTrade doesn't provide fill verification. Enter your actual Apex balance
+                  from the Rithmic/Apex dashboard to verify StuntMan's state matches reality.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-white/60 mb-1">Current Apex Balance</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40">$</span>
+                    <input
+                      type="number"
+                      value={syncBalance}
+                      onChange={(e) => setSyncBalance(e.target.value)}
+                      placeholder="149870.18"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 pl-7 text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <p className="text-xs text-white/40 mt-1">From Apex dashboard (Account Balance)</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-white/60 mb-1">Realized P&L (optional)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40">$</span>
+                    <input
+                      type="number"
+                      value={syncPnL}
+                      onChange={(e) => setSyncPnL(e.target.value)}
+                      placeholder="-129.82"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 pl-7 text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <p className="text-xs text-white/40 mt-1">If blank, calculated from balance - $150,000</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-white/60 mb-1">Trailing Drawdown Used (optional)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40">$</span>
+                    <input
+                      type="number"
+                      value={syncDrawdown}
+                      onChange={(e) => setSyncDrawdown(e.target.value)}
+                      placeholder="129.82"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 pl-7 text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <p className="text-xs text-white/40 mt-1">From Apex dashboard (Trailing Max Drawdown)</p>
+                </div>
+              </div>
+
+              {lastSyncTime && (
+                <div className="mt-4 text-xs text-white/40 text-center">
+                  Last synced: {lastSyncTime}
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowSyncModal(false)}
+                  className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/70 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={syncApexAccount}
+                  disabled={syncing || !syncBalance}
+                  className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-400 disabled:bg-blue-500/50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition flex items-center justify-center gap-2"
+                >
+                  {syncing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Sync Account
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <a
+                href="https://login.apextraderfunding.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mt-4 text-center text-xs text-blue-400 hover:text-blue-300 underline"
+              >
+                Open Apex Dashboard
+              </a>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

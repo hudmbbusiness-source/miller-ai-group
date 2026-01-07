@@ -2266,6 +2266,64 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ==========================================================================
+    // MANUAL APEX SYNC - Update state from real Apex balance
+    // ==========================================================================
+    if (action === 'sync') {
+      const { syncData } = body
+
+      if (!syncData || typeof syncData.balance !== 'number') {
+        return NextResponse.json({
+          success: false,
+          error: 'Invalid sync data - balance required'
+        }, { status: 400 })
+      }
+
+      try {
+        // Load current state
+        const currentState = await loadTradingState()
+
+        // Calculate P&L from balance if not provided
+        const totalPnL = syncData.totalPnL ?? (syncData.balance - 150000)
+        const drawdownUsed = syncData.drawdownUsed ?? Math.max(0, -totalPnL)
+
+        // Update state with synced values
+        const syncedState = {
+          ...currentState,
+          totalPnL: totalPnL,
+          dailyPnL: currentState.dailyPnL, // Keep daily P&L tracking separate
+          lastSyncTime: syncData.syncTime || new Date().toISOString(),
+          syncSource: syncData.source || 'manual_apex_sync',
+          syncedBalance: syncData.balance,
+          syncedDrawdown: drawdownUsed,
+        }
+
+        // Save to Supabase
+        await saveTradingState(syncedState)
+
+        console.log(`[APEX SYNC] Balance synced: $${syncData.balance.toFixed(2)}, P&L: $${totalPnL.toFixed(2)}`)
+
+        return NextResponse.json({
+          success: true,
+          message: 'Apex account synced successfully',
+          sync: {
+            balance: syncData.balance.toFixed(2),
+            totalPnL: totalPnL.toFixed(2),
+            drawdownUsed: drawdownUsed.toFixed(2),
+            syncTime: syncedState.lastSyncTime,
+            source: syncedState.syncSource
+          },
+          statePersisted: true
+        })
+      } catch (error) {
+        console.error('[APEX SYNC] Error:', error)
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Sync failed'
+        }, { status: 500 })
+      }
+    }
+
     // Test trade to verify PickMyTrade connection - WITH FULL DEBUG
     if (action === 'test') {
       // Direct API test - bypass client to see raw response

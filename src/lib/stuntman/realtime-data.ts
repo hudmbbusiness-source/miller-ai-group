@@ -49,36 +49,104 @@ export interface MarketCandle {
 
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY || ''
 
+/**
+ * Get current ES futures contract symbol
+ * ES futures roll quarterly: H (Mar), M (Jun), U (Sep), Z (Dec)
+ */
+function getCurrentESFuturesSymbol(): string {
+  const now = new Date()
+  const month = now.getMonth() // 0-11
+  const year = now.getFullYear() % 100 // Last 2 digits
+
+  // Futures expire 3rd Friday of contract month
+  // Roll to next contract about 1 week before expiry
+  const rollDay = 8 // Roll on 8th of expiry month
+
+  let contractMonth: string
+  let contractYear = year
+
+  if (month < 2 || (month === 2 && now.getDate() < rollDay)) {
+    contractMonth = 'H' // March
+  } else if (month < 5 || (month === 5 && now.getDate() < rollDay)) {
+    contractMonth = 'M' // June
+  } else if (month < 8 || (month === 8 && now.getDate() < rollDay)) {
+    contractMonth = 'U' // September
+  } else if (month < 11 || (month === 11 && now.getDate() < rollDay)) {
+    contractMonth = 'Z' // December
+  } else {
+    contractMonth = 'H' // Next year March
+    contractYear = year + 1
+  }
+
+  return `ES${contractMonth}${contractYear}`
+}
+
 async function fetchPolygonQuote(symbol: string = 'ES'): Promise<MarketQuote | null> {
   if (!POLYGON_API_KEY) return null
 
   try {
-    // Polygon uses different symbol format: I:ES for indices, ESH5 for futures
-    const polygonSymbol = `I:SPX` // Use SPX as proxy, scale to ES
+    // Get current ES futures contract symbol (e.g., ESH26 for March 2026)
+    const futuresSymbol = getCurrentESFuturesSymbol()
+    console.log(`[Polygon] Fetching ES futures: ${futuresSymbol}`)
 
+    // Polygon futures endpoint - use snapshot for latest price
     const response = await fetch(
-      `https://api.polygon.io/v2/last/trade/${polygonSymbol}?apiKey=${POLYGON_API_KEY}`,
-      { headers: { 'User-Agent': 'StuntMan/1.0' } }
+      `https://api.polygon.io/v3/snapshot?ticker.any_of=${futuresSymbol}&apiKey=${POLYGON_API_KEY}`,
+      {
+        headers: { 'User-Agent': 'StuntMan/1.0' },
+        cache: 'no-store'
+      }
     )
 
-    if (!response.ok) return null
+    if (!response.ok) {
+      console.error(`[Polygon] HTTP ${response.status}:`, await response.text())
+      return null
+    }
 
     const data = await response.json()
-    if (!data.results) return null
+    const result = data.results?.[0]
 
-    // SPX to ES conversion: ES ≈ SPX * 10 / 100 * 50 (roughly)
-    // Actually ES is approximately SPX/10 in price terms
-    const esPrice = data.results.p // For SPX, ES is about 1/10th
+    if (!result?.session?.close) {
+      // Fallback: Try last trade endpoint
+      const tradeResponse = await fetch(
+        `https://api.polygon.io/v2/last/trade/${futuresSymbol}?apiKey=${POLYGON_API_KEY}`,
+        { headers: { 'User-Agent': 'StuntMan/1.0' }, cache: 'no-store' }
+      )
+
+      if (tradeResponse.ok) {
+        const tradeData = await tradeResponse.json()
+        if (tradeData.results?.p) {
+          const price = tradeData.results.p
+          console.log(`[Polygon] ES futures price from last trade: $${price}`)
+          return {
+            symbol: 'ES',
+            price: price,
+            bid: price - 0.25,
+            ask: price + 0.25,
+            bidSize: 100,
+            askSize: 100,
+            volume: tradeData.results.s || 0,
+            timestamp: tradeData.results.t || Date.now(),
+            source: 'polygon',
+            delayed: false
+          }
+        }
+      }
+      return null
+    }
+
+    const price = result.session.close
+    console.log(`[Polygon] ES futures price: $${price}`)
 
     return {
       symbol: 'ES',
-      price: esPrice,
-      bid: esPrice - 0.25,
-      ask: esPrice + 0.25,
+      price: price,
+      bid: result.session.close - 0.25,
+      ask: result.session.close + 0.25,
       bidSize: 100,
       askSize: 100,
-      volume: data.results.s || 0,
-      timestamp: data.results.t || Date.now(),
+      volume: result.session.volume || 0,
+      timestamp: result.updated || Date.now(),
       source: 'polygon',
       delayed: false
     }

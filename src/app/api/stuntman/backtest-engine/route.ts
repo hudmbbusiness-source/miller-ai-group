@@ -71,53 +71,14 @@ import {
   AdvancedSignal,
 } from '@/lib/stuntman/advanced-strategies'
 
-// === WORLD-CLASS REGIME-AWARE STRATEGIES ===
+// === MASTER ORCHESTRATOR - UNIFIED WORLD-CLASS SYSTEM ===
 import {
-  classifyMarketRegime as classifyWorldClassRegime,
-  generateMasterSignal as generateWorldClassSignal,
-  generateAllWorldClassSignals,  // NEW: Returns ALL valid signals for confluence
-  calculateTradeQuality,
-  calculatePropFirmRisk,
-  StrategySignal,
-  TradeQualityScore,
-  PropFirmRiskState,
-  MarketRegimeType,
-  RegimeAnalysis,
-} from '@/lib/stuntman/world-class-strategies'
-
-// === WEIGHT-BASED LIQUIDITY SWEEP STRATEGY ===
-// Governance-compliant: Trades are DEGRADED not BLOCKED
-import {
-  detectLiquiditySweep,
-  toBacktestSignal,
-  LiquiditySweepSignal,
-  Candle as LiquiditySweepCandle,
-} from '@/lib/stuntman/liquidity-sweep-strategy'
-
-// === SIMPLE ORB STRATEGY ===
-// PROVEN: 74.56% win rate, 2.512 profit factor (Trade That Swing backtest)
-// ONE TRADE PER DAY - Simple, mechanical, no discretion
-import {
-  generateORBSignal as generateSimpleORBSignal,
-  resetDayState as resetORBDayState,
-  isTradingWindow as isORBTradingWindow,
-  getORBStatus,
-  ORBSignal as SimpleORBSignal,
-  Candle as ORBCandle,
-} from '@/lib/stuntman/simple-orb-strategy'
-
-// === ROC + HEIKIN ASHI STRATEGY ===
-// PROVEN: 93% market outperformance, 55% win rate, 2.7:1 R:R (LiberatedStockTrader backtest)
-// Works throughout the day - complements ORB which only trades once in morning
-import {
-  generateROCHASignal,
-  shouldExitROCHA,
-  calculateHeikinAshi,
-  calculateROC,
-  calculateATR as calculateROCATR,
-  ROCSignal,
-  Candle as ROCCandle,
-} from '@/lib/stuntman/roc-heikin-ashi-strategy'
+  generateOrchestratorSignal,
+  recordTradeOutcomeOrchestrator,
+  initializeOrchestrator,
+  getOrchestratorStats,
+  OrchestratorSignal,
+} from '@/lib/stuntman/master-orchestrator'
 
 // =============================================================================
 // APEX 150K ACCOUNT CONFIGURATION - CRITICAL SAFETY LIMITS
@@ -125,14 +86,13 @@ import {
 
 const APEX_150K_CONFIG = {
   accountSize: 150000,           // $150,000 account
-  maxTrailingDrawdown: 5000,     // $5,000 max trailing drawdown (CORRECT - per Apex rules)
+  maxTrailingDrawdown: 6000,     // $6,000 max trailing drawdown (LOSE THIS = LOSE ACCOUNT)
   profitTarget: 9000,            // $9,000 profit target to pass
   minTradingDays: 7,             // Minimum 7 trading days required
-  maxContracts: 17,              // Maximum 17 contracts for 150K account
 
   // SAFETY BUFFERS - Stop BEFORE hitting limits
-  safetyBuffer: 0.80,            // Stop at 80% of max drawdown ($4,000)
-  criticalBuffer: 0.90,          // EMERGENCY STOP at 90% ($4,500)
+  safetyBuffer: 0.80,            // Stop at 80% of max drawdown ($4,800)
+  criticalBuffer: 0.90,          // EMERGENCY STOP at 90% ($5,400)
   dailyLossLimit: 0.25,          // Max 25% of remaining drawdown per day
 
   // Position sizing based on drawdown
@@ -142,15 +102,7 @@ const APEX_150K_CONFIG = {
     warning: 0.50,   // 60-80% drawdown: 50% size
     danger: 0.25,    // 80-90% drawdown: 25% size
     stop: 0,         // 90%+ drawdown: NO TRADING
-  },
-
-  // APEX TIMING RULES
-  mandatoryCloseTime: 1659,      // 4:59 PM ET - MUST close all positions
-  noNewTradesAfter: 1630,        // 4:30 PM ET - No new trades after this (29 min buffer)
-
-  // TRAILING THRESHOLD BEHAVIOR (Rithmic accounts)
-  // Once profit target ($9,000) is reached, trailing threshold STOPS trailing
-  trailingStopsAtTarget: true,
+  }
 }
 
 // =============================================================================
@@ -165,16 +117,14 @@ const TRADING_COSTS = {
   exchangeFeePerSide: 1.28,     // CME E-mini ES
   nfaFee: 0.02,                 // NFA regulatory fee
 
-  // Slippage simulation - REALISTIC for ES futures (INCREASED for 1:1 with live)
-  // Live reality: 0.5-2 ticks typical, 3-5 during fast moves, 5+ during news
-  baseSlippageTicks: 0.5,       // Minimum slippage (1 tick = $12.50 for ES)
-  volatilitySlippageMultiplier: 0.4,  // Higher multiplier for volatile periods
-  maxSlippageTicks: 4,          // Cap at 4 ticks (can spike higher during news)
+  // Slippage simulation - REALISTIC for ES futures
+  baseSlippageTicks: 0.25,      // Minimum slippage (1 tick = $12.50 for ES)
+  volatilitySlippageMultiplier: 0.1,  // REDUCED: ES is highly liquid, minimal slippage
 
-  // Latency simulation (milliseconds) - INCREASED for realism
-  minLatencyMs: 80,             // Best case latency with market order
-  maxLatencyMs: 400,            // Worst case latency during fast markets
-  avgLatencyMs: 150,            // Average latency (not 50ms like algo firms)
+  // Latency simulation (milliseconds)
+  minLatencyMs: 50,             // Best case latency
+  maxLatencyMs: 200,            // Worst case latency
+  avgLatencyMs: 100,            // Average latency
 
   // ES Contract specifications
   tickSize: 0.25,               // ES tick size
@@ -201,15 +151,14 @@ function calculateTradeCosts(
   // Exchange fees (both sides)
   const exchangeFees = (TRADING_COSTS.exchangeFeePerSide + TRADING_COSTS.nfaFee) * 2 * contracts
 
-  // FIXED: Slippage is already applied to entry/exit prices via applySlippage()
-  // DO NOT add slippage again here - that was DOUBLE COUNTING
-  // The price difference already reflects slippage
-  const slippage = 0  // Slippage is in the prices, not a separate cost
-  const slippageTicks = 0
+  // Slippage calculation - REALISTIC for ES (0.25-1 tick typical)
+  // ES is one of the most liquid futures, slippage is minimal during RTH
+  const volatilityFactor = Math.max(1, Math.min(2, volatility / 0.02))  // Cap at 2x
+  const slippageTicks = Math.min(1, TRADING_COSTS.baseSlippageTicks +
+    (TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * Math.random()))
+  const slippage = slippageTicks * TRADING_COSTS.tickValue * contracts * 2  // Entry and exit
 
-  // Only fixed costs (commission + exchange fees)
-  // Slippage is already reflected in gross P&L through price adjustments
-  const totalCosts = commission + exchangeFees
+  const totalCosts = commission + exchangeFees + slippage
 
   return {
     commission,
@@ -231,12 +180,11 @@ function simulateLatency(): number {
   return Math.max(TRADING_COSTS.minLatencyMs, Math.min(TRADING_COSTS.maxLatencyMs, latency))
 }
 
-// Apply slippage to price - REALISTIC for retail traders
+// Apply slippage to price
 function applySlippage(price: number, direction: 'LONG' | 'SHORT', isEntry: boolean, volatility: number): number {
-  const volatilityFactor = Math.max(1, Math.min(3, volatility / 0.012))  // Up to 3x
-  const baseSlip = TRADING_COSTS.baseSlippageTicks + (Math.random() * 0.5)
-  const volSlip = TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * Math.random()
-  const slippageTicks = Math.min(TRADING_COSTS.maxSlippageTicks, baseSlip + volSlip)
+  const volatilityFactor = Math.max(1, volatility / 0.01)
+  const slippageTicks = TRADING_COSTS.baseSlippageTicks +
+    (TRADING_COSTS.volatilitySlippageMultiplier * volatilityFactor * Math.random())
   const slippagePoints = slippageTicks * TRADING_COSTS.tickSize
 
   // Slippage always works against you
@@ -244,220 +192,6 @@ function applySlippage(price: number, direction: 'LONG' | 'SHORT', isEntry: bool
     return direction === 'LONG' ? price + slippagePoints : price - slippagePoints
   } else {
     return direction === 'LONG' ? price - slippagePoints : price + slippagePoints
-  }
-}
-
-// =============================================================================
-// BRUTALLY REALISTIC EXECUTION SIMULATION (1:1 with Live Trading)
-// =============================================================================
-
-interface SlippageFactors {
-  volumeFactor: number
-  volatilityFactor: number
-  sizeFactor: number
-  timeFactor: number
-}
-
-interface ExecutionResult {
-  executed: boolean
-  executionPrice: number
-  bidPrice: number
-  askPrice: number
-  spread: number
-  slippage: number
-  slippageTicks: number
-  contractsFilled: number
-  rejected: boolean
-  rejectionReason: string
-  factors: SlippageFactors
-}
-
-// Calculate bid/ask spread based on time of day and volatility
-function calculateSpread(candle: Candle, timeOfDay: 'RTH_OPEN' | 'RTH_MID' | 'RTH_CLOSE' | 'PRE' | 'POST'): number {
-  let spreadTicks = 1  // Base: 1 tick = $12.50
-
-  switch (timeOfDay) {
-    case 'RTH_OPEN': spreadTicks *= 1.5; break   // Wider at open
-    case 'RTH_MID': spreadTicks *= 1.0; break    // Tightest mid-day
-    case 'RTH_CLOSE': spreadTicks *= 1.25; break // Slightly wider at close
-    case 'PRE': spreadTicks *= 2.5; break        // Much wider pre-market
-    case 'POST': spreadTicks *= 2.0; break       // Wider post-market
-  }
-
-  // Volatility adjustment
-  const candleRange = (candle.high - candle.low) / candle.close
-  if (candleRange > 0.005) spreadTicks *= 1.5
-  if (candleRange > 0.01) spreadTicks *= 2.0
-
-  spreadTicks *= (0.8 + Math.random() * 0.4)  // ±20% variation
-  return spreadTicks * TRADING_COSTS.tickSize
-}
-
-function getTimeOfDay(timestamp: number): 'RTH_OPEN' | 'RTH_MID' | 'RTH_CLOSE' | 'PRE' | 'POST' {
-  const date = new Date(timestamp)
-  const estHour = date.getUTCHours() - 5
-  const estMinute = date.getUTCMinutes()
-  const time = estHour + estMinute / 60
-
-  if (time >= 9.5 && time < 10) return 'RTH_OPEN'
-  if (time >= 10 && time < 15.5) return 'RTH_MID'
-  if (time >= 15.5 && time < 16) return 'RTH_CLOSE'
-  if (time >= 6 && time < 9.5) return 'PRE'
-  return 'POST'
-}
-
-// Volume-based slippage calculation
-function calculateDynamicSlippage(
-  candle: Candle,
-  recentCandles: Candle[],
-  contracts: number,
-): { slippageTicks: number; factors: SlippageFactors } {
-  const avgVolume = recentCandles.slice(-20).reduce((s, c) => s + c.volume, 0) / Math.max(1, recentCandles.slice(-20).length)
-  const volumeRatio = avgVolume > 0 ? candle.volume / avgVolume : 1
-
-  let volumeFactor = 1.0
-  if (volumeRatio < 0.3) volumeFactor = 2.5
-  else if (volumeRatio < 0.5) volumeFactor = 1.8
-  else if (volumeRatio < 0.8) volumeFactor = 1.3
-  else if (volumeRatio > 2.0) volumeFactor = 0.8
-
-  const candleRange = (candle.high - candle.low) / candle.close
-  const avgRange = recentCandles.slice(-20).reduce((s, c) => s + (c.high - c.low) / c.close, 0) / Math.max(1, recentCandles.slice(-20).length)
-  const volatilityRatio = avgRange > 0 ? candleRange / avgRange : 1
-
-  let volatilityFactor = 1.0
-  if (volatilityRatio > 3.0) volatilityFactor = 3.0
-  else if (volatilityRatio > 2.0) volatilityFactor = 2.0
-  else if (volatilityRatio > 1.5) volatilityFactor = 1.5
-  else if (volatilityRatio < 0.5) volatilityFactor = 0.8
-
-  let sizeFactor = 1.0
-  if (contracts >= 10) sizeFactor = 2.0
-  else if (contracts >= 5) sizeFactor = 1.5
-  else if (contracts >= 3) sizeFactor = 1.2
-
-  const timeOfDay = getTimeOfDay(candle.time)
-  let timeFactor = 1.0
-  switch (timeOfDay) {
-    case 'RTH_OPEN': timeFactor = 1.8; break
-    case 'RTH_CLOSE': timeFactor = 1.4; break
-    case 'PRE': timeFactor = 2.5; break
-    case 'POST': timeFactor = 2.0; break
-    default: timeFactor = 1.0
-  }
-
-  const baseSlippageTicks = 0.5
-  const totalSlippageTicks = baseSlippageTicks * volumeFactor * volatilityFactor * sizeFactor * timeFactor
-  const randomFactor = 0.7 + Math.random() * 0.6
-  const cappedSlippage = Math.min(totalSlippageTicks * randomFactor, 10)
-
-  return { slippageTicks: cappedSlippage, factors: { volumeFactor, volatilityFactor, sizeFactor, timeFactor } }
-}
-
-// Order rejection simulation
-function simulateOrderRejection(candle: Candle, recentCandles: Candle[], contracts: number): { rejected: boolean; reason: string } {
-  const candleRange = (candle.high - candle.low) / candle.close
-  const avgRange = recentCandles.slice(-20).reduce((s, c) => s + (c.high - c.low) / c.close, 0) / Math.max(1, recentCandles.slice(-20).length)
-  const volatilityRatio = avgRange > 0 ? candleRange / avgRange : 1
-
-  let rejectionProbability = 0.02
-  if (volatilityRatio > 3.0) rejectionProbability = 0.15
-  else if (volatilityRatio > 2.0) rejectionProbability = 0.08
-  else if (volatilityRatio > 1.5) rejectionProbability = 0.04
-
-  if (contracts > 10) rejectionProbability *= 1.5
-  if (contracts > 20) rejectionProbability *= 2.0
-
-  const timeOfDay = getTimeOfDay(candle.time)
-  if (timeOfDay === 'RTH_OPEN') rejectionProbability *= 1.5
-  if (timeOfDay === 'PRE' || timeOfDay === 'POST') rejectionProbability *= 2.0
-
-  if (Math.random() < rejectionProbability) {
-    const reasons = ['Price moved too fast', 'Insufficient liquidity', 'Market moving', 'Exchange latency']
-    return { rejected: true, reason: reasons[Math.floor(Math.random() * reasons.length)] }
-  }
-  return { rejected: false, reason: '' }
-}
-
-// Partial fill simulation - REALISTIC for retail traders
-function simulateOrderFill(candle: Candle, recentCandles: Candle[], contracts: number): { fillPercentage: number; contractsFilled: number } {
-  const avgVolume = recentCandles.slice(-20).reduce((s, c) => s + c.volume, 0) / Math.max(1, recentCandles.slice(-20).length)
-  const volumeRatio = avgVolume > 0 ? candle.volume / avgVolume : 1
-
-  // Base fill rate is 95%, not 100% - retail orders aren't always first in queue
-  let fillPercentage = 95 + Math.random() * 5  // 95-100% base
-
-  // Low volume periods = worse fills
-  if (volumeRatio < 0.3) fillPercentage *= 0.75  // Very low volume
-  else if (volumeRatio < 0.5) fillPercentage *= 0.85  // Low volume
-  else if (volumeRatio < 0.8) fillPercentage *= 0.92  // Below average
-
-  // Large orders get worse fills
-  if (contracts > 3) fillPercentage *= 0.95
-  if (contracts > 5) fillPercentage *= 0.90
-  if (contracts > 10) fillPercentage *= 0.85
-
-  // Time of day impact
-  const timeOfDay = getTimeOfDay(candle.time)
-  if (timeOfDay === 'RTH_OPEN') fillPercentage *= 0.90  // Opening = worse fills
-  if (timeOfDay === 'PRE' || timeOfDay === 'POST') fillPercentage *= 0.80  // Extended hours
-
-  fillPercentage = Math.max(50, Math.min(100, fillPercentage))  // Cap between 50-100%
-
-  return { fillPercentage, contractsFilled: Math.max(1, Math.floor(contracts * fillPercentage / 100)) }
-}
-
-// Gap/flash crash check
-function checkForGap(currentCandle: Candle, previousCandle: Candle | null, position: { direction: 'LONG' | 'SHORT'; stopLoss: number } | null): { stoppedOut: boolean; gapExitPrice: number; gapSlippage: number } {
-  if (!previousCandle || !position) return { stoppedOut: false, gapExitPrice: 0, gapSlippage: 0 }
-
-  const gap = currentCandle.open - previousCandle.close
-  const gapPoints = Math.abs(gap)
-
-  if (gapPoints <= 2) return { stoppedOut: false, gapExitPrice: 0, gapSlippage: 0 }
-
-  if (position.direction === 'LONG' && gap < 0 && currentCandle.open < position.stopLoss) {
-    return { stoppedOut: true, gapExitPrice: currentCandle.open, gapSlippage: Math.abs(currentCandle.open - position.stopLoss) }
-  }
-  if (position.direction === 'SHORT' && gap > 0 && currentCandle.open > position.stopLoss) {
-    return { stoppedOut: true, gapExitPrice: currentCandle.open, gapSlippage: Math.abs(currentCandle.open - position.stopLoss) }
-  }
-
-  return { stoppedOut: false, gapExitPrice: 0, gapSlippage: 0 }
-}
-
-// Full execution price calculation
-function calculateExecutionPrice(candle: Candle, recentCandles: Candle[], direction: 'LONG' | 'SHORT', isEntry: boolean, contracts: number): ExecutionResult {
-  const timeOfDay = getTimeOfDay(candle.time)
-  const spreadPoints = calculateSpread(candle, timeOfDay)
-  const midPrice = candle.close
-  const bidPrice = midPrice - spreadPoints / 2
-  const askPrice = midPrice + spreadPoints / 2
-
-  const rejection = simulateOrderRejection(candle, recentCandles, contracts)
-  if (rejection.rejected) {
-    return {
-      executed: false, executionPrice: 0, bidPrice, askPrice, spread: spreadPoints,
-      slippage: 0, slippageTicks: 0, contractsFilled: 0, rejected: true,
-      rejectionReason: rejection.reason, factors: { volumeFactor: 0, volatilityFactor: 0, sizeFactor: 0, timeFactor: 0 }
-    }
-  }
-
-  const fill = simulateOrderFill(candle, recentCandles, contracts)
-  const { slippageTicks, factors } = calculateDynamicSlippage(candle, recentCandles, fill.contractsFilled)
-  const slippagePoints = slippageTicks * TRADING_COSTS.tickSize
-
-  let executionPrice: number
-  if (isEntry) {
-    executionPrice = direction === 'LONG' ? askPrice + slippagePoints : bidPrice - slippagePoints
-  } else {
-    executionPrice = direction === 'LONG' ? bidPrice - slippagePoints : askPrice + slippagePoints
-  }
-
-  return {
-    executed: true, executionPrice, bidPrice, askPrice, spread: spreadPoints,
-    slippage: slippagePoints, slippageTicks, contractsFilled: fill.contractsFilled,
-    rejected: false, rejectionReason: '', factors
   }
 }
 
@@ -685,7 +419,7 @@ interface BacktestState {
     stopMultiplierUsed: number   // For adaptive learning
     targetMultiplierUsed: number // For adaptive learning
     strategy: string             // Strategy that generated signal
-    isProvenStrategy: boolean    // True = use pure strategy logic (no partials, no trailing) - ORB or ROC+HA
+    orchestratorSignalId: string | null  // Orchestrator signal ID for learning
     // Entry analytics for analysis
     entryAnalytics: {
       strategy: string
@@ -708,13 +442,11 @@ interface BacktestState {
   maxDrawdown: number
   peakBalance: number
   currentBalance: number
-  // Cost breakdown (ENHANCED with spread and gaps)
+  // Cost breakdown
   costBreakdown: {
     commissions: number
     exchangeFees: number
     slippage: number
-    spread: number           // Bid/ask spread costs
-    gapLosses: number        // Extra losses from gapped stops
   }
   // Latency stats
   latencyStats: {
@@ -722,16 +454,6 @@ interface BacktestState {
     avgLatencyMs: number
     maxLatencyMs: number
     minLatencyMs: number
-  }
-  // EXECUTION QUALITY STATS
-  executionStats: {
-    totalOrders: number
-    rejectedOrders: number
-    partialFills: number
-    avgFillPercentage: number
-    avgSlippageTicks: number
-    avgSpreadTicks: number
-    gappedStops: number
   }
   // Strategy stats
   strategyPerformance: {
@@ -787,818 +509,13 @@ let config: EngineConfig = {
   autoInverse: true,     // AUTO-INVERSE ON BY DEFAULT - fully automatic
   sessionFilter: true,   // ENABLED: Only trade optimal sessions
   tradeSessions: {
-    preMarket: false,      // ❌ Skip - thin liquidity, unpredictable gaps
-    openingHour: true,     // ✅ 9:30-10:30 - High volatility, clear trends
-    midDay: false,         // ❌ Skip - LUNCH HOUR CHOP kills profits
-    afternoonPush: true,   // ✅ 2:00-3:00 - Momentum builds, institutions active
-    powerHour: true,       // ✅ 3:00-4:00 - Strong directional moves, best setups
-    afterHours: false,     // ❌ Skip - news reactions, wide spreads
-    overnight: false,      // ❌ Skip - thin markets, no edge
-  }
-}
-
-// =============================================================================
-// FOCUSED STRATEGY MODE - Use ONLY the proven ORB strategy
-// =============================================================================
-// The ORB (Opening Range Breakout) strategy has:
-// - 74.56% documented win rate (Quantified Strategies)
-// - 2.512 profit factor
-// - Clear, mechanical rules
-
-const FOCUSED_MODE = {
-  enabled: false,              // DISABLED - ORB signals not generating properly
-  onlyORBSignals: true,        // Only take ORB breakout trades
-  onlyTrendingDays: false,     // Allow all days for now
-
-  // Time window for ORB trades (after range forms, before exhaustion)
-  orbTradeWindowStart: 1000,   // 10:00 AM ET (after 30-min range forms)
-  orbTradeWindowEnd: 1500,     // 3:00 PM ET (extended window)
-
-  // ORB-specific requirements - LOOSENED
-  minORBRangePoints: 1,        // Min 1 point range
-  maxORBRangePoints: 50,       // Allow larger ranges
-  minBreakoutVolume: 1.0,      // No volume requirement
-
-  // Only trade ONE direction per day (first clear breakout)
-  oneDirectionPerDay: false,
-
-  // Maximum trades per day in focused mode
-  maxDailyTrades: 4,           // Allow more trades
-}
-
-// =============================================================================
-// DYNAMIC REGIME-ADAPTIVE STRATEGY SYSTEM
-// =============================================================================
-// Professional-grade system that automatically selects the RIGHT strategy
-// for current market conditions. Designed to hit Apex 150K: $9,000 in 7 days.
-//
-// REQUIREMENTS:
-// - $1,285/day average profit
-// - 50%+ win rate with 2:1 R/R
-// - Works across ALL market conditions
-
-const DYNAMIC_STRATEGY_SYSTEM = {
-  enabled: true,
-
-  // =========================================================================
-  // REGIME -> STRATEGY MAPPING
-  // Each regime has optimal strategies that historically perform best
-  // =========================================================================
-  regimeStrategies: {
-    // TRENDING MARKETS - Ride the momentum
-    'TRENDING_UP': [
-      'BOS_CONTINUATION',      // Break of structure - trend continuation
-      'TREND_PULLBACK',        // Buy dips in uptrend
-      'ORB_BREAKOUT',          // Opening range breakout
-      'OB_FVG_CONFLUENCE',     // Order block + FVG
-    ],
-    'TRENDING_DOWN': [
-      'BOS_CONTINUATION',      // Break of structure - trend continuation
-      'TREND_PULLBACK',        // Sell rallies in downtrend
-      'ORB_BREAKOUT',          // Opening range breakout
-      'OB_FVG_CONFLUENCE',     // Order block + FVG
-    ],
-
-    // RANGING MARKETS - Fade extremes
-    'RANGING': [
-      'VWAP_DEVIATION',        // Mean reversion to VWAP
-      'RANGE_FADE',            // Fade range highs/lows
-      'SESSION_REVERSION',     // Session high/low reversion
-      'VP_VAH_REVERSAL',       // Volume profile high reversal
-      'VP_VAL_REVERSAL',       // Volume profile low reversal
-      'ZSCORE_REVERSION',      // Statistical mean reversion
-    ],
-
-    // VOLATILE MARKETS - Catch breakouts
-    'HIGH_VOLATILITY': [
-      'VOLATILITY_BREAKOUT',   // Compression -> Expansion
-      'LIQUIDITY_SWEEP',       // Stop hunt reversals
-      'LIQUIDITY_SWEEP_MSS',   // Sweep + market structure shift
-      'FAILED_BREAKOUT',       // False breakout reversal
-    ],
-
-    // LOW VOLATILITY - Wait for expansion or scalp
-    'LOW_VOLATILITY': [
-      'VOLATILITY_BREAKOUT',   // Wait for compression break
-      'RANGE_FADE',            // Scalp the range
-      'VWAP_DEVIATION',        // Small moves off VWAP
-    ],
-
-    // BREAKOUT MARKETS
-    'BREAKOUT': [
-      'ORB_BREAKOUT',          // Opening range breakout
-      'VOLATILITY_BREAKOUT',   // Compression breakout
-      'BOS_CONTINUATION',      // Structure breakout
-    ],
-
-    // REVERSAL MARKETS
-    'REVERSAL': [
-      'CHOCH_REVERSAL',        // Change of character
-      'KILLZONE_REVERSAL',     // NY killzone reversal
-      'LIQUIDITY_SWEEP',       // Stop hunt reversal
-      'FAILED_BREAKOUT',       // False breakout reversal
-    ],
-
-    // UNKNOWN - Use all strategies, require high confluence
-    'UNKNOWN': [
-      'OB_FVG_CONFLUENCE',
-      'LIQUIDITY_SWEEP_MSS',
-      'VWAP_DEVIATION',
-      'BOS_CONTINUATION',
-    ],
-  },
-
-  // =========================================================================
-  // SESSION-BASED STRATEGY BOOSTS
-  // Certain strategies work better at certain times
-  // =========================================================================
-  sessionBoosts: {
-    'RTH_OPEN': {              // 9:30-10:30 AM - High volatility
-      boost: ['ORB_BREAKOUT', 'VOLATILITY_BREAKOUT', 'LIQUIDITY_SWEEP'],
-      multiplier: 1.5,
-    },
-    'RTH_MID': {               // 10:30-2:00 PM - Choppy, ranging
-      boost: ['VWAP_DEVIATION', 'RANGE_FADE', 'VP_VAH_REVERSAL', 'VP_VAL_REVERSAL'],
-      multiplier: 1.3,
-    },
-    'RTH_AFTERNOON': {         // 2:00-3:30 PM - Trend resumption
-      boost: ['BOS_CONTINUATION', 'TREND_PULLBACK', 'OB_FVG_CONFLUENCE'],
-      multiplier: 1.4,
-    },
-    'RTH_CLOSE': {             // 3:30-4:00 PM - Final push
-      boost: ['BOS_CONTINUATION', 'VOLATILITY_BREAKOUT'],
-      multiplier: 1.2,
-    },
-  },
-
-  // =========================================================================
-  // CONFLUENCE REQUIREMENTS - Multiple signals must agree
-  // =========================================================================
-  confluence: {
-    minStrategiesAgreeing: 1,  // LOWERED: At least 1 strategy can signal (was 2)
-    minConfidenceAverage: 45,  // LOWERED: Average confidence must be 45%+ (was 70)
-    requireRegimeMatch: false, // DISABLED: Strategy doesn't need to match regime
-  },
-
-  // =========================================================================
-  // APEX 150K SPECIFIC SETTINGS
-  // =========================================================================
-  apex150k: {
-    dailyTarget: 1285,         // $1,285/day to hit $9,000 in 7 days
-    dailyMaxLoss: 600,         // Stop at -$600/day to protect account
-    minRiskReward: 2.0,        // Only take 2:1 or better setups
-    minWinProbability: 0.50,   // Only take 50%+ probability setups
-    maxTradesPerDay: 6,        // Quality over quantity
-    minTimeBetweenTrades: 10,  // 10 candles minimum between trades
-  },
-
-  // Enable all signal sources - dynamic selection will choose the best
-  disableLiquiditySweep: false,
-  disableWorldClass: false,
-  disableAdvanced: false,
-  disableMaster: false,
-  disableFocusedORB: false,
-}
-
-// Helper: Get optimal strategies for current regime
-type RegimeType = keyof typeof DYNAMIC_STRATEGY_SYSTEM.regimeStrategies
-
-function getRegimeOptimalStrategies(regime: string): string[] {
-  const validRegimes = Object.keys(DYNAMIC_STRATEGY_SYSTEM.regimeStrategies) as RegimeType[]
-  const regimeKey = validRegimes.includes(regime as RegimeType)
-    ? regime as RegimeType
-    : 'UNKNOWN'
-  return DYNAMIC_STRATEGY_SYSTEM.regimeStrategies[regimeKey]
-}
-
-// Helper: Check if strategy is optimal for regime
-function isStrategyOptimalForRegime(strategy: string, regime: string): boolean {
-  const optimalStrategies = getRegimeOptimalStrategies(regime)
-  return optimalStrategies.includes(strategy)
-}
-
-// Helper: Get session boost multiplier for strategy
-type SessionBoostType = keyof typeof DYNAMIC_STRATEGY_SYSTEM.sessionBoosts
-
-function getSessionBoost(strategy: string, session: string): number {
-  const validSessions = Object.keys(DYNAMIC_STRATEGY_SYSTEM.sessionBoosts) as SessionBoostType[]
-  if (!validSessions.includes(session as SessionBoostType)) return 1.0
-  const sessionConfig = DYNAMIC_STRATEGY_SYSTEM.sessionBoosts[session as SessionBoostType]
-  if (sessionConfig.boost.includes(strategy)) {
-    return sessionConfig.multiplier
-  }
-  return 1.0
-}
-
-// Helper: Calculate dynamic confidence score
-function calculateDynamicConfidence(
-  baseConfidence: number,
-  strategy: string,
-  regime: string,
-  session: string
-): number {
-  let confidence = baseConfidence
-
-  // Boost if strategy is optimal for regime
-  if (isStrategyOptimalForRegime(strategy, regime)) {
-    confidence *= 1.2  // 20% boost
-  } else {
-    confidence *= 0.7  // 30% penalty
-  }
-
-  // Apply session boost
-  confidence *= getSessionBoost(strategy, session)
-
-  return Math.min(100, confidence)
-}
-
-// =============================================================================
-// PRODUCTION-READY PROFIT MAXIMIZATION CONFIG
-// =============================================================================
-
-const PROFIT_CONFIG = {
-  // DAILY LOSS LIMIT - Protect the account at all costs
-  dailyMaxLoss: 800,           // Stop trading if down $800 in a day (tighter)
-  dailyMaxLossPercent: 0.53,   // Or 0.53% of account
-
-  // MAX RISK PER TRADE - Prevent catastrophic single-trade losses
-  maxLossPerTrade: 300,        // Maximum $300 risk per trade (6 points ES with 1 contract)
-  maxLossPerTradePoints: 6,    // Max 6 point stop on ES ($300 with 1 contract)
-
-  // LOSING STREAK LIMITER - Stop after consecutive losses
-  maxConsecutiveLosses: 2,     // Stop trading after 2 losses in a row (wait for next day)
-
-  // ENTRY REQUIREMENTS - ULTRA SELECTIVE - Only take the ABSOLUTE BEST setups
-  minConfluenceScore: 70,      // Need 70+ confluence (was 60 - too low)
-  minConfidence: 80,           // Need 80%+ confidence (was 75)
-  minRiskReward: 2.5,          // Need 2.5:1 R:R minimum (was 2.0)
-
-  // MTF ALIGNMENT - Trade with the trend ONLY
-  requireMTFAlignment: true,   // Higher timeframes must agree
-
-  // TRADE FREQUENCY - STRICT Quality over quantity
-  maxTradesPerDay: 5,          // Maximum 5 trades per day (was 8 - too many)
-  minTimeBetweenTrades: 20,    // Wait 20 minutes between trades (was 15)
-
-  // MOMENTUM REQUIREMENTS - STRICTER
-  requireMomentumConfirm: true,  // RSI and MACD must confirm
-  rsiOversoldThreshold: 40,      // Only long when RSI > 40 (was 35)
-  rsiOverboughtThreshold: 60,    // Only short when RSI < 60 (was 65)
-
-  // VOLATILITY FILTER
-  minATRMultiple: 0.6,          // Skip if ATR too low (no movement)
-  maxATRMultiple: 2.5,          // Skip if ATR too high (too risky)
-
-  // TREND STRENGTH - STRICTER
-  minTrendStrength: 0.7,        // EMA alignment must be 70%+ (was 60%)
-
-  // STOP LOSS TIGHTENING
-  maxStopATRMultiplier: 0.8,   // Even tighter stops: max 0.8 ATR (was 1.0)
-}
-
-// =============================================================================
-// GAP PROTECTION CONFIG - Reduce exposure near known gap times
-// =============================================================================
-// Gaps caused a -$2,280 loss (45-point gap) in testing.
-// This config reduces position size during high gap-risk periods.
-
-const GAP_PROTECTION = {
-  enabled: true,
-
-  // KNOWN GAP RISK PERIODS (all times in EST)
-  // These are when ES futures can gap significantly
-
-  // 1. Market Close - 3:30 PM to 4:00 PM
-  // Risk: Positions held past close can gap at next open
-  closeWarningStartHour: 15.5,    // 3:30 PM EST
-  closePositionMultiplier: 0.5,   // 50% position size in last 30 min
-
-  // 2. No New Positions After 3:45 PM
-  // Avoid positions that could be held overnight
-  noNewPositionsAfterHour: 15.75, // 3:45 PM EST
-  noNewPositionsMultiplier: 0.0,  // 0% = no new positions (emergency block)
-
-  // 3. Pre-Market Gap Risk (before 9:30 AM)
-  // Overnight news can cause gaps at open
-  preMarketStartHour: 4.0,        // 4:00 AM EST (futures open)
-  preMarketEndHour: 9.5,          // 9:30 AM EST (RTH open)
-  preMarketMultiplier: 0.25,      // 25% position size
-
-  // 4. Overnight Session (8 PM to 4 AM)
-  // Low liquidity, can gap on Asian/European news
-  overnightStartHour: 20.0,       // 8:00 PM EST
-  overnightEndHour: 4.0,          // 4:00 AM EST
-  overnightMultiplier: 0.25,      // 25% position size
-
-  // 5. LUNCH HOUR chop (11 AM to 1 PM)
-  // Not a gap risk, but high chop = whipsaw losses
-  lunchStartHour: 11.0,           // 11:00 AM EST
-  lunchEndHour: 13.0,             // 1:00 PM EST
-  lunchMultiplier: 0.5,           // 50% position size (avoid chop)
-
-  // 6. Known High Gap Risk Days
-  // Add specific date handling for FOMC, NFP, etc. if needed
-  // (For now, market intel system handles this)
-}
-
-// Calculate gap protection multiplier based on time of day
-function getGapProtectionMultiplier(timestamp: number): { multiplier: number; reason: string } {
-  if (!GAP_PROTECTION.enabled) {
-    return { multiplier: 1.0, reason: 'Gap protection disabled' }
-  }
-
-  const date = new Date(timestamp)
-  // Convert to EST (UTC-5, or UTC-4 during DST - simplified to UTC-5)
-  const utcHour = date.getUTCHours()
-  const utcMinute = date.getUTCMinutes()
-  const estHour = utcHour - 5 + (utcMinute / 60)
-  // Handle negative hours (wrap around from previous day)
-  const normalizedHour = estHour < 0 ? estHour + 24 : estHour
-
-  // Check each gap risk period (in order of severity)
-
-  // 1. NO NEW POSITIONS AFTER 3:45 PM (most restrictive)
-  if (normalizedHour >= GAP_PROTECTION.noNewPositionsAfterHour && normalizedHour < 16.0) {
-    return { multiplier: GAP_PROTECTION.noNewPositionsMultiplier, reason: 'No new positions after 3:45 PM' }
-  }
-
-  // 2. CLOSE WARNING (3:30 PM - 3:45 PM)
-  if (normalizedHour >= GAP_PROTECTION.closeWarningStartHour && normalizedHour < GAP_PROTECTION.noNewPositionsAfterHour) {
-    return { multiplier: GAP_PROTECTION.closePositionMultiplier, reason: 'Market close warning' }
-  }
-
-  // 3. OVERNIGHT SESSION (8 PM - 4 AM)
-  if (normalizedHour >= GAP_PROTECTION.overnightStartHour || normalizedHour < GAP_PROTECTION.overnightEndHour) {
-    return { multiplier: GAP_PROTECTION.overnightMultiplier, reason: 'Overnight session - high gap risk' }
-  }
-
-  // 4. PRE-MARKET (4 AM - 9:30 AM)
-  if (normalizedHour >= GAP_PROTECTION.preMarketStartHour && normalizedHour < GAP_PROTECTION.preMarketEndHour) {
-    return { multiplier: GAP_PROTECTION.preMarketMultiplier, reason: 'Pre-market - gap risk at open' }
-  }
-
-  // 5. LUNCH HOUR CHOP (11 AM - 1 PM)
-  if (normalizedHour >= GAP_PROTECTION.lunchStartHour && normalizedHour < GAP_PROTECTION.lunchEndHour) {
-    return { multiplier: GAP_PROTECTION.lunchMultiplier, reason: 'Lunch hour - high chop' }
-  }
-
-  // No gap risk - normal trading
-  return { multiplier: 1.0, reason: 'Normal trading hours' }
-}
-
-// =============================================================================
-// ADAPTIVE CONFLUENCE THRESHOLDS - REGIME-BASED DYNAMIC REQUIREMENTS
-// Same as live trading - thresholds adapt to market conditions
-// =============================================================================
-
-interface RegimeThresholdAdjustment {
-  confluenceAdjust: number      // Add/subtract from base confluence requirement
-  confidenceAdjust: number      // Add/subtract from base confidence requirement
-  riskRewardAdjust: number      // Add/subtract from base R:R requirement
-}
-
-interface SessionThresholdAdjustment {
-  confluenceAdjust: number
-  confidenceAdjust: number
-}
-
-interface AdaptiveConfluenceConfig {
-  baseConfluence: number
-  baseConfidence: number
-  baseRiskReward: number
-  regimeAdjustments: Record<MarketRegimeType, RegimeThresholdAdjustment>
-  simpleRegimeMap: Record<MarketRegime, MarketRegimeType>  // Map simple regime to detailed
-  sessionAdjustments: {
-    RTH_OPEN: SessionThresholdAdjustment
-    RTH_MID: SessionThresholdAdjustment
-    RTH_CLOSE: SessionThresholdAdjustment
-    POWER_HOUR: SessionThresholdAdjustment
-    OVERNIGHT: SessionThresholdAdjustment
-    DEFAULT: SessionThresholdAdjustment
-  }
-  performanceAdjustments: {
-    afterLoss: { confluenceAdd: number, confidenceAdd: number }
-    afterWinStreak: { confluenceReduce: number, confidenceReduce: number }
-    maxConsecutiveLosses: number
-  }
-  timeOfDayAdjustments: {
-    POWER_HOUR: { confluenceReduce: number }     // 3-4 PM - best setups
-    OPENING_HOUR: { confluenceReduce: number }   // 9:30-10:30 - high volatility
-    MID_DAY: { confluenceAdd: number }           // 10:30-2 - lunch chop
-  }
-}
-
-const ADAPTIVE_CONFLUENCE: AdaptiveConfluenceConfig = {
-  // Base thresholds (AGGRESSIVE for more trades)
-  baseConfluence: 35,    // LOWERED from 60
-  baseConfidence: 45,    // LOWERED from 70
-  baseRiskReward: 1.5,   // LOWERED from 2.0
-
-  // Map simple regime types to detailed types
-  simpleRegimeMap: {
-    'TRENDING_UP': 'TREND_STRONG_UP',
-    'TRENDING_DOWN': 'TREND_STRONG_DOWN',
-    'RANGING': 'RANGE_TIGHT',
-    'HIGH_VOLATILITY': 'HIGH_VOLATILITY',
-    'LOW_VOLATILITY': 'LOW_VOLATILITY',
-  },
-
-  // Regime-based threshold adjustments
-  // Negative = EASIER entry (take more trades)
-  // Positive = HARDER entry (be more selective)
-  regimeAdjustments: {
-    // TRENDING MARKETS - BE AGGRESSIVE (easier entries)
-    'TREND_STRONG_UP': { confluenceAdjust: -20, confidenceAdjust: -15, riskRewardAdjust: -0.5 },
-    'TREND_STRONG_DOWN': { confluenceAdjust: -20, confidenceAdjust: -15, riskRewardAdjust: -0.5 },
-    'TREND_WEAK_UP': { confluenceAdjust: -10, confidenceAdjust: -10, riskRewardAdjust: -0.25 },
-    'TREND_WEAK_DOWN': { confluenceAdjust: -10, confidenceAdjust: -10, riskRewardAdjust: -0.25 },
-
-    // RANGING MARKETS - BE SELECTIVE (harder entries)
-    'RANGE_TIGHT': { confluenceAdjust: +15, confidenceAdjust: +15, riskRewardAdjust: +0.5 },
-    'RANGE_WIDE': { confluenceAdjust: +10, confidenceAdjust: +10, riskRewardAdjust: +0.25 },
-
-    // VOLATILITY EXTREMES
-    'HIGH_VOLATILITY': { confluenceAdjust: -5, confidenceAdjust: -5, riskRewardAdjust: +0.25 },  // More trades but higher R:R
-    'LOW_VOLATILITY': { confluenceAdjust: +10, confidenceAdjust: +5, riskRewardAdjust: 0 },     // Fewer trades
-
-    // SPECIAL CONDITIONS
-    'NEWS_DRIVEN': { confluenceAdjust: +20, confidenceAdjust: +20, riskRewardAdjust: +0.5 },   // Very selective
-    'ILLIQUID': { confluenceAdjust: +50, confidenceAdjust: +50, riskRewardAdjust: +1.0 },      // Almost no trades
-  },
-
-  // Session-based adjustments
-  sessionAdjustments: {
-    RTH_OPEN: { confluenceAdjust: -10, confidenceAdjust: -5 },     // 9:30-10:30 - aggressive
-    RTH_MID: { confluenceAdjust: +15, confidenceAdjust: +10 },     // 10:30-2:00 - selective (lunch chop)
-    RTH_CLOSE: { confluenceAdjust: -5, confidenceAdjust: 0 },      // 3:00-4:00 - moderately aggressive
-    POWER_HOUR: { confluenceAdjust: -10, confidenceAdjust: -5 },   // 3:00-4:00 - aggressive
-    OVERNIGHT: { confluenceAdjust: +20, confidenceAdjust: +15 },   // After hours - very selective
-    DEFAULT: { confluenceAdjust: 0, confidenceAdjust: 0 },
-  },
-
-  // Performance-based adjustments
-  performanceAdjustments: {
-    afterLoss: { confluenceAdd: 10, confidenceAdd: 5 },            // +10 confluence, +5% confidence after loss
-    afterWinStreak: { confluenceReduce: 5, confidenceReduce: 3 },  // -5 confluence after 3+ wins
-    maxConsecutiveLosses: 2,                                        // Apply after 2 consecutive losses
-  },
-
-  // Time-of-day fine-tuning
-  timeOfDayAdjustments: {
-    POWER_HOUR: { confluenceReduce: 15 },    // 3-4 PM - best setups, be aggressive
-    OPENING_HOUR: { confluenceReduce: 10 },  // 9:30-10:30 - high volatility, good setups
-    MID_DAY: { confluenceAdd: 20 },          // 10:30-2:00 - lunch chop, be very selective
-  },
-}
-
-// Calculate adaptive thresholds based on regime, session, and performance
-function calculateAdaptiveThresholds(
-  regime: MarketRegime,
-  session: TradingSession,
-  consecutiveLosses: number,
-  consecutiveWins: number,
-  currentHour: number
-): {
-  requiredConfluence: number
-  requiredConfidence: number
-  requiredRiskReward: number
-  adjustmentFactors: {
-    regime: string
-    regimeAdjust: { confluence: number, confidence: number, rr: number }
-    sessionAdjust: { confluence: number, confidence: number }
-    performanceAdjust: { confluence: number, confidence: number }
-    timeAdjust: { confluence: number }
-  }
-} {
-  // Map simple regime to detailed regime type
-  const detailedRegime = ADAPTIVE_CONFLUENCE.simpleRegimeMap[regime] || 'RANGE_TIGHT'
-  const regimeAdj = ADAPTIVE_CONFLUENCE.regimeAdjustments[detailedRegime]
-
-  // Get session adjustment - map TradingSession to our adjustment keys
-  // TradingSession types: OVERNIGHT, PRE_MARKET, OPENING_DRIVE, MID_DAY, AFTERNOON, POWER_HOUR, CLOSE
-  const sessionKey =
-    session === 'POWER_HOUR' || session === 'CLOSE' ? 'POWER_HOUR'
-    : session === 'OPENING_DRIVE' ? 'RTH_OPEN'
-    : session === 'MID_DAY' ? 'RTH_MID'
-    : session === 'AFTERNOON' ? 'RTH_CLOSE'
-    : session === 'OVERNIGHT' || session === 'PRE_MARKET' ? 'OVERNIGHT'
-    : 'DEFAULT'
-  const sessionAdj = ADAPTIVE_CONFLUENCE.sessionAdjustments[sessionKey] || ADAPTIVE_CONFLUENCE.sessionAdjustments.DEFAULT
-
-  // Performance adjustment
-  let perfConfluenceAdj = 0
-  let perfConfidenceAdj = 0
-  if (consecutiveLosses >= ADAPTIVE_CONFLUENCE.performanceAdjustments.maxConsecutiveLosses) {
-    perfConfluenceAdj = ADAPTIVE_CONFLUENCE.performanceAdjustments.afterLoss.confluenceAdd
-    perfConfidenceAdj = ADAPTIVE_CONFLUENCE.performanceAdjustments.afterLoss.confidenceAdd
-  } else if (consecutiveWins >= 3) {
-    perfConfluenceAdj = -ADAPTIVE_CONFLUENCE.performanceAdjustments.afterWinStreak.confluenceReduce
-    perfConfidenceAdj = -ADAPTIVE_CONFLUENCE.performanceAdjustments.afterWinStreak.confidenceReduce
-  }
-
-  // Time-of-day adjustment
-  let timeConfluenceAdj = 0
-  if (currentHour >= 15 && currentHour < 16) {
-    // Power hour 3-4 PM
-    timeConfluenceAdj = -ADAPTIVE_CONFLUENCE.timeOfDayAdjustments.POWER_HOUR.confluenceReduce
-  } else if (currentHour >= 9.5 && currentHour < 10.5) {
-    // Opening hour 9:30-10:30
-    timeConfluenceAdj = -ADAPTIVE_CONFLUENCE.timeOfDayAdjustments.OPENING_HOUR.confluenceReduce
-  } else if (currentHour >= 10.5 && currentHour < 14) {
-    // Mid-day 10:30-2:00
-    timeConfluenceAdj = ADAPTIVE_CONFLUENCE.timeOfDayAdjustments.MID_DAY.confluenceAdd
-  }
-
-  // Calculate final thresholds
-  const requiredConfluence = Math.max(30, Math.min(95,
-    ADAPTIVE_CONFLUENCE.baseConfluence +
-    regimeAdj.confluenceAdjust +
-    sessionAdj.confluenceAdjust +
-    perfConfluenceAdj +
-    timeConfluenceAdj
-  ))
-
-  const requiredConfidence = Math.max(40, Math.min(95,
-    ADAPTIVE_CONFLUENCE.baseConfidence +
-    regimeAdj.confidenceAdjust +
-    sessionAdj.confidenceAdjust +
-    perfConfidenceAdj
-  ))
-
-  const requiredRiskReward = Math.max(1.2, Math.min(4.0,
-    ADAPTIVE_CONFLUENCE.baseRiskReward +
-    regimeAdj.riskRewardAdjust
-  ))
-
-  return {
-    requiredConfluence,
-    requiredConfidence,
-    requiredRiskReward,
-    adjustmentFactors: {
-      regime: detailedRegime,
-      regimeAdjust: {
-        confluence: regimeAdj.confluenceAdjust,
-        confidence: regimeAdj.confidenceAdjust,
-        rr: regimeAdj.riskRewardAdjust
-      },
-      sessionAdjust: {
-        confluence: sessionAdj.confluenceAdjust,
-        confidence: sessionAdj.confidenceAdjust
-      },
-      performanceAdjust: {
-        confluence: perfConfluenceAdj,
-        confidence: perfConfidenceAdj
-      },
-      timeAdjust: {
-        confluence: timeConfluenceAdj
-      },
-    },
-  }
-}
-
-// =============================================================================
-// APEX EVAL MODE - 7-DAY $9,000 TARGET OPTIMIZATION
-// =============================================================================
-
-const EVAL_MODE = {
-  enabled: true,                  // ENABLE for Apex evaluation
-  targetProfit: 9000,             // $9,000 target
-  evalDays: 7,                    // 7 consecutive trading days
-  dailyTarget: 1400,              // ~$1,400/day target (with buffer)
-
-  // AGGRESSIVE THRESHOLDS FOR MORE TRADES
-  minConfluenceScore: 25,         // LOWERED from 40 - accept more setups
-  minConfidence: 40,              // LOWERED from 50 - accept more setups
-  minRiskReward: 1.2,             // LOWERED from 1.5 - faster profits
-
-  // TRADE FREQUENCY - HIGHER for eval
-  maxTradesPerDay: 20,            // INCREASED from 12 - need more opportunities
-  minTimeBetweenTrades: 5,        // DECREASED from 20 - faster pace
-
-  // STRATEGY PRIORITY WEIGHTS (higher = preferred)
-  strategyWeights: {
-    'LIQUIDITY_SWEEP_REVERSAL': 1.5,  // Highest priority - best for reversals
-    'ORB_BREAKOUT': 1.4,              // High priority - documented 74.5% win rate
-    'VWAP_MEAN_REVERSION': 1.2,       // Medium-high - good for ranging
-    'EMA_TREND': 0.8,                 // Lower - can chop out
-    'DEFAULT': 1.0,                   // Baseline for others
-  },
-
-  // TIME-OF-DAY CAPITAL ALLOCATION (multipliers)
-  timeAllocation: {
-    openingHour: 1.5,     // 9:30-10:30 - MAXIMUM capital, best setups
-    afternoonPush: 1.3,   // 2:00-3:00 - Strong momentum builds
-    powerHour: 1.4,       // 3:00-4:00 - Strong closes, clear direction
-    midDay: 0.5,          // 10:30-2:00 - REDUCED, lunch chop
-    preMarket: 0.3,       // 4:00-9:30 - Minimal
-    afterHours: 0.2,      // 4:00-8:00 PM - Minimal
-    overnight: 0.1,       // 8 PM-4 AM - Almost nothing
-  },
-
-  // DAILY PnL SHAPING
-  dailyPnLShaping: {
-    targetReached: 0.3,            // After hitting daily target, reduce to 30% size
-    aheadOfSchedule: 0.5,          // If ahead of total schedule, moderate size
-    behindSchedule: 1.2,           // If behind schedule, push slightly harder
-    significantlyBehind: 1.4,      // If significantly behind, controlled aggression
-    maxPushMultiplier: 1.5,        // Never exceed 1.5x normal size
-  },
-
-  // AGGRESSION CURVE
-  aggressionCurve: {
-    baseSize: 1.0,                 // Normal contract size
-    highScoreBonus: 1.3,           // 30% more on quality score > 80
-    earlyMomentumBonus: 1.2,       // 20% more in opening hour with trend
-    trendDayBonus: 1.2,            // 20% more on clear trend days
-    chopPenalty: 0.6,              // 40% less in ranging conditions
-    postLossPenalty: 0.8,          // 20% less after a loss
-    winStreakBonus: 1.1,           // 10% more on 2+ consecutive wins
-  },
-
-  // 7-DAY SURVIVAL LOGIC
-  survivalRules: {
-    maxDailyLoss: 700,             // NEVER lose more than $700 in a day
-    redDayRecovery: 1.15,          // 15% more aggressive day after red day
-    protectWinningDay: 0.5,        // After +$1,000, reduce to 50% size
-    noRevengeTrading: true,        // After 2 consecutive losses, wait 30 min
-    preserveCapital: 0.9,          // When at 60%+ of $9k target, play safe
-  },
-}
-
-// Eval tracking state
-let evalState = {
-  day: 1,                          // Current eval day (1-7)
-  totalPnL: 0,                     // Cumulative P&L toward $9,000
-  dailyPnLHistory: [] as number[], // P&L per day
-  isOnTrack: true,                 // Are we on track to hit $9,000?
-  requiredDailyPnL: 1286,          // What we need per remaining day
-  consecutiveWins: 0,              // For win streak tracking
-  lastTradeResult: 'none' as 'win' | 'loss' | 'none',
-}
-
-// Daily P&L tracking
-let dailyPnL = 0
-let dailyTradeCount = 0
-let lastTradeIndex = 0
-let currentTradingDay = ''
-let consecutiveLosses = 0       // Track losing streak
-
-// =============================================================================
-// EVAL MODE CALCULATION FUNCTIONS
-// =============================================================================
-
-function getEvalScheduleMultiplier(): number {
-  if (!EVAL_MODE.enabled) return 1.0
-
-  const remainingDays = EVAL_MODE.evalDays - evalState.day + 1
-  const remainingTarget = EVAL_MODE.targetProfit - evalState.totalPnL
-  const requiredDaily = remainingTarget / remainingDays
-
-  evalState.requiredDailyPnL = requiredDaily
-
-  // Determine schedule status
-  if (requiredDaily <= EVAL_MODE.dailyTarget * 0.8) {
-    // Ahead of schedule - protect gains
-    evalState.isOnTrack = true
-    return EVAL_MODE.dailyPnLShaping.aheadOfSchedule
-  } else if (requiredDaily <= EVAL_MODE.dailyTarget * 1.1) {
-    // On track - normal
-    evalState.isOnTrack = true
-    return 1.0
-  } else if (requiredDaily <= EVAL_MODE.dailyTarget * 1.3) {
-    // Behind schedule - push slightly
-    evalState.isOnTrack = false
-    return EVAL_MODE.dailyPnLShaping.behindSchedule
-  } else {
-    // Significantly behind - controlled aggression
-    evalState.isOnTrack = false
-    return Math.min(EVAL_MODE.dailyPnLShaping.significantlyBehind, EVAL_MODE.dailyPnLShaping.maxPushMultiplier)
-  }
-}
-
-function getDailyPnLShapingMultiplier(): number {
-  if (!EVAL_MODE.enabled) return 1.0
-
-  // Check if daily target reached
-  if (dailyPnL >= EVAL_MODE.dailyTarget) {
-    return EVAL_MODE.dailyPnLShaping.targetReached // Reduce aggression after target
-  }
-
-  // Check if protecting a winning day
-  if (dailyPnL >= EVAL_MODE.survivalRules.protectWinningDay * 1000) {
-    return 0.5 // Protect $1k+ daily gains
-  }
-
-  // Check if approaching daily loss limit
-  if (dailyPnL <= -EVAL_MODE.survivalRules.maxDailyLoss * 0.7) {
-    return 0.3 // Emergency slowdown near daily loss limit
-  }
-
-  return 1.0
-}
-
-function getStrategyPriorityMultiplier(strategy: string): number {
-  if (!EVAL_MODE.enabled) return 1.0
-
-  const weight = EVAL_MODE.strategyWeights[strategy as keyof typeof EVAL_MODE.strategyWeights]
-  return weight || EVAL_MODE.strategyWeights['DEFAULT']
-}
-
-function getTimeAllocationMultiplier(session: LocalTradingSession): number {
-  if (!EVAL_MODE.enabled) return 1.0
-
-  return EVAL_MODE.timeAllocation[session] || 1.0
-}
-
-function getAggressionMultiplier(
-  qualityScore: number,
-  session: LocalTradingSession,
-  regime: string,
-  mtfAligned: boolean
-): number {
-  if (!EVAL_MODE.enabled) return 1.0
-
-  let multiplier = EVAL_MODE.aggressionCurve.baseSize
-
-  // High quality score bonus
-  if (qualityScore >= 80) {
-    multiplier *= EVAL_MODE.aggressionCurve.highScoreBonus
-  }
-
-  // Early momentum bonus (opening hour with trend)
-  if (session === 'openingHour' && mtfAligned) {
-    multiplier *= EVAL_MODE.aggressionCurve.earlyMomentumBonus
-  }
-
-  // Trend day bonus
-  if (regime === 'TRENDING_UP' || regime === 'TRENDING_DOWN') {
-    multiplier *= EVAL_MODE.aggressionCurve.trendDayBonus
-  }
-
-  // Chop penalty
-  if (regime === 'RANGING' || regime === 'LOW_VOLATILITY') {
-    multiplier *= EVAL_MODE.aggressionCurve.chopPenalty
-  }
-
-  // Post-loss penalty
-  if (evalState.lastTradeResult === 'loss') {
-    multiplier *= EVAL_MODE.aggressionCurve.postLossPenalty
-  }
-
-  // Win streak bonus
-  if (evalState.consecutiveWins >= 2) {
-    multiplier *= EVAL_MODE.aggressionCurve.winStreakBonus
-  }
-
-  return multiplier
-}
-
-function updateEvalState(pnl: number): void {
-  if (!EVAL_MODE.enabled) return
-
-  // Update tracking
-  evalState.totalPnL += pnl
-
-  if (pnl > 0) {
-    evalState.consecutiveWins++
-    evalState.lastTradeResult = 'win'
-  } else {
-    evalState.consecutiveWins = 0
-    evalState.lastTradeResult = 'loss'
-  }
-}
-
-function shouldSkipForRevengeTrading(): boolean {
-  if (!EVAL_MODE.enabled) return false
-  if (!EVAL_MODE.survivalRules.noRevengeTrading) return false
-
-  // Skip if 2+ consecutive losses and not enough time passed
-  return consecutiveLosses >= 2
-}
-
-function getEvalThresholds(): {
-  minConfluence: number
-  minConfidence: number
-  minRR: number
-  maxTrades: number
-  minTimeBetween: number
-} {
-  if (EVAL_MODE.enabled) {
-    return {
-      minConfluence: EVAL_MODE.minConfluenceScore,
-      minConfidence: EVAL_MODE.minConfidence,
-      minRR: EVAL_MODE.minRiskReward,
-      maxTrades: EVAL_MODE.maxTradesPerDay,
-      minTimeBetween: EVAL_MODE.minTimeBetweenTrades,
-    }
-  } else {
-    return {
-      minConfluence: PROFIT_CONFIG.minConfluenceScore,
-      minConfidence: PROFIT_CONFIG.minConfidence,
-      minRR: PROFIT_CONFIG.minRiskReward,
-      maxTrades: PROFIT_CONFIG.maxTradesPerDay,
-      minTimeBetween: PROFIT_CONFIG.minTimeBetweenTrades,
-    }
+    preMarket: false,      // Skip pre-market (thin)
+    openingHour: true,     // TRADE: High volatility, good setups
+    midDay: true,          // TRADE: Enable to get more trades for learning
+    afternoonPush: true,   // TRADE: Momentum builds
+    powerHour: true,       // TRADE: Strong directional moves
+    afterHours: false,     // Skip after-hours (news reactions)
+    overnight: false,      // Skip overnight (thin, risky)
   }
 }
 
@@ -1653,166 +570,6 @@ function getSessionInfo(timestamp: number): { session: LocalTradingSession; canT
     : `Skipping: ${sessionNames[session]} (filtered)`
 
   return { session, canTrade, reason }
-}
-
-// =============================================================================
-// APEX TIMING RULES - 4:59 PM ET MANDATORY CLOSE
-// =============================================================================
-
-function getETTime(timestamp: number): { hour: number; minute: number; etTime: number } {
-  const date = new Date(timestamp)
-  // Convert to ET (UTC-5, simplified - ignores DST)
-  const utcHour = date.getUTCHours()
-  const utcMinute = date.getUTCMinutes()
-  const etHour = (utcHour - 5 + 24) % 24
-  const etTime = etHour * 100 + utcMinute // HHMM format
-  return { hour: etHour, minute: utcMinute, etTime }
-}
-
-function isNearMandatoryClose(timestamp: number): boolean {
-  // Returns true if we're at or past 4:30 PM ET (no new trades)
-  const { etTime } = getETTime(timestamp)
-  return etTime >= APEX_150K_CONFIG.noNewTradesAfter
-}
-
-function mustForceClose(timestamp: number): boolean {
-  // Returns true if we're at or past 4:59 PM ET (MUST close all positions)
-  const { etTime } = getETTime(timestamp)
-  return etTime >= APEX_150K_CONFIG.mandatoryCloseTime
-}
-
-function getTimeToClose(timestamp: number): { minutes: number; urgent: boolean; message: string } {
-  const { hour, minute } = getETTime(timestamp)
-  const closeHour = 16
-  const closeMinute = 59
-
-  // Calculate minutes until 4:59 PM
-  let currentMinutes = hour * 60 + minute
-  let closeMinutes = closeHour * 60 + closeMinute
-
-  // Handle overnight (if current time is before market open)
-  if (currentMinutes < 9 * 60 + 30) {
-    // Before 9:30 AM - market not open yet
-    currentMinutes += 24 * 60
-  }
-
-  const minutesRemaining = closeMinutes - currentMinutes
-
-  let message = ''
-  let urgent = false
-
-  if (minutesRemaining <= 0) {
-    message = 'PAST CLOSE TIME - MUST BE FLAT'
-    urgent = true
-  } else if (minutesRemaining <= 5) {
-    message = `CRITICAL: ${minutesRemaining} min until close - EXIT NOW`
-    urgent = true
-  } else if (minutesRemaining <= 15) {
-    message = `WARNING: ${minutesRemaining} min until close - tighten stops`
-    urgent = true
-  } else if (minutesRemaining <= 29) {
-    message = `CAUTION: ${minutesRemaining} min until close - no new trades`
-    urgent = false
-  }
-
-  return { minutes: minutesRemaining, urgent, message }
-}
-
-// =============================================================================
-// PA (PERFORMANCE ACCOUNT) RULES - FOR FUNDED ACCOUNTS
-// =============================================================================
-// These rules apply AFTER passing the evaluation
-
-const PA_RULES = {
-  // CONTRACT SCALING RULE
-  // Only use half contracts until EOD balance exceeds trailing threshold + $100
-  halfContractsUntilSafe: true,
-  safetyNetBuffer: 100,        // Must be trailing threshold + $100 to use full size
-
-  // 30% NEGATIVE P&L RULE (MAE - Maximum Adverse Excursion)
-  // Open loss CANNOT exceed 30% of start-of-day profit
-  maxMAEPercent: 0.30,
-
-  // 5:1 RISK-REWARD RATIO RULE
-  // Must maintain 5:1 ratio in PA (NOT during eval)
-  minRiskRewardPA: 5.0,
-
-  // NO HEDGING RULE
-  // Cannot hold simultaneous long AND short positions
-  allowHedging: false,
-
-  // ONE DIRECTION RULE
-  // Cannot switch directions (long to short) in same session
-  oneDirectionPerSession: true,
-}
-
-// Track PA state
-interface PAState {
-  isPA: boolean                   // Are we in a Performance Account?
-  startOfDayBalance: number       // Balance at start of trading day
-  startOfDayProfit: number        // Profit at start of day (relative to trailing threshold)
-  maxAllowedLoss: number          // 30% of start-of-day profit
-  currentSessionDirection: 'LONG' | 'SHORT' | null  // First trade direction today
-  halfContractsActive: boolean    // Are we using half size?
-}
-
-let paState: PAState = {
-  isPA: false,
-  startOfDayBalance: 150000,
-  startOfDayProfit: 0,
-  maxAllowedLoss: 0,
-  currentSessionDirection: null,
-  halfContractsActive: false,
-}
-
-function resetPAStateForNewDay(currentBalance: number, trailingThreshold: number): void {
-  // Called at start of each trading day
-  paState.startOfDayBalance = currentBalance
-  paState.startOfDayProfit = currentBalance - trailingThreshold
-
-  // 30% MAE Rule: Max loss is 30% of start-of-day profit
-  paState.maxAllowedLoss = paState.startOfDayProfit * PA_RULES.maxMAEPercent
-
-  // Contract Scaling: Use half size until balance > threshold + $100
-  paState.halfContractsActive = currentBalance < (trailingThreshold + PA_RULES.safetyNetBuffer)
-
-  // Reset session direction
-  paState.currentSessionDirection = null
-}
-
-function checkPAViolation(
-  currentBalance: number,
-  openPnL: number,
-  proposedDirection: 'LONG' | 'SHORT' | null,
-): { violation: boolean; reason: string } {
-  if (!paState.isPA) return { violation: false, reason: '' }
-
-  // Check 30% MAE Rule
-  if (openPnL < 0 && Math.abs(openPnL) > paState.maxAllowedLoss) {
-    return {
-      violation: true,
-      reason: `30% MAE VIOLATION: Open loss $${Math.abs(openPnL).toFixed(0)} exceeds max allowed $${paState.maxAllowedLoss.toFixed(0)}`
-    }
-  }
-
-  // Check One Direction Rule
-  if (proposedDirection && paState.currentSessionDirection && proposedDirection !== paState.currentSessionDirection) {
-    return {
-      violation: true,
-      reason: `ONE DIRECTION VIOLATION: Already traded ${paState.currentSessionDirection}, cannot switch to ${proposedDirection}`
-    }
-  }
-
-  return { violation: false, reason: '' }
-}
-
-function getPAContractMultiplier(): number {
-  if (!paState.isPA) return 1.0
-
-  // Contract Scaling Rule: Use half size if below safety threshold
-  if (paState.halfContractsActive) return 0.5
-
-  return 1.0
 }
 
 // =============================================================================
@@ -1944,23 +701,12 @@ let state: BacktestState = {
     commissions: 0,
     exchangeFees: 0,
     slippage: 0,
-    spread: 0,
-    gapLosses: 0,
   },
   latencyStats: {
     totalLatencyMs: 0,
     avgLatencyMs: 0,
     maxLatencyMs: 0,
     minLatencyMs: Infinity,
-  },
-  executionStats: {
-    totalOrders: 0,
-    rejectedOrders: 0,
-    partialFills: 0,
-    avgFillPercentage: 100,
-    avgSlippageTicks: 0,
-    avgSpreadTicks: 0,
-    gappedStops: 0,
   },
   strategyPerformance: {},
   mlAccuracy: {
@@ -2002,118 +748,6 @@ let apexRisk: ApexRiskState = {
   dailyPnL: 0,
   tradingDayStart: 0,
   stopReason: null,
-}
-
-// =============================================================================
-// SESSION HIGH/LOW TRACKING - For world-class strategies
-// =============================================================================
-
-interface SessionLevels {
-  high: number
-  low: number
-  formed: boolean
-}
-
-interface TradingDayData {
-  date: string
-  asia: SessionLevels
-  london: SessionLevels
-  ny: SessionLevels
-  orb: SessionLevels  // Opening Range (first 30 min)
-  vwap: number
-  vwapStdDev: number
-  cumulativeVolume: number
-  cumulativeVWAP: number
-}
-
-let currentDayData: TradingDayData = {
-  date: '',
-  asia: { high: 0, low: Infinity, formed: false },
-  london: { high: 0, low: Infinity, formed: false },
-  ny: { high: 0, low: Infinity, formed: false },
-  orb: { high: 0, low: Infinity, formed: false },
-  vwap: 0,
-  vwapStdDev: 0,
-  cumulativeVolume: 0,
-  cumulativeVWAP: 0,
-}
-
-function resetDayData(dateString: string): void {
-  currentDayData = {
-    date: dateString,
-    asia: { high: 0, low: Infinity, formed: false },
-    london: { high: 0, low: Infinity, formed: false },
-    ny: { high: 0, low: Infinity, formed: false },
-    orb: { high: 0, low: Infinity, formed: false },
-    vwap: 0,
-    vwapStdDev: 0,
-    cumulativeVolume: 0,
-    cumulativeVWAP: 0,
-  }
-}
-
-function getSessionFromTimestamp(timestamp: number): 'ASIA' | 'LONDON' | 'NY_PREOPEN' | 'NY_ORB' | 'NY_MAIN' | 'AFTER_HOURS' {
-  const date = new Date(timestamp)
-  const utcHour = date.getUTCHours()
-  const utcMinute = date.getUTCMinutes()
-  const etHour = (utcHour - 5 + 24) % 24
-  const etTime = etHour * 100 + utcMinute
-
-  // Session times in ET
-  if (etTime >= 0 && etTime < 200) return 'ASIA'      // 12am-2am ET (Asia session end)
-  if (etTime >= 1900 && etTime <= 2359) return 'ASIA' // 7pm-11:59pm ET (Asia session start)
-  if (etTime >= 200 && etTime < 800) return 'LONDON'  // 2am-8am ET
-  if (etTime >= 800 && etTime < 930) return 'NY_PREOPEN' // 8am-9:30am ET
-  if (etTime >= 930 && etTime < 1000) return 'NY_ORB'    // 9:30-10:00am ET (Opening Range)
-  if (etTime >= 1000 && etTime < 1600) return 'NY_MAIN'  // 10am-4pm ET
-  return 'AFTER_HOURS'
-}
-
-function updateSessionLevels(candle: Candle): void {
-  const dateString = new Date(candle.time).toDateString()
-
-  // Reset on new day
-  if (dateString !== currentDayData.date) {
-    resetDayData(dateString)
-  }
-
-  const session = getSessionFromTimestamp(candle.time)
-
-  // Update session highs/lows
-  switch (session) {
-    case 'ASIA':
-      currentDayData.asia.high = Math.max(currentDayData.asia.high, candle.high)
-      currentDayData.asia.low = Math.min(currentDayData.asia.low, candle.low)
-      break
-    case 'LONDON':
-      currentDayData.asia.formed = true // Asia is done when London starts
-      currentDayData.london.high = Math.max(currentDayData.london.high, candle.high)
-      currentDayData.london.low = Math.min(currentDayData.london.low, candle.low)
-      break
-    case 'NY_PREOPEN':
-      currentDayData.london.formed = true
-      break
-    case 'NY_ORB':
-      currentDayData.orb.high = Math.max(currentDayData.orb.high, candle.high)
-      currentDayData.orb.low = Math.min(currentDayData.orb.low, candle.low)
-      break
-    case 'NY_MAIN':
-      currentDayData.orb.formed = true // ORB is done at 10:00 AM
-      currentDayData.ny.high = Math.max(currentDayData.ny.high, candle.high)
-      currentDayData.ny.low = Math.min(currentDayData.ny.low, candle.low)
-      break
-    default:
-      break
-  }
-
-  // Update VWAP
-  const typicalPrice = (candle.high + candle.low + candle.close) / 3
-  currentDayData.cumulativeVolume += candle.volume
-  currentDayData.cumulativeVWAP += typicalPrice * candle.volume
-
-  if (currentDayData.cumulativeVolume > 0) {
-    currentDayData.vwap = currentDayData.cumulativeVWAP / currentDayData.cumulativeVolume
-  }
 }
 
 function updateApexRiskStatus(): void {
@@ -2182,153 +816,32 @@ const vpinCalculator = new VPINCalculator(50000, 50)
 const deltaAnalyzer = new DeltaAnalyzer()
 
 // =============================================================================
-// FETCH HISTORICAL DATA - RANDOMIZED PERIODS FOR TRUE ML LEARNING
-// =============================================================================
-//
-// CRITICAL: Each paper trading run uses a DIFFERENT historical period
-// This prevents overfitting to a single market condition and ensures
-// the ML actually learns to trade various market regimes:
-// - Bull markets, bear markets, sideways
-// - High volatility, low volatility
-// - Different times of year (earnings, FOMC, etc.)
-//
+// FETCH HISTORICAL DATA - SPY (S&P 500 ETF) scaled to ES prices
 // =============================================================================
 
-// Data sources in priority order
-const DATA_SOURCES = {
-  // SPY has 2 years of intraday data available
-  SPY: 'SPY',
-}
-
-// Track which periods we've trained on for diversity
-interface TrainingPeriod {
-  startDate: string
-  endDate: string
-  regime: 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE'
-  trainedCount: number
-}
-
-let trainingHistory: TrainingPeriod[] = []
-
-// Target date for backtest (null = random, 'yesterday' = yesterday, or specific date)
-let targetBacktestDate: string | null = null
-
-// Set target date for backtest
-function setTargetBacktestDate(date: string | null) {
-  targetBacktestDate = date
-  console.log(`[BACKTEST] Target date set to: ${date || 'RANDOM'}`)
-}
-
-// Generate historical period - either specific date or random
-function getRandomHistoricalPeriod(): { startTime: number; endTime: number; periodLabel: string } {
-  const now = Date.now()
-  const oneDay = 24 * 60 * 60 * 1000
-
-  // If targetBacktestDate is set, use that specific date
-  if (targetBacktestDate) {
-    let targetDate: Date
-
-    if (targetBacktestDate === 'yesterday') {
-      // Yesterday = today minus 1 day
-      targetDate = new Date(now - oneDay)
-    } else {
-      // Parse specific date (e.g., '2026-01-06')
-      targetDate = new Date(targetBacktestDate)
-    }
-
-    // Set to start of day (4:00 AM ET for pre-market)
-    targetDate.setHours(4, 0, 0, 0)
-    const startTime = targetDate.getTime()
-
-    // End at 8:00 PM ET same day (post-market close)
-    const endTime = startTime + (16 * 60 * 60 * 1000)
-
-    const periodLabel = `${targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} (SINGLE DAY)`
-
-    console.log(`[BACKTEST] Using SPECIFIC DATE: ${periodLabel}`)
-
-    return {
-      startTime: Math.floor(startTime / 1000),
-      endTime: Math.floor(endTime / 1000),
-      periodLabel,
-    }
-  }
-
-  // Yahoo Finance limits for intraday data:
-  // - 1m: last 7 days only
-  // - 5m/15m: last 60 days
-  // - 1h: last 730 days (2 years)
-  //
-  // We'll use 5m data and pick random 7-day windows from the last 60 days
-  // This gives us ~8 different possible training periods
-
-  const maxLookback = 55 * oneDay  // 55 days back (leaving buffer)
-  const windowSize = 7 * oneDay     // 7 days of data per run
-
-  // Pick a random start point
-  const randomOffset = Math.floor(Math.random() * (maxLookback - windowSize))
-  const endTime = now - randomOffset
-  const startTime = endTime - windowSize
-
-  // Create human-readable label
-  const startDate = new Date(startTime)
-  const endDate = new Date(endTime)
-  const periodLabel = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-
-  return {
-    startTime: Math.floor(startTime / 1000),
-    endTime: Math.floor(endTime / 1000),
-    periodLabel,
-  }
-}
-
-// Detect market regime from candles (for logging/tracking)
-function detectPeriodRegime(candles: Candle[]): 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE' {
-  if (candles.length < 50) return 'SIDEWAYS'
-
-  const first = candles[0].close
-  const last = candles[candles.length - 1].close
-  const change = (last - first) / first * 100
-
-  // Calculate volatility
-  let totalRange = 0
-  for (const c of candles) {
-    totalRange += (c.high - c.low) / c.close
-  }
-  const avgRange = totalRange / candles.length * 100
-
-  if (avgRange > 0.5) return 'VOLATILE'  // High volatility
-  if (change > 3) return 'BULL'           // Up more than 3%
-  if (change < -3) return 'BEAR'          // Down more than 3%
-  return 'SIDEWAYS'
-}
-
-async function fetchHistoricalData(days: number = 7): Promise<boolean> {
+async function fetchHistoricalData(days: number = 30): Promise<boolean> {
   try {
-    // GET A RANDOM HISTORICAL PERIOD - Different each run!
-    const { startTime, endTime, periodLabel } = getRandomHistoricalPeriod()
+    console.log(`[BACKTEST] Fetching ${days} days of SPY data (scaled to ES prices)...`)
 
-    console.log(`[BACKTEST] ========================================`)
-    console.log(`[BACKTEST] RANDOMIZED TRAINING PERIOD: ${periodLabel}`)
-    console.log(`[BACKTEST] ========================================`)
-    console.log(`[BACKTEST] This ensures ML learns DIFFERENT market conditions each run`)
+    // Use SPY (S&P 500 ETF) - tracks ES perfectly, has intraday data
+    // SPY price * 10 ≈ ES price (e.g., SPY $590 → ES $5900)
+    const symbol = 'SPY'
+    const now = Math.floor(Date.now() / 1000)
+
+    // Yahoo Finance limits: 1m data only available for last 7 days
+    const days1m = Math.min(days, 7)
+    const startTime1m = now - (days1m * 24 * 60 * 60)
+    const startTime5m = now - (days * 24 * 60 * 60)
+    const startTime15m = now - (days * 24 * 60 * 60)
+
+    // Fetch intraday data from Yahoo Finance
+    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime1m}&period2=${now}&interval=1m&includePrePost=true`
+    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime5m}&period2=${now}&interval=5m&includePrePost=true`
+    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime15m}&period2=${now}&interval=15m&includePrePost=true`
 
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     }
-
-    // Use SPY - has reliable intraday data going back 60 days
-    // Scale to ES prices (SPY ~$590 → ES ~$5900)
-    const symbol = DATA_SOURCES.SPY
-    const scale = 10
-    const dataLabel = `SPY→ES (${periodLabel})`
-
-    console.log(`[BACKTEST] Fetching ${symbol} data, scaling ${scale}x to ES prices`)
-
-    // Build URLs with random time period
-    const url1m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${endTime}&interval=1m&includePrePost=true`
-    const url5m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${endTime}&interval=5m&includePrePost=true`
-    const url15m = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startTime}&period2=${endTime}&interval=15m&includePrePost=true`
 
     // Fetch all timeframes in parallel
     const [res1m, res5m, res15m] = await Promise.all([
@@ -2337,7 +850,10 @@ async function fetchHistoricalData(days: number = 7): Promise<boolean> {
       fetch(url15m, { headers, cache: 'no-store' }),
     ])
 
-    // Parse 1m data (may not be available for older periods)
+    // Scale factor: SPY to ES (ES ≈ SPY * 10)
+    const SCALE = 10
+
+    // Parse 1m data
     if (res1m.ok) {
       const data = await res1m.json()
       const result = data.chart?.result?.[0]
@@ -2346,22 +862,21 @@ async function fetchHistoricalData(days: number = 7): Promise<boolean> {
         const quote = result.indicators.quote[0]
 
         historicalData.candles1m = timestamps.map((t: number, i: number) => ({
-          time: t * 1000,
-          open: (quote.open[i] || quote.close[i] || 0) * scale,
-          high: (quote.high[i] || quote.close[i] || 0) * scale,
-          low: (quote.low[i] || quote.close[i] || 0) * scale,
-          close: (quote.close[i] || 0) * scale,
+          time: t * 1000,  // Convert to milliseconds
+          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
+          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
+          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
+          close: (quote.close[i] || 0) * SCALE,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} 1m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles1m.length} SPY->ES 1m candles`)
       }
     } else {
-      console.log('[BACKTEST] 1m data not available for this period (expected for older dates)')
-      historicalData.candles1m = []
+      console.error('[BACKTEST] Failed to fetch 1m data:', await res1m.text())
     }
 
-    // Parse 5m data - THIS IS OUR PRIMARY DATA SOURCE
+    // Parse 5m data
     if (res5m.ok) {
       const data = await res5m.json()
       const result = data.chart?.result?.[0]
@@ -2371,29 +886,15 @@ async function fetchHistoricalData(days: number = 7): Promise<boolean> {
 
         historicalData.candles5m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,
-          open: (quote.open[i] || quote.close[i] || 0) * scale,
-          high: (quote.high[i] || quote.close[i] || 0) * scale,
-          low: (quote.low[i] || quote.close[i] || 0) * scale,
-          close: (quote.close[i] || 0) * scale,
+          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
+          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
+          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
+          close: (quote.close[i] || 0) * SCALE,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} 5m candles`)
-
-        // Detect and log market regime for this period
-        const regime = detectPeriodRegime(historicalData.candles5m)
-        console.log(`[BACKTEST] Detected market regime: ${regime}`)
-
-        // Track training history
-        trainingHistory.push({
-          startDate: new Date(startTime * 1000).toISOString(),
-          endDate: new Date(endTime * 1000).toISOString(),
-          regime,
-          trainedCount: 1,
-        })
+        console.log(`[BACKTEST] Loaded ${historicalData.candles5m.length} SPY->ES 5m candles`)
       }
-    } else {
-      console.error('[BACKTEST] Failed to fetch 5m data')
     }
 
     // Parse 15m data
@@ -2406,110 +907,26 @@ async function fetchHistoricalData(days: number = 7): Promise<boolean> {
 
         historicalData.candles15m = timestamps.map((t: number, i: number) => ({
           time: t * 1000,
-          open: (quote.open[i] || quote.close[i] || 0) * scale,
-          high: (quote.high[i] || quote.close[i] || 0) * scale,
-          low: (quote.low[i] || quote.close[i] || 0) * scale,
-          close: (quote.close[i] || 0) * scale,
+          open: (quote.open[i] || quote.close[i] || 0) * SCALE,
+          high: (quote.high[i] || quote.close[i] || 0) * SCALE,
+          low: (quote.low[i] || quote.close[i] || 0) * SCALE,
+          close: (quote.close[i] || 0) * SCALE,
           volume: quote.volume[i] || 0,
         })).filter((c: Candle) => c.close > 0)
 
-        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} 15m candles`)
+        console.log(`[BACKTEST] Loaded ${historicalData.candles15m.length} SPY->ES 15m candles`)
       }
     }
 
-    // If 1m data not available, generate it from 5m data
-    if (historicalData.candles1m.length === 0 && historicalData.candles5m.length > 0) {
-      console.log('[BACKTEST] Generating synthetic 1m candles from 5m data...')
-      historicalData.candles1m = generateSynthetic1mCandles(historicalData.candles5m)
-      console.log(`[BACKTEST] Generated ${historicalData.candles1m.length} synthetic 1m candles`)
-    }
+    state.totalCandles = historicalData.candles1m.length
 
-    state.totalCandles = historicalData.candles1m.length || historicalData.candles5m.length * 5
+    console.log(`[BACKTEST] Total: ${historicalData.candles1m.length} 1m, ${historicalData.candles5m.length} 5m, ${historicalData.candles15m.length} 15m candles (SPY scaled to ES)`)
 
-    // Store data source info for API response
-    currentDataSource = {
-      symbol,
-      isRealES: false,  // Using SPY scaled
-      label: dataLabel,
-      period: periodLabel,
-      regime: detectPeriodRegime(historicalData.candles5m),
-    }
-
-    const totalCandles = historicalData.candles1m.length + historicalData.candles5m.length + historicalData.candles15m.length
-    console.log(`[BACKTEST] Total loaded: ${totalCandles} candles from ${periodLabel}`)
-    console.log(`[BACKTEST] Training on: ${currentDataSource.regime} market conditions`)
-
-    return historicalData.candles5m.length > 50
+    return historicalData.candles1m.length > 100
   } catch (e) {
     console.error('[BACKTEST] Failed to fetch data:', e)
     return false
   }
-}
-
-// Generate synthetic 1m candles from 5m candles for older periods
-function generateSynthetic1mCandles(candles5m: Candle[]): Candle[] {
-  const result: Candle[] = []
-
-  for (const candle of candles5m) {
-    // Split each 5m candle into 5 synthetic 1m candles
-    const range = candle.high - candle.low
-    const direction = candle.close >= candle.open ? 1 : -1
-
-    for (let i = 0; i < 5; i++) {
-      const progress = i / 5
-      const nextProgress = (i + 1) / 5
-
-      // Simulate price movement within the 5m candle
-      const noise = (Math.random() - 0.5) * range * 0.3
-
-      let open: number, close: number, high: number, low: number
-
-      if (direction > 0) {
-        // Bullish 5m candle - general upward movement
-        open = candle.open + (candle.close - candle.open) * progress + noise
-        close = candle.open + (candle.close - candle.open) * nextProgress + noise
-      } else {
-        // Bearish 5m candle - general downward movement
-        open = candle.open + (candle.close - candle.open) * progress + noise
-        close = candle.open + (candle.close - candle.open) * nextProgress + noise
-      }
-
-      // Add some wick
-      const wickNoise = Math.random() * range * 0.2
-      high = Math.max(open, close) + wickNoise
-      low = Math.min(open, close) - wickNoise
-
-      // Clamp to parent candle's range
-      high = Math.min(high, candle.high)
-      low = Math.max(low, candle.low)
-
-      result.push({
-        time: candle.time + i * 60 * 1000,  // Add 1 minute per candle
-        open: Math.max(low, Math.min(high, open)),
-        high,
-        low,
-        close: Math.max(low, Math.min(high, close)),
-        volume: Math.floor(candle.volume / 5),
-      })
-    }
-  }
-
-  return result
-}
-
-// Track current data source for API response
-let currentDataSource: {
-  symbol: string
-  isRealES: boolean
-  label: string
-  period?: string
-  regime?: 'BULL' | 'BEAR' | 'SIDEWAYS' | 'VOLATILE'
-} = {
-  symbol: 'SPY',
-  isRealES: false,
-  label: 'SPY→ES (randomized period)',
-  period: 'Not loaded',
-  regime: 'SIDEWAYS',
 }
 
 // =============================================================================
@@ -2558,11 +975,6 @@ async function processCandle(index: number): Promise<void> {
   const currentCandle = candles1m[candles1m.length - 1]
   const currentPrice = currentCandle.close
 
-  // =========================================================================
-  // TRACK SESSION HIGH/LOWS FOR WORLD-CLASS STRATEGIES
-  // =========================================================================
-  updateSessionLevels(currentCandle)
-
   // Generate order flow data for VPIN
   const recentCandles = candles1m.slice(-10)
   for (const c of recentCandles) {
@@ -2587,7 +999,7 @@ async function processCandle(index: number): Promise<void> {
     return
   }
 
-  // Detect market regime using new strategy engine (kept for backwards compat)
+  // Detect market regime using new strategy engine
   const regime = detectMarketRegime(indicators)
 
   // Extract pattern features for adaptive ML (uses old adaptive-ml regime detection)
@@ -2595,94 +1007,7 @@ async function processCandle(index: number): Promise<void> {
   const adaptiveRegime = detectAdaptiveRegime(candles1m, features)
   const session = getCurrentSession(currentCandle.time)
 
-  // =========================================================================
-  // WORLD-CLASS REGIME-AWARE STRATEGY SYSTEM
-  // 11 distinct strategies, each with explicit WORKS IN / FAILS IN conditions
-  // =========================================================================
-
-  // Calculate prop firm risk state
-  const propFirmRisk = calculatePropFirmRisk(
-    state.currentBalance,
-    APEX_150K_CONFIG.accountSize,
-    APEX_150K_CONFIG.maxTrailingDrawdown,
-    dailyPnL,
-    consecutiveLosses,
-    dailyTradeCount
-  )
-
-  // Calculate VWAP standard deviation for mean reversion
-  const vwapPrices = candles1m.slice(-50).map(c => c.close)
-  const vwapStdDev = Math.sqrt(
-    vwapPrices.reduce((sum, p) => sum + Math.pow(p - currentDayData.vwap, 2), 0) / vwapPrices.length
-  ) || indicators.atr
-
-  // Generate world-class signal with all 11 strategies (returns best only - legacy)
-  const worldClassResult = generateWorldClassSignal(
-    candles1m,
-    candles5m.slice(-50),
-    candles15m.slice(-30),
-    {
-      high: currentDayData.orb.high,
-      low: currentDayData.orb.low === Infinity ? currentPrice - indicators.atr : currentDayData.orb.low,
-      formed: currentDayData.orb.formed
-    },
-    {
-      asia: { high: currentDayData.asia.high || currentPrice, low: currentDayData.asia.low === Infinity ? currentPrice : currentDayData.asia.low },
-      london: { high: currentDayData.london.high || currentPrice, low: currentDayData.london.low === Infinity ? currentPrice : currentDayData.london.low },
-      ny: { high: currentDayData.ny.high || currentPrice, low: currentDayData.ny.low === Infinity ? currentPrice : currentDayData.ny.low },
-    },
-    { vwap: currentDayData.vwap || currentPrice, stdDev: vwapStdDev },
-    propFirmRisk
-  )
-
-  // NEW: Generate ALL valid world-class signals for proper confluence scoring
-  const allWorldClassSignals = generateAllWorldClassSignals(
-    candles1m,
-    candles5m.slice(-50),
-    candles15m.slice(-30),
-    {
-      high: currentDayData.orb.high,
-      low: currentDayData.orb.low === Infinity ? currentPrice - indicators.atr : currentDayData.orb.low,
-      formed: currentDayData.orb.formed
-    },
-    {
-      asia: { high: currentDayData.asia.high || currentPrice, low: currentDayData.asia.low === Infinity ? currentPrice : currentDayData.asia.low },
-      london: { high: currentDayData.london.high || currentPrice, low: currentDayData.london.low === Infinity ? currentPrice : currentDayData.london.low },
-      ny: { high: currentDayData.ny.high || currentPrice, low: currentDayData.ny.low === Infinity ? currentPrice : currentDayData.ny.low },
-    },
-    { vwap: currentDayData.vwap || currentPrice, stdDev: vwapStdDev },
-    propFirmRisk
-  )
-
-  // =========================================================================
-  // LIQUIDITY SWEEP REVERSAL (WEIGHT-BASED) - Governance Compliant
-  // Uses weights instead of binary blocking - trades are DEGRADED not BLOCKED
-  // =========================================================================
-
-  // Convert candles to liquidity sweep format
-  const sweepCandles: LiquiditySweepCandle[] = candles1m.map(c => ({
-    time: c.time,
-    open: c.open,
-    high: c.high,
-    low: c.low,
-    close: c.close,
-    volume: c.volume,
-  }))
-
-  // Detect liquidity sweep with weight-based logic
-  const liquiditySweepSignal = detectLiquiditySweep(sweepCandles, {
-    swingLookback: 10,
-    volumeMultiplier: 1.5,
-    rsiPeriod: 14,
-    atrPeriod: 14,
-  })
-
-  // Convert to backtest format if signal exists
-  const liquiditySweepBacktestSignal = liquiditySweepSignal
-    ? toBacktestSignal(liquiditySweepSignal)
-    : null
-
-  // Also generate old signals for backwards compatibility and comparison
+  // Generate master signal from all strategies with confluence scoring
   const masterSignal = generateMasterSignal(
     candles1m,
     indicators,
@@ -2745,171 +1070,70 @@ async function processCandle(index: number): Promise<void> {
   // Position Management
   if (state.position) {
     const pos = state.position
-
-    // =========================================================================
-    // APEX 4:59 PM ET MANDATORY CLOSE - MUST BE FLAT BY CLOSE
-    // =========================================================================
-    if (mustForceClose(currentCandle.time)) {
-      // FORCE CLOSE - No choice, Apex requires all positions closed by 4:59 PM ET
-      const closeExecution = calculateExecutionPrice(
-        currentCandle,
-        recentCandles,
-        pos.direction,
-        false,  // isEntry
-        pos.contracts
-      )
-
-      // Even if rejected, we MUST close - try again at market
-      const exitPrice = closeExecution.executed
-        ? closeExecution.executionPrice
-        : currentCandle.close  // Emergency market close
-
-      const exitLatency = simulateLatency()
-      const grossPnL = pos.direction === 'LONG'
-        ? (exitPrice - pos.entryPrice) * pos.contracts * TRADING_COSTS.pointValue
-        : (pos.entryPrice - exitPrice) * pos.contracts * TRADING_COSTS.pointValue
-
-      const volatility = (currentCandle.high - currentCandle.low) / currentCandle.close
-      const costs = calculateTradeCosts(pos.contracts, pos.entryPrice, exitPrice, volatility)
-      const netPnL = grossPnL - costs.totalCosts
-      const totalLatency = pos.entryLatencyMs + exitLatency
-
-      // Record the force-closed trade
-      const trade: BacktestTrade = {
-        id: `trade_${state.trades.length + 1}`,
-        timestamp: currentCandle.time,
-        direction: pos.direction,
-        rawEntryPrice: pos.rawEntryPrice,
-        entryPrice: pos.entryPrice,
-        rawExitPrice: currentCandle.close,
-        exitPrice: exitPrice,
-        contracts: pos.contracts,
-        grossPnL,
-        costs,
-        netPnL,
-        pnlPercent: (netPnL / APEX_150K_CONFIG.accountSize) * 100,
-        holdingTime: (currentCandle.time - pos.entryTime) / 60000,
-        latencyMs: totalLatency,
-        entryReason: pos.strategy || 'Unknown',
-        exitReason: 'APEX 4:59 PM MANDATORY CLOSE',
-        confluenceScore: pos.confluenceScore || 0,
-        mlConfidence: pos.mlConfidence || 0,
-        vpinAtEntry: pos.vpinAtEntry || 0,
-        entryAnalytics: {
-          strategy: pos.strategy || 'Unknown',
-          rsiAtEntry: indicators.rsi,
-          ema20Distance: ((currentPrice - indicators.ema20) / indicators.ema20) * 100,
-          ema50Distance: ((currentPrice - indicators.ema50) / indicators.ema50) * 100,
-          regime: regime, // MarketRegime is a string type
-          hourOfDay: new Date(currentCandle.time).getUTCHours() - 5,
-          atrAtEntry: indicators.atr,
-          trendStrength: indicators.trendStrength || 50, // Use indicator's trend strength
-        },
-      }
-
-      state.trades.push(trade)
-      recordEntryAnalytics(trade)
-      dailyPnL += netPnL
-
-      // EVAL MODE TRACKING: Update eval state for 7-day target
-      updateEvalState(netPnL)
-
-      // Update state
-      state.grossPnL += grossPnL
-      state.totalCosts += costs.totalCosts
-      state.totalPnL += netPnL
-      state.currentBalance += netPnL
-      state.costBreakdown.commissions += costs.commission
-      state.costBreakdown.exchangeFees += costs.exchangeFees
-      state.costBreakdown.slippage += costs.slippage
-
-      if (netPnL > 0) {
-        state.wins++
-        if (state.currentBalance > state.peakBalance) {
-          state.peakBalance = state.currentBalance
-        }
-      } else {
-        state.losses++
-        const drawdown = state.peakBalance - state.currentBalance
-        if (drawdown > state.maxDrawdown) {
-          state.maxDrawdown = drawdown
-        }
-      }
-
-      state.position = null
-      state.candlesProcessed++
-      state.currentIndex = index
-      return  // Position closed, done for this candle
-    }
-
     const priceDiff = pos.direction === 'LONG'
       ? currentPrice - pos.entryPrice
       : pos.entryPrice - currentPrice
 
     // =========================================================================
     // TRAILING STOP & PARTIAL PROFIT SYSTEM
-    // DISABLED FOR PURE ORB TRADES - They use simple SL/TP only
     // =========================================================================
 
-    // PURE ORB MODE: Skip all partials and trailing - just use SL/TP
-    if (!pos.isProvenStrategy) {
-      // Update highest/lowest price tracking
+    // Update highest/lowest price tracking
+    if (pos.direction === 'LONG') {
+      pos.highestPrice = Math.max(pos.highestPrice, currentPrice)
+    } else {
+      pos.lowestPrice = Math.min(pos.lowestPrice, currentPrice)
+    }
+
+    // Check Target 1 (1R) - Take 50% profit and activate trailing stop
+    if (!pos.target1Hit) {
+      const hitTarget1 = pos.direction === 'LONG'
+        ? currentPrice >= pos.target1
+        : currentPrice <= pos.target1
+
+      if (hitTarget1) {
+        pos.target1Hit = true
+        pos.trailingActive = true
+        // Move stop to breakeven
+        pos.stopLoss = pos.entryPrice
+        // Scale out 50% (reduce contracts)
+        const scaleOutContracts = Math.floor(pos.contracts * 0.5)
+        if (scaleOutContracts > 0) {
+          // Record partial exit (we'll count this in the final trade)
+          pos.contracts = pos.contracts - scaleOutContracts
+        }
+      }
+    }
+
+    // Check Target 2 (2R) - Take another 25% profit
+    if (pos.target1Hit && !pos.target2Hit) {
+      const hitTarget2 = pos.direction === 'LONG'
+        ? currentPrice >= pos.target2
+        : currentPrice <= pos.target2
+
+      if (hitTarget2) {
+        pos.target2Hit = true
+        // Scale out another 25% of original (half of remaining)
+        const scaleOutContracts = Math.floor(pos.contracts * 0.5)
+        if (scaleOutContracts > 0 && pos.contracts > 1) {
+          pos.contracts = pos.contracts - scaleOutContracts
+        }
+      }
+    }
+
+    // Update trailing stop if active
+    if (pos.trailingActive) {
       if (pos.direction === 'LONG') {
-        pos.highestPrice = Math.max(pos.highestPrice, currentPrice)
+        // Trail stop below highest price
+        const newTrailingStop = pos.highestPrice - pos.trailingDistance
+        if (newTrailingStop > pos.stopLoss) {
+          pos.stopLoss = newTrailingStop
+        }
       } else {
-        pos.lowestPrice = Math.min(pos.lowestPrice, currentPrice)
-      }
-
-      // Check Target 1 (1R) - Take 50% profit and activate trailing stop
-      if (!pos.target1Hit) {
-        const hitTarget1 = pos.direction === 'LONG'
-          ? currentPrice >= pos.target1
-          : currentPrice <= pos.target1
-
-        if (hitTarget1) {
-          pos.target1Hit = true
-          pos.trailingActive = true
-          // Move stop to breakeven
-          pos.stopLoss = pos.entryPrice
-          // Scale out 50% (reduce contracts)
-          const scaleOutContracts = Math.floor(pos.contracts * 0.5)
-          if (scaleOutContracts > 0) {
-            // Record partial exit (we'll count this in the final trade)
-            pos.contracts = pos.contracts - scaleOutContracts
-          }
-        }
-      }
-
-      // Check Target 2 (2R) - Take another 25% profit
-      if (pos.target1Hit && !pos.target2Hit) {
-        const hitTarget2 = pos.direction === 'LONG'
-          ? currentPrice >= pos.target2
-          : currentPrice <= pos.target2
-
-        if (hitTarget2) {
-          pos.target2Hit = true
-          // Scale out another 25% of original (half of remaining)
-          const scaleOutContracts = Math.floor(pos.contracts * 0.5)
-          if (scaleOutContracts > 0 && pos.contracts > 1) {
-            pos.contracts = pos.contracts - scaleOutContracts
-          }
-        }
-      }
-
-      // Update trailing stop if active
-      if (pos.trailingActive) {
-        if (pos.direction === 'LONG') {
-          // Trail stop below highest price
-          const newTrailingStop = pos.highestPrice - pos.trailingDistance
-          if (newTrailingStop > pos.stopLoss) {
-            pos.stopLoss = newTrailingStop
-          }
-        } else {
-          // Trail stop above lowest price
-          const newTrailingStop = pos.lowestPrice + pos.trailingDistance
-          if (newTrailingStop < pos.stopLoss) {
-            pos.stopLoss = newTrailingStop
-          }
+        // Trail stop above lowest price
+        const newTrailingStop = pos.lowestPrice + pos.trailingDistance
+        if (newTrailingStop < pos.stopLoss) {
+          pos.stopLoss = newTrailingStop
         }
       }
     }
@@ -2917,41 +1141,36 @@ async function processCandle(index: number): Promise<void> {
     let shouldExit = false
     let exitReason = ''
 
-    // Check exits in priority order - STOP LOSS first, then TAKE PROFIT
-    // Use else-if to prevent one exit reason overwriting another
-    if (pos.direction === 'LONG') {
-      if (currentPrice <= pos.stopLoss) {
-        shouldExit = true
-        exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
-      } else if (currentPrice >= pos.takeProfit) {
-        shouldExit = true
-        exitReason = 'Take Profit'
-      }
-    } else if (pos.direction === 'SHORT') {
-      if (currentPrice >= pos.stopLoss) {
-        shouldExit = true
-        exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
-      } else if (currentPrice <= pos.takeProfit) {
-        shouldExit = true
-        exitReason = 'Take Profit'
-      }
+    // Stop loss (includes trailing stop)
+    if (pos.direction === 'LONG' && currentPrice <= pos.stopLoss) {
+      shouldExit = true
+      exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
+    } else if (pos.direction === 'SHORT' && currentPrice >= pos.stopLoss) {
+      shouldExit = true
+      exitReason = pos.trailingActive ? 'Trailing Stop' : 'Stop Loss'
+    }
+
+    // Take profit (final target)
+    if (pos.direction === 'LONG' && currentPrice >= pos.takeProfit) {
+      shouldExit = true
+      exitReason = 'Take Profit'
+    } else if (pos.direction === 'SHORT' && currentPrice <= pos.takeProfit) {
+      shouldExit = true
+      exitReason = 'Take Profit'
     }
 
     // Reversal signal - ONLY exit if VERY high confidence AND we're already in profit
     // This prevents cutting winners short on weak reversal signals
-    // DISABLED FOR PURE ORB - ORB trades only exit at SL or TP
-    if (!pos.isProvenStrategy) {
-      const isInProfit = pos.direction === 'LONG'
-        ? currentPrice > pos.entryPrice
-        : currentPrice < pos.entryPrice
+    const isInProfit = pos.direction === 'LONG'
+      ? currentPrice > pos.entryPrice
+      : currentPrice < pos.entryPrice
 
-      if (adaptiveSignal.confidence >= 85 &&
-          adaptiveSignal.direction !== 'FLAT' &&
-          adaptiveSignal.direction !== pos.direction &&
-          isInProfit) {
-        shouldExit = true
-        exitReason = 'Reversal Signal'
-      }
+    if (adaptiveSignal.confidence >= 85 &&
+        adaptiveSignal.direction !== 'FLAT' &&
+        adaptiveSignal.direction !== pos.direction &&
+        isInProfit) {
+      shouldExit = true
+      exitReason = 'Reversal Signal'
     }
 
     if (shouldExit) {
@@ -3025,19 +1244,6 @@ async function processCandle(index: number): Promise<void> {
       state.totalPnL += netPnL
       state.currentBalance += netPnL
 
-      // PROFIT TRACKING: Update daily P&L for daily loss limit enforcement
-      dailyPnL += netPnL
-
-      // EVAL MODE TRACKING: Update eval state for 7-day target
-      updateEvalState(netPnL)
-
-      // Update consecutive losses for revenge trading protection
-      if (netPnL < 0) {
-        consecutiveLosses++
-      } else {
-        consecutiveLosses = 0
-      }
-
       // Update peak balance (high water mark) for trailing drawdown
       if (state.currentBalance > state.peakBalance) {
         state.peakBalance = state.currentBalance
@@ -3095,348 +1301,79 @@ async function processCandle(index: number): Promise<void> {
       }
       await recordTradeOutcome(tradeOutcome)
 
+      // ORCHESTRATOR LEARNING: Record to master orchestrator for strategy weighting
+      if (pos.orchestratorSignalId) {
+        const outcome = netPnL > 0 ? 'WIN' : netPnL < 0 ? 'LOSS' : 'BREAKEVEN'
+        const volatilityBucket = pos.volatilityAtEntry < 0.005 ? 'LOW' :
+                                pos.volatilityAtEntry < 0.01 ? 'NORMAL' :
+                                pos.volatilityAtEntry < 0.02 ? 'HIGH' : 'EXTREME'
+        await recordTradeOutcomeOrchestrator(
+          pos.orchestratorSignalId,
+          outcome as 'WIN' | 'LOSS' | 'BREAKEVEN',
+          netPnL,
+          exitReason,
+          pos.stopMultiplierUsed,
+          pos.targetMultiplierUsed,
+          Math.floor(holdingTime)
+        )
+      }
+
       state.position = null
     }
   } else {
     // =========================================================================
-    // APEX SAFETY CHECK - DEGRADE, DON'T BLOCK
-    // GOVERNANCE FIX: Changed from binary block to degraded sizing
+    // APEX SAFETY CHECK - MUST CHECK BEFORE ANY ENTRY
     // =========================================================================
     updateApexRiskStatus()
 
-    // GOVERNANCE: apexRisk.canTrade=false now means MINIMUM SIZE, not NO TRADE
-    // The only TRUE block is if we've actually VIOLATED the account (100%+ drawdown)
-    const isAccountViolated = apexRisk.riskLevel === 'VIOLATED'
-    if (isAccountViolated) {
-      // ONLY block if account is actually violated - this is a regulatory requirement
+    if (!apexRisk.canTrade) {
+      // STOP TRADING - Risk too high
       state.candlesProcessed++
       state.currentIndex = index
       return
     }
 
-    // Calculate degraded risk multiplier - minimum 0.1 even in DANGER zone
-    const degradedRiskMultiplier = apexRisk.canTrade
-      ? apexRisk.positionSizeMultiplier
-      : 0.1  // 10% size in danger zone instead of blocking
-
-    // =========================================================================
-    // APEX TIMING CHECK - 4:30 PM ET NO NEW TRADES
-    // This is a regulatory requirement, not a fear mechanism - keep as binary
-    // =========================================================================
-    if (isNearMandatoryClose(currentCandle.time)) {
-      state.candlesProcessed++
-      state.currentIndex = index
-      return
-    }
-
-    // SESSION FILTER: DEGRADED, not blocked
-    // GOVERNANCE FIX: Poor sessions get reduced size, not blocked
+    // SESSION FILTER: Only trade during optimal market sessions
     const sessionInfo = getSessionInfo(currentCandle.time)
-    const sessionMultiplier = sessionInfo.canTrade ? 1.0 : 0.25  // 25% size in non-optimal sessions
-
-    // MULTI-TIMEFRAME CONFIRMATION: Check higher timeframe trend alignment
-    const mtfTrend = getMTFConfirmation(candles5m.slice(-50), candles15m.slice(-30))
-
-    // ==========================================================================
-    // PRODUCTION-READY ENTRY LOGIC - DEGRADED, NOT BLOCKED
-    // GOVERNANCE FIX: All checks produce multipliers, not binary gates
-    // ==========================================================================
-
-    // CHECK 1: Daily loss tracking - DEGRADE, don't block
-    const tradingDay = new Date(currentCandle.time).toDateString()
-    if (tradingDay !== currentTradingDay) {
-      // New trading day - reset counters
-      currentTradingDay = tradingDay
-      dailyPnL = 0
-      dailyTradeCount = 0
-    }
-
-    // GOVERNANCE FIX: Daily loss limit becomes degradation, not block
-    // At 50% of limit: 50% size, at 100% of limit: 10% size (not zero)
-    const dailyLossRatio = Math.min(1, Math.abs(dailyPnL) / PROFIT_CONFIG.dailyMaxLoss)
-    const dailyLossMultiplier = dailyPnL >= 0 ? 1.0 : Math.max(0.1, 1 - dailyLossRatio * 0.9)
-
-    // CHECK 2: Trade frequency - DEGRADE, don't block
-    // GOVERNANCE FIX: More trades = smaller size, not blocked
-    const tradeFrequencyRatio = dailyTradeCount / PROFIT_CONFIG.maxTradesPerDay
-    const tradeFrequencyMultiplier = tradeFrequencyRatio >= 1 ? 0.1 : (1 - tradeFrequencyRatio * 0.5)
-
-    // CHECK 3: Time between trades - DEGRADE, don't block
-    const barsSinceLastTrade = index - lastTradeIndex
-    const timeMultiplier = barsSinceLastTrade >= PROFIT_CONFIG.minTimeBetweenTrades
-      ? 1.0
-      : Math.max(0.25, barsSinceLastTrade / PROFIT_CONFIG.minTimeBetweenTrades)
-
-    // CHECK 4: Consecutive loss degradation - COOLING PERIOD after losses
-    // After max consecutive losses, require double the waiting period
-    let consecutiveLossMultiplier = 1.0
-    if (consecutiveLosses >= PROFIT_CONFIG.maxConsecutiveLosses) {
-      // After 2+ losses: require extended cooling (2x time between trades)
-      const requiredCooling = PROFIT_CONFIG.minTimeBetweenTrades * 2
-      if (barsSinceLastTrade < requiredCooling) {
-        consecutiveLossMultiplier = Math.max(0.1, barsSinceLastTrade / requiredCooling)
-      }
-      // Also require higher confluence score after losses
-      // This is enforced in the entry selection below
-    } else if (consecutiveLosses === 1) {
-      // After 1 loss: slightly more cautious, 75% size
-      consecutiveLossMultiplier = 0.75
-    }
-
-    // CHECK 5: Momentum analysis (used for signal validation, not blocking)
-    const currentRSI = indicators.rsi
-    const macdHistogram = indicators.macdHistogram
-
-    // ==========================================================================
-    // SIMPLE ORB STRATEGY - PROVEN 74.56% WIN RATE, 2.512 PROFIT FACTOR
-    // From Trade That Swing backtests - mechanical, no discretion
-    // ONE TRADE PER DAY - Breakout of first 15 minutes (9:30-9:45 AM EST)
-    // ==========================================================================
-
-    // Convert candles to ORB format
-    const orbCandles: ORBCandle[] = candles1m.map(c => ({
-      time: c.time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume,
-    }))
-
-    const currentOrbCandle: ORBCandle = {
-      time: currentCandle.time,
-      open: currentCandle.open,
-      high: currentCandle.high,
-      low: currentCandle.low,
-      close: currentCandle.close,
-      volume: currentCandle.volume,
-    }
-
-    // Generate ORB signal - simple, mechanical, one trade per day max
-    const orbSignal = generateSimpleORBSignal(orbCandles, currentOrbCandle)
-
-    // Get ORB status for logging
-    const orbStatus = getORBStatus(orbCandles, currentCandle.time)
-
-    // ==========================================================================
-    // ORB REGIME FILTER - CRITICAL FOR PROFITABILITY
-    // ORB only works on TRENDING days, NOT sideways/choppy markets
-    // ==========================================================================
-
-    // Calculate trend strength from EMAs
-    const ema20 = indicators.ema20
-    const ema50 = indicators.ema50
-    const atr = indicators.atr
-    const currentPrice = candles1m[candles1m.length - 1]?.close || 0
-
-    // Trend detection using EMA separation
-    const emaSeparation = Math.abs(ema20 - ema50)
-    const emaSeparationPercent = (emaSeparation / currentPrice) * 100
-
-    // Check if EMAs are aligned (trending) vs intertwined (sideways)
-    const isTrending = emaSeparationPercent > 0.15  // EMAs separated by more than 0.15%
-
-    // Check momentum - ADX-like calculation using price movement vs ATR
-    const recentCandles = candles1m.slice(-20)
-    let upMoves = 0, downMoves = 0
-    for (let i = 1; i < recentCandles.length; i++) {
-      const move = recentCandles[i].close - recentCandles[i-1].close
-      if (move > 0) upMoves += move
-      else downMoves += Math.abs(move)
-    }
-    const totalMoves = upMoves + downMoves
-    const directionalStrength = totalMoves > 0 ? Math.abs(upMoves - downMoves) / totalMoves : 0
-    const isDirectional = directionalStrength > 0.3  // 30%+ of moves in one direction
-
-    // Check volatility - need enough range for breakout to work
-    const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length
-    const hasVolatility = avgRange > atr * 0.5  // At least half ATR average range
-
-    // REGIME CHECK: Only trade ORB if conditions favor breakouts
-    const regimeOK = (isTrending || isDirectional) && hasVolatility
-
-    // Only trade when ORB gives a clear signal (not 'NONE') AND regime is favorable
-    let signalToUse: { direction: 'LONG' | 'SHORT'; confidence: number; strategy: string; stopLoss: number; takeProfit: number; riskRewardRatio: number; qualityScore?: number; sizeFactor?: number } | null = null
-
-    if (orbSignal.direction !== 'NONE' && regimeOK) {
-      // Additional filter: ORB direction should align with trend
-      const trendBias = ema20 > ema50 ? 'LONG' : 'SHORT'
-      const alignedWithTrend = orbSignal.direction === trendBias
-
-      // Only take ORB trades that align with the trend (or if trend is unclear, take either)
-      const trendUnclear = emaSeparationPercent < 0.05  // EMAs very close = no clear trend
-
-      if (alignedWithTrend || trendUnclear) {
-        signalToUse = {
-          direction: orbSignal.direction,
-          confidence: alignedWithTrend ? 90 : 80,  // Higher confidence when aligned
-          strategy: 'ORB_BREAKOUT',
-          stopLoss: orbSignal.stopLoss,
-          takeProfit: orbSignal.takeProfit,
-          riskRewardRatio: orbSignal.riskReward,
-          qualityScore: alignedWithTrend ? 90 : 75,
-          sizeFactor: alignedWithTrend ? 1.0 : 0.5,  // Half size when trend unclear
-        }
-      }
-      // If ORB direction is AGAINST the trend, skip the trade entirely
+    if (!sessionInfo.canTrade) {
+      // Skip entry - not in optimal trading session
+      state.candlesProcessed++
+      state.currentIndex = index
+      return
     }
 
     // ==========================================================================
-    // STEP 6B: ROC + HEIKIN ASHI STRATEGY (FALLBACK)
-    // ==========================================================================
-    // If ORB didn't give a signal, try ROC + Heikin Ashi
-    // ROC+HA works throughout the day - complements ORB's single morning trade
-    // PROVEN: 93% market outperformance, 55% win rate, 2.7:1 R:R
+    // MASTER ORCHESTRATOR - UNIFIED WORLD-CLASS SIGNAL GENERATION
+    // Combines ALL strategies: Production, Institutional, Smart Money, ML
+    // Includes: Intelligent inverse, Dynamic weighting, Optimized stops/targets
     // ==========================================================================
 
-    if (signalToUse === null) {
-      // Convert candles to ROC format
-      const rocCandles: ROCCandle[] = candles1m.map(c => ({
-        time: c.time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume,
-      }))
-
-      // Generate ROC + Heikin Ashi signal
-      const rocSignal = generateROCHASignal(rocCandles)
-
-      // REGIME FILTER for ROC+HA - Only trade in TRENDING conditions
-      // ROC momentum crossovers are unreliable in sideways/unknown markets
-      const rocRegimeOK = (isTrending || isDirectional) && hasVolatility
-
-      // Only take signal if:
-      // 1. Crossover occurred
-      // 2. Confidence is high enough
-      // 3. Market is trending (regime filter)
-      if (rocSignal.direction !== 'FLAT' && rocSignal.rocCrossover && rocSignal.confidence >= 70 && rocRegimeOK) {
-        // Additional filter: Align with trend for higher probability
-        const trendBias = ema20 > ema50 ? 'LONG' : 'SHORT'
-        const alignedWithTrend = rocSignal.direction === trendBias
-
-        // STRICT TREND ALIGNMENT for ROC+HA
-        // Unlike ORB breakouts, momentum signals MUST align with trend
-        // Strong momentum alone is not enough - trend alignment is required
-        if (alignedWithTrend) {
-          signalToUse = {
-            direction: rocSignal.direction,
-            confidence: rocSignal.confidence + 5,  // Bonus for trend alignment
-            strategy: 'ROC_HEIKIN_ASHI',
-            stopLoss: rocSignal.stopLoss,
-            takeProfit: rocSignal.takeProfit,
-            riskRewardRatio: 2.7,  // Strategy's proven R:R
-            qualityScore: 85,
-            sizeFactor: 1.0,
-          }
-        }
+    const orchestratorSignal = await generateOrchestratorSignal(
+      candles1m,
+      candles5m,
+      candles15m,
+      {
+        cumulativeDelta: vpin.vpin,
+        accountBalance: state.currentBalance,
+        riskPercent: 0.5,
+        maxDrawdownUsed: state.peakBalance - state.currentBalance,
+        contractValue: TRADING_COSTS.pointValue,
       }
-    }
+    )
 
-    // ==========================================================================
-    // STEP 6C: WORLD-CLASS STRATEGIES (11 STRATEGIES)
-    // If neither ORB nor ROC+HA fired, use the 11 world-class institutional strategies
-    // These include: BOS_CONTINUATION, CHOCH_REVERSAL, FAILED_BREAKOUT, LIQUIDITY_SWEEP,
-    // SESSION_REVERSION, TREND_PULLBACK, VOLATILITY_BREAKOUT, VWAP_DEVIATION,
-    // RANGE_FADE, ORB_BREAKOUT (separate from simple ORB), KILLZONE_REVERSAL
-    // ==========================================================================
-    if (signalToUse === null && allWorldClassSignals?.signals && allWorldClassSignals.signals.length > 0) {
-      // Filter to valid signals with proper direction and confidence
-      const validSignals = allWorldClassSignals.signals.filter(
-        (s: { signal: StrategySignal; quality: any }) => s.signal.confidence >= 65
-      )
+    // Check if orchestrator generated a valid entry signal
+    const shouldEnter = orchestratorSignal.direction !== 'FLAT' &&
+                       orchestratorSignal.confidence >= 55 &&
+                       orchestratorSignal.confluenceScore >= 25 &&
+                       orchestratorSignal.apexSafety.canTrade &&
+                       orchestratorSignal.mtfAligned
 
-      if (validSignals.length > 0) {
-        // Find the highest confidence signal
-        const bestEntry = validSignals.reduce((best: { signal: StrategySignal; quality: any }, current: { signal: StrategySignal; quality: any }) =>
-          current.signal.confidence > best.signal.confidence ? current : best
-        )
-        const bestSignal = bestEntry.signal
-        const bestQuality = bestEntry.quality
-
-        // Trend alignment check for world-class strategies
-        const trendBias = ema20 > ema50 ? 'LONG' : 'SHORT'
-        const alignedWithTrend = bestSignal.direction === trendBias
-
-        // Only trade if aligned with trend OR high confidence (80+)
-        if (alignedWithTrend || bestSignal.confidence >= 80) {
-          // Extract stop loss price
-          const stopPrice = typeof bestSignal.stopLoss === 'object'
-            ? bestSignal.stopLoss.price
-            : bestSignal.stopLoss
-
-          // Extract take profit from first target
-          const targetPrice = bestSignal.targets && bestSignal.targets.length > 0
-            ? bestSignal.targets[0].price
-            : (bestSignal.direction === 'LONG'
-                ? currentPrice + indicators.atr * 2
-                : currentPrice - indicators.atr * 2)
-
-          // Calculate R:R
-          const risk = Math.abs(currentPrice - stopPrice)
-          const reward = Math.abs(targetPrice - currentPrice)
-          const rrRatio = risk > 0 ? reward / risk : 2.0
-
-          signalToUse = {
-            direction: bestSignal.direction as 'LONG' | 'SHORT',
-            confidence: alignedWithTrend ? bestSignal.confidence + 5 : bestSignal.confidence,
-            strategy: bestSignal.type || 'WORLD_CLASS',  // Use 'type' field
-            stopLoss: stopPrice,
-            takeProfit: targetPrice,
-            riskRewardRatio: rrRatio,
-            qualityScore: bestQuality?.overall || bestSignal.qualityScore || 70,
-            sizeFactor: alignedWithTrend ? (bestQuality?.recommendation === 'FULL_SIZE' ? 1.0 : bestQuality?.recommendation === 'HALF_SIZE' ? 0.5 : 0.25) : 0.5,
-          }
-        }
-      }
-    }
-
-    const shouldEnter = signalToUse !== null
-    const isORBTrade = signalToUse?.strategy === 'ORB_BREAKOUT'
-    const isROCHATrade = signalToUse?.strategy === 'ROC_HEIKIN_ASHI'
-    const isWorldClassTrade = !isORBTrade && !isROCHATrade && signalToUse !== null
-
-    if (shouldEnter && signalToUse) {
-      let entryDir: 'LONG' | 'SHORT' = signalToUse.direction
-
-      // INVERSE MODE - DISABLED FOR PROVEN STRATEGIES
-      // ORB and ROC+HA are proven backtested strategies - NEVER flip their signals
-      const isProvenStrategy = isORBTrade || isROCHATrade
-      if (!isProvenStrategy && shouldInverseSignal()) {
-        entryDir = entryDir === 'LONG' ? 'SHORT' : 'LONG'
-      }
-
-      // MTF FILTER - DISABLED FOR PROVEN STRATEGIES
-      // ORB is breakout, ROC+HA is momentum - both have their own internal filters
-      let mtfMultiplier = 1.0
-      let mtfAligned = true  // Default to aligned for proven strategies
-      if (!isProvenStrategy) {
-        mtfAligned = signalAlignedWithMTF(entryDir, mtfTrend)
-        mtfMultiplier = mtfAligned ? 1.0 : 0.25  // 25% size for counter-trend (non-proven only)
-      }
-
-      // PA ONE DIRECTION RULE: Check if we're violating the one direction rule
-      // (Only applies in Performance Account mode)
-      // NOTE: This is a REGULATORY requirement, not a fear mechanism - keep as binary
-      const paViolation = checkPAViolation(state.currentBalance, 0, entryDir)
-      if (paViolation.violation) {
-        // Block trade - would violate PA rules (regulatory)
-        state.candlesProcessed++
-        state.currentIndex = index
-        return
-      }
-
-      // Track session direction for One Direction Rule
-      if (paState.isPA && !paState.currentSessionDirection) {
-        paState.currentSessionDirection = entryDir
-      }
-
+    if (shouldEnter) {
+      const entryDir = orchestratorSignal.direction as 'LONG' | 'SHORT'
       const atr = indicators.atr
 
-      // USE STRATEGY ENGINE's CALCULATED STOPS & TARGETS
-      // These are based on research-backed strategies, not arbitrary multipliers
-      const rawEntryPrice = currentPrice
+      // Use orchestrator's optimized entry, stop, target levels
+      const rawEntryPrice = orchestratorSignal.entryPrice
 
       // Calculate volatility for slippage
       const recentPrices = candles1m.slice(-20).map(c => (c.high - c.low) / c.close)
@@ -3445,133 +1382,26 @@ async function processCandle(index: number): Promise<void> {
       // Simulate entry latency
       const entryLatencyMs = simulateLatency()
 
-      // Apply slippage to entry price (slippage works against you)
-      const entryPrice = applySlippage(currentPrice, entryDir, true, volatility)
+      // Apply slippage to entry price
+      const entryPrice = applySlippage(rawEntryPrice, entryDir, true, volatility)
 
-      // USE SIGNAL's CALCULATED STOPS & TARGETS
-      // These come from institutional analysis (order flow, volume profile, SMC, etc.)
+      // Use orchestrator's calculated stops & targets (already optimized)
       const slippageAdjustment = Math.abs(entryPrice - rawEntryPrice)
-      let stopLoss = entryDir === 'LONG'
-        ? signalToUse.stopLoss - slippageAdjustment
-        : signalToUse.stopLoss + slippageAdjustment
-      const takeProfit = signalToUse.takeProfit
+      const stopLoss = entryDir === 'LONG'
+        ? orchestratorSignal.stopLoss - slippageAdjustment
+        : orchestratorSignal.stopLoss + slippageAdjustment
+      const takeProfit = orchestratorSignal.takeProfit
 
-      // MAX LOSS PER TRADE - Cap stop loss to prevent catastrophic losses
-      // With ES at $50/point, 8 points = $400 max risk per contract
-      const rawRiskPoints = Math.abs(entryPrice - stopLoss)
-      if (rawRiskPoints > PROFIT_CONFIG.maxLossPerTradePoints) {
-        // Tighten the stop to respect max loss limit
-        stopLoss = entryDir === 'LONG'
-          ? entryPrice - PROFIT_CONFIG.maxLossPerTradePoints
-          : entryPrice + PROFIT_CONFIG.maxLossPerTradePoints
-      }
+      // Use orchestrator's partial targets
+      const target1 = orchestratorSignal.target1
+      const target2 = orchestratorSignal.target2
 
-      // Calculate partial profit targets (1R and 2R)
-      const riskAmount = Math.abs(entryPrice - stopLoss)
-      const target1 = entryDir === 'LONG'
-        ? entryPrice + riskAmount      // 1R profit
-        : entryPrice - riskAmount
-      const target2 = entryDir === 'LONG'
-        ? entryPrice + (riskAmount * 2) // 2R profit
-        : entryPrice - (riskAmount * 2)
-
-      // Trailing stop distance (1.5x ATR after first target hit)
+      // Trailing stop distance (from orchestrator's risk calculation)
+      const riskAmount = orchestratorSignal.riskInPoints
       const trailingDistance = atr * 1.5
 
-      // =======================================================================
-      // QUALITY-BASED POSITION SIZING
-      // Weight-based (liquidity sweep) uses sizeFactor (0.25 to 1.0)
-      // World-class strategies use quality score
-      // =======================================================================
-      let qualityMultiplier = 1.0
-
-      // Check if liquidity sweep provided a size factor (weight-based)
-      if (signalToUse.sizeFactor !== undefined) {
-        // Liquidity sweep weight-based sizing (governance compliant)
-        // sizeFactor ranges from 0.25 (low weight) to 1.0 (high weight)
-        qualityMultiplier = signalToUse.sizeFactor
-      } else if (signalToUse.qualityScore !== undefined) {
-        // World-class signal with quality score
-        if (signalToUse.qualityScore >= 80) {
-          qualityMultiplier = 1.0  // FULL_SIZE - high quality setup
-        } else if (signalToUse.qualityScore >= 60) {
-          qualityMultiplier = 0.5  // HALF_SIZE - moderate quality
-        } else if (signalToUse.qualityScore >= 40) {
-          qualityMultiplier = 0.25 // QUARTER_SIZE - lower quality but tradeable
-        }
-      } else {
-        // Fallback: Old confidence-based sizing
-        qualityMultiplier = signalToUse.confidence >= 85 ? 1.5 :
-                            signalToUse.confidence >= 75 ? 1.0 : 0.75
-      }
-
-      // Apply ALL multipliers: quality, prop firm risk, degraded risk, session, daily loss, frequency, time
-      // GOVERNANCE: All factors are degradation multipliers (0.1-1.0), never binary blocks
-      // EVAL MODE: Additional multipliers for 7-day $9,000 target optimization
-      const currentSession = getLocalSession(currentCandle.time)
-
-      // Get eval-mode specific multipliers
-      const evalStrategyWeight = getStrategyPriorityMultiplier(signalToUse.strategy)
-      const evalTimeAllocation = getTimeAllocationMultiplier(currentSession)
-      const evalAggression = getAggressionMultiplier(
-        signalToUse.qualityScore || signalToUse.confidence,
-        currentSession,
-        regime,
-        mtfAligned
-      )
-      const evalSchedule = getEvalScheduleMultiplier()
-      const evalDailyShape = getDailyPnLShapingMultiplier()
-
-      // GAP PROTECTION - Reduce size near known gap times
-      const gapProtection = getGapProtectionMultiplier(currentCandle.time)
-      const gapMultiplier = gapProtection.multiplier
-
-      // If gap protection says 0% (no new positions), skip this entry
-      if (gapMultiplier === 0) {
-        state.candlesProcessed++
-        state.currentIndex = index
-        return  // Skip trade entry - high gap risk period
-      }
-
-      const baseContracts = qualityMultiplier
-
-      // PURE STRATEGY MODE: Only apply essential Apex safety multipliers
-      // Proven strategies (ORB, ROC+HA) - don't degrade them with unnecessary filters
-      let riskAdjustedContracts: number
-
-      if (isProvenStrategy) {
-        // PROVEN STRATEGY TRADES (ORB, ROC+HA): Only Apex safety limits (regulatory requirements)
-        riskAdjustedContracts = baseContracts
-          * degradedRiskMultiplier           // APEX SAFETY: Required - account protection
-          * propFirmRisk.positionSizeMultiplier  // APEX SAFETY: Required - prop firm rules
-        // NO other multipliers - proven strategies have their own internal filters
-      } else {
-        // NON-ORB TRADES: Apply all the filters
-        riskAdjustedContracts = baseContracts
-          * degradedRiskMultiplier     // GOVERNANCE: danger zone = 0.1, not blocked
-          * sessionMultiplier          // GOVERNANCE: non-optimal session = 0.25, not blocked
-          * dailyLossMultiplier        // GOVERNANCE: daily loss = 0.1-1.0, not blocked
-          * tradeFrequencyMultiplier   // GOVERNANCE: high frequency = 0.1, not blocked
-          * timeMultiplier             // GOVERNANCE: quick succession = 0.25, not blocked
-          * mtfMultiplier              // GOVERNANCE: counter-trend = 0.25, not blocked
-          * consecutiveLossMultiplier  // RISK: consecutive losses = 0.1-1.0, with cooling
-          * propFirmRisk.positionSizeMultiplier
-          * gapMultiplier              // GAP PROTECTION: reduce size near gap times (0.25-1.0)
-          // EVAL MODE MULTIPLIERS
-          * evalStrategyWeight         // EVAL: Strategy priority (0.8-1.5)
-          * evalTimeAllocation         // EVAL: Time-of-day allocation (0.1-1.5)
-          * evalAggression             // EVAL: Aggression curve (0.6-1.56)
-          * evalSchedule               // EVAL: Behind/ahead schedule (0.5-1.5)
-          * evalDailyShape             // EVAL: Daily PnL shaping (0.3-1.0)
-      }
-
-      // APEX MAX CONTRACTS LIMIT - 17 contracts max for 150K account
-      // Also apply PA contract scaling if in Performance Account
-      const paMultiplier = getPAContractMultiplier()
-      const contracts = Math.min(
-        APEX_150K_CONFIG.maxContracts,  // Hard cap at 17
-        Math.max(1, Math.floor(riskAdjustedContracts * paMultiplier))
-      )
+      // Use orchestrator's position sizing (already includes Apex safety)
+      const contracts = Math.max(1, orchestratorSignal.recommendedContracts)
 
       // Calculate entry analytics
       const entryHour = new Date(currentCandle.time).getUTCHours() - 5 // EST
@@ -3579,14 +1409,9 @@ async function processCandle(index: number): Promise<void> {
       const ema50Distance = ((price - lastEma50) / price) * 100
       const trendStrength = indicators.trendStrength
 
-      // Stop/target multipliers for adaptive learning
+      // Stop/target multipliers for learning
       const stopMultiplier = riskAmount / atr
-      const targetMultiplier = Math.abs(takeProfit - entryPrice) / atr
-
-      // GOVERNANCE FIX: Ensure strategy name is NEVER blank
-      const finalStrategy = signalToUse.strategy && signalToUse.strategy !== 'NONE'
-        ? signalToUse.strategy
-        : 'FALLBACK_SIGNAL'
+      const targetMultiplier = orchestratorSignal.rewardInPoints / atr
 
       state.position = {
         direction: entryDir,
@@ -3607,32 +1432,27 @@ async function processCandle(index: number): Promise<void> {
         trailingDistance,
         highestPrice: entryPrice,
         lowestPrice: entryPrice,
-        confluenceScore: signalToUse.confidence,  // ORB confidence score (85% proven)
-        mlConfidence: signalToUse.confidence / 100,
+        confluenceScore: orchestratorSignal.confluenceScore,
+        mlConfidence: orchestratorSignal.confidence / 100,
         vpinAtEntry: vpin.vpin,
         volatilityAtEntry: volatility,
-        regime: adaptiveRegime,  // Use adaptive regime for ML learning
+        regime: adaptiveRegime,
         features,
         stopMultiplierUsed: stopMultiplier,
         targetMultiplierUsed: targetMultiplier,
-        strategy: finalStrategy,
-        // PURE STRATEGY MODE: No partials, no trailing, just SL/TP (for proven strategies)
-        isProvenStrategy: finalStrategy === 'ORB_BREAKOUT' || finalStrategy === 'ROC_HEIKIN_ASHI',
+        strategy: orchestratorSignal.primaryStrategy,
+        orchestratorSignalId: orchestratorSignal.signalId,
         entryAnalytics: {
-          strategy: finalStrategy,
+          strategy: orchestratorSignal.primaryStrategy,
           rsiAtEntry: lastRsi,
           ema20Distance,
           ema50Distance,
-          regime: finalStrategy,  // Using strategy name for tracking
+          regime: orchestratorSignal.regime.production,
           hourOfDay: entryHour,
           atrAtEntry: atr,
           trendStrength,
         },
       }
-
-      // PROFIT TRACKING: Update trade frequency counters
-      dailyTradeCount++
-      lastTradeIndex = index
     }
   }
 
@@ -3691,9 +1511,6 @@ async function processBatch(): Promise<void> {
     if (state.currentIndex >= state.totalCandles - 1) {
       // Reset to beginning for continuous testing
       state.currentIndex = 50
-      // CRITICAL: Reset ORB day state when looping back
-      // Otherwise "Trade already taken today" persists incorrectly
-      resetORBDayState()
     }
 
     await processCandle(state.currentIndex)
@@ -3786,15 +1603,13 @@ export async function GET(request: NextRequest) {
              Math.abs(state.trades.filter(t => t.netPnL < 0).reduce((s, t) => s + t.netPnL, 0))).toFixed(2)
           : 'N/A',
       },
-      // BRUTALLY REALISTIC Trading Costs (1:1 with Live Trading)
+      // Realistic Trading Costs (Matching Apex/Rithmic 1:1)
       tradingCosts: {
-        total: (state.totalCosts || 0).toFixed(2),
+        total: state.totalCosts.toFixed(2),
         breakdown: {
-          commissions: (state.costBreakdown?.commissions || 0).toFixed(2),
-          exchangeFees: (state.costBreakdown?.exchangeFees || 0).toFixed(2),
-          slippage: (state.costBreakdown?.slippage || 0).toFixed(2),
-          spread: (state.costBreakdown?.spread || 0).toFixed(2),
-          gapLosses: (state.costBreakdown?.gapLosses || 0).toFixed(2),
+          commissions: state.costBreakdown.commissions.toFixed(2),
+          exchangeFees: state.costBreakdown.exchangeFees.toFixed(2),
+          slippage: state.costBreakdown.slippage.toFixed(2),
         },
         avgCostPerTrade: state.trades.length > 0
           ? (state.totalCosts / state.trades.length).toFixed(2)
@@ -3803,27 +1618,11 @@ export async function GET(request: NextRequest) {
           ? ((state.totalCosts / Math.abs(state.grossPnL)) * 100).toFixed(1) + '%'
           : 'N/A',
       },
-      // EXECUTION QUALITY STATS - Shows how realistic the simulation is
-      executionStats: {
-        totalOrders: state.executionStats?.totalOrders || 0,
-        rejectedOrders: state.executionStats?.rejectedOrders || 0,
-        rejectionRate: (state.executionStats?.totalOrders || 0) > 0
-          ? (((state.executionStats?.rejectedOrders || 0) / state.executionStats.totalOrders) * 100).toFixed(1) + '%'
-          : '0%',
-        partialFills: state.executionStats?.partialFills || 0,
-        avgFillPercentage: (state.executionStats?.avgFillPercentage || 100).toFixed(1) + '%',
-        avgSlippageTicks: (state.executionStats?.avgSlippageTicks || 0).toFixed(2),
-        avgSlippageDollars: '$' + ((state.executionStats?.avgSlippageTicks || 0) * TRADING_COSTS.tickValue).toFixed(2),
-        avgSpreadTicks: (state.executionStats?.avgSpreadTicks || 0).toFixed(2),
-        avgSpreadDollars: '$' + ((state.executionStats?.avgSpreadTicks || 0) * TRADING_COSTS.tickValue).toFixed(2),
-        gappedStops: state.executionStats?.gappedStops || 0,
-        gapLossTotal: '$' + (state.costBreakdown?.gapLosses || 0).toFixed(2),
-      },
       // Latency Simulation Stats
       latencyStats: {
-        avgLatencyMs: (state.latencyStats?.avgLatencyMs || 0).toFixed(0) + 'ms',
-        maxLatencyMs: (state.latencyStats?.maxLatencyMs || 0).toFixed(0) + 'ms',
-        minLatencyMs: (state.latencyStats?.minLatencyMs === Infinity || !state.latencyStats?.minLatencyMs)
+        avgLatencyMs: state.latencyStats.avgLatencyMs.toFixed(0) + 'ms',
+        maxLatencyMs: state.latencyStats.maxLatencyMs.toFixed(0) + 'ms',
+        minLatencyMs: state.latencyStats.minLatencyMs === Infinity
           ? 'N/A'
           : state.latencyStats.minLatencyMs.toFixed(0) + 'ms',
       },
@@ -3891,25 +1690,21 @@ export async function GET(request: NextRequest) {
         status: 'LEARNING', // Always learning from outcomes
         description: 'Self-optimizing based on trade outcomes',
       },
+      // MASTER ORCHESTRATOR STATS - Strategy performance & learning
+      orchestrator: getOrchestratorStats(),
       // Current Market Regime
       currentRegime: state.position?.regime || 'UNKNOWN',
-      // Data Source Info - RANDOMIZED FOR TRUE ML LEARNING
+      // Data Source Info
       dataSource: {
         provider: 'Yahoo Finance + Adaptive ML',
-        instrument: currentDataSource.label,
-        symbol: currentDataSource.symbol,
-        isRealES: currentDataSource.isRealES,
-        // CRITICAL: Random historical period each run
-        period: currentDataSource.period || 'Not loaded',
-        marketRegime: currentDataSource.regime || 'UNKNOWN',
+        instrument: 'SPY (S&P 500 ETF) scaled to ES prices',
         timeframes: ['1m', '5m', '15m'],
         candlesLoaded: {
           '1m': historicalData.candles1m.length,
           '5m': historicalData.candles5m.length,
           '15m': historicalData.candles15m.length,
         },
-        note: 'RANDOMIZED: Each run trains on DIFFERENT market conditions',
-        trainingDiversity: `ML learning from ${trainingHistory.length} different periods`,
+        note: 'WORLD-CLASS: Adaptive ML learns from every trade',
         delay: 'None - processing historical data at selected speed',
       },
       // Chart Data - Historical candles being processed
@@ -3975,19 +1770,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Already running' }, { status: 400 })
       }
 
-      // Set target date if provided (e.g., 'yesterday' or '2026-01-06')
-      // This allows testing with specific dates instead of random periods
-      if (body.date) {
-        setTargetBacktestDate(body.date)
-      } else {
-        setTargetBacktestDate(null) // Reset to random
-      }
-
       // Fetch historical data first
       const hasData = await fetchHistoricalData(body.days || 7)
       if (!hasData) {
         return NextResponse.json({ error: 'Failed to fetch historical data' }, { status: 500 })
       }
+
+      // Initialize master orchestrator (loads learned weights from DB)
+      await initializeOrchestrator()
 
       // Reset state
       state.running = true
@@ -4002,7 +1792,7 @@ export async function POST(request: NextRequest) {
       state.maxDrawdown = 0
       state.peakBalance = 150000
       state.currentBalance = 150000
-      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0, spread: 0, gapLosses: 0 }
+      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0 }
       state.latencyStats = { totalLatencyMs: 0, avgLatencyMs: 0, maxLatencyMs: 0, minLatencyMs: Infinity }
       state.candlesProcessed = 0
       state.strategyPerformance = {}
@@ -4018,9 +1808,6 @@ export async function POST(request: NextRequest) {
 
       // Reset entry analytics
       resetEntryAnalytics()
-
-      // Reset ORB day state for fresh backtesting
-      resetORBDayState()
 
       // Simulation will process candles on each GET request (serverless compatible)
       return NextResponse.json({
@@ -4059,13 +1846,7 @@ export async function POST(request: NextRequest) {
       state.maxDrawdown = 0
       state.peakBalance = 150000
       state.currentBalance = 150000
-      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0, spread: 0, gapLosses: 0 }
-
-      // Reset daily profit tracking
-      dailyPnL = 0
-      dailyTradeCount = 0
-      lastTradeIndex = 0
-      currentTradingDay = ''
+      state.costBreakdown = { commissions: 0, exchangeFees: 0, slippage: 0 }
       state.latencyStats = { totalLatencyMs: 0, avgLatencyMs: 0, maxLatencyMs: 0, minLatencyMs: Infinity }
       state.candlesProcessed = 0
       state.strategyPerformance = {}
@@ -4079,9 +1860,6 @@ export async function POST(request: NextRequest) {
           low: { correct: 0, total: 0 },
         }
       }
-
-      // CRITICAL: Reset ORB day state on reset
-      resetORBDayState()
 
       return NextResponse.json({
         success: true,

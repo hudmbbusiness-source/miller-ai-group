@@ -2210,10 +2210,49 @@ interface TrainingPeriod {
 
 let trainingHistory: TrainingPeriod[] = []
 
-// Generate a random historical period
+// Target date for backtest (null = random, 'yesterday' = yesterday, or specific date)
+let targetBacktestDate: string | null = null
+
+// Set target date for backtest
+function setTargetBacktestDate(date: string | null) {
+  targetBacktestDate = date
+  console.log(`[BACKTEST] Target date set to: ${date || 'RANDOM'}`)
+}
+
+// Generate historical period - either specific date or random
 function getRandomHistoricalPeriod(): { startTime: number; endTime: number; periodLabel: string } {
   const now = Date.now()
   const oneDay = 24 * 60 * 60 * 1000
+
+  // If targetBacktestDate is set, use that specific date
+  if (targetBacktestDate) {
+    let targetDate: Date
+
+    if (targetBacktestDate === 'yesterday') {
+      // Yesterday = today minus 1 day
+      targetDate = new Date(now - oneDay)
+    } else {
+      // Parse specific date (e.g., '2026-01-06')
+      targetDate = new Date(targetBacktestDate)
+    }
+
+    // Set to start of day (4:00 AM ET for pre-market)
+    targetDate.setHours(4, 0, 0, 0)
+    const startTime = targetDate.getTime()
+
+    // End at 8:00 PM ET same day (post-market close)
+    const endTime = startTime + (16 * 60 * 60 * 1000)
+
+    const periodLabel = `${targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} (SINGLE DAY)`
+
+    console.log(`[BACKTEST] Using SPECIFIC DATE: ${periodLabel}`)
+
+    return {
+      startTime: Math.floor(startTime / 1000),
+      endTime: Math.floor(endTime / 1000),
+      periodLabel,
+    }
+  }
 
   // Yahoo Finance limits for intraday data:
   // - 1m: last 7 days only
@@ -3934,6 +3973,14 @@ export async function POST(request: NextRequest) {
     if (body.action === 'start') {
       if (state.running) {
         return NextResponse.json({ error: 'Already running' }, { status: 400 })
+      }
+
+      // Set target date if provided (e.g., 'yesterday' or '2026-01-06')
+      // This allows testing with specific dates instead of random periods
+      if (body.date) {
+        setTargetBacktestDate(body.date)
+      } else {
+        setTargetBacktestDate(null) // Reset to random
       }
 
       // Fetch historical data first

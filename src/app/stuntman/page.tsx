@@ -515,6 +515,11 @@ export default function StuntManDashboard() {
   const [syncing, setSyncing] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
 
+  // Connection Test State
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [connectionTestResult, setConnectionTestResult] = useState<any>(null)
+  const [showTestModal, setShowTestModal] = useState(false)
+
   // Chart now uses custom RealTimeESChart component with Yahoo Finance data
   // This ensures chart shows EXACT same data as trading signals
 
@@ -734,6 +739,33 @@ export default function StuntManDashboard() {
   }
 
   // ==========================================================================
+  // TEST CONNECTION - Verify PickMyTrade can receive orders
+  // ==========================================================================
+  const testConnection = async () => {
+    setTestingConnection(true)
+    setConnectionTestResult(null)
+    setShowTestModal(true)
+
+    try {
+      const res = await fetch('/api/stuntman/live-adaptive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test-connection' }),
+      })
+      const data = await res.json()
+      setConnectionTestResult(data)
+    } catch (e) {
+      setConnectionTestResult({
+        success: false,
+        error: 'Network error - could not reach API',
+        message: e instanceof Error ? e.message : 'Unknown error'
+      })
+    }
+
+    setTestingConnection(false)
+  }
+
+  // ==========================================================================
   // HELPERS
   // ==========================================================================
 
@@ -824,6 +856,17 @@ export default function StuntManDashboard() {
 
           {/* Right */}
           <div className="flex items-center gap-3">
+            {/* Test Connection Button */}
+            <button
+              onClick={testConnection}
+              disabled={testingConnection}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50 transition"
+              title="Test PickMyTrade connection"
+            >
+              <Zap className="w-4 h-4" />
+              {testingConnection ? 'Testing...' : 'Test Connection'}
+            </button>
+
             {/* Apex Sync Button */}
             <button
               onClick={() => setShowSyncModal(true)}
@@ -1832,6 +1875,122 @@ export default function StuntManDashboard() {
               >
                 Open Apex Dashboard
               </a>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================ */}
+        {/* CONNECTION TEST MODAL */}
+        {/* ================================================================ */}
+        {showTestModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+            <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-lg mx-4 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-emerald-400" />
+                  Connection Test Results
+                </h3>
+                <button
+                  onClick={() => setShowTestModal(false)}
+                  className="text-white/40 hover:text-white p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {testingConnection ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto mb-4" />
+                  <p className="text-white/70">Testing PickMyTrade connection...</p>
+                </div>
+              ) : connectionTestResult ? (
+                <div className="space-y-4">
+                  {/* Overall Status */}
+                  <div className={`p-4 rounded-xl border ${
+                    connectionTestResult.success
+                      ? 'bg-emerald-500/10 border-emerald-500/30'
+                      : 'bg-red-500/10 border-red-500/30'
+                  }`}>
+                    <div className={`text-lg font-bold ${
+                      connectionTestResult.success ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {connectionTestResult.success ? '✓ CONNECTION WORKING' : '✗ CONNECTION FAILED'}
+                    </div>
+                    <p className="text-sm text-white/70 mt-1">
+                      {connectionTestResult.message}
+                    </p>
+                  </div>
+
+                  {/* Details */}
+                  <div className="bg-white/5 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">PickMyTrade API:</span>
+                      <span className={connectionTestResult.pickMyTradeReached ? 'text-emerald-400' : 'text-red-400'}>
+                        {connectionTestResult.pickMyTradeReached ? '✓ Reached' : '✗ Not reached'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">Token Valid:</span>
+                      <span className={connectionTestResult.tokenValid ? 'text-emerald-400' : 'text-red-400'}>
+                        {connectionTestResult.tokenValid ? '✓ Valid' : '✗ Invalid'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">Account ID:</span>
+                      <span className="text-white/70">{connectionTestResult.accountId || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">Connection Name:</span>
+                      <span className="text-white/70">{connectionTestResult.connectionName || 'N/A'}</span>
+                    </div>
+                    {connectionTestResult.apiResponse && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="text-xs text-white/40 mb-1">Raw API Response:</div>
+                        <pre className="text-xs text-white/60 bg-black/50 p-2 rounded overflow-x-auto">
+                          {JSON.stringify(connectionTestResult.apiResponse, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Warning about Rithmic */}
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                    <p className="text-xs text-amber-200">
+                      <strong>Note:</strong> This test verifies PickMyTrade receives requests.
+                      It does NOT verify Rithmic/Apex connection. Check your Apex dashboard to verify orders are filling.
+                    </p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3">
+                    <a
+                      href="https://pickmytrade.trade/pages/alertPage"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/70 text-center text-sm transition"
+                    >
+                      Open PickMyTrade
+                    </a>
+                    <a
+                      href="https://login.apextraderfunding.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/70 text-center text-sm transition"
+                    >
+                      Open Apex Dashboard
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-white/50 text-center py-8">No test results yet</p>
+              )}
+
+              <button
+                onClick={() => setShowTestModal(false)}
+                className="w-full mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
+              >
+                Close
+              </button>
             </div>
           </div>
         )}

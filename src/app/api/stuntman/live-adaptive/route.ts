@@ -2355,6 +2355,102 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ==========================================================================
+    // TEST CONNECTION - Verify PickMyTrade can receive requests (NO actual trade)
+    // ==========================================================================
+    if (action === 'test-connection') {
+      console.log('[TEST CONNECTION] Starting connection test...')
+
+      // Check credentials first
+      if (!CREDENTIALS_VALID) {
+        return NextResponse.json({
+          success: false,
+          message: 'Credentials not configured',
+          pickMyTradeReached: false,
+          tokenValid: false,
+          accountId: APEX_ACCOUNT_ID || 'NOT SET',
+          connectionName: RITHMIC_CONNECTION_NAME || 'NOT SET',
+          error: 'Missing PICKMYTRADE_TOKEN, APEX_ACCOUNT_ID, or RITHMIC_CONNECTION_NAME'
+        })
+      }
+
+      // Send a test ping to PickMyTrade API (using a "flat" order with 0 quantity - won't execute)
+      const testPayload = {
+        symbol: 'TEST',  // Invalid symbol - will be rejected but proves connection works
+        date: new Date().toISOString(),
+        data: 'flat',    // Flat = close position (safest)
+        quantity: 0,
+        risk_percentage: 0,
+        price: 0,
+        tp: 0,
+        percentage_tp: 0,
+        dollar_tp: 0,
+        sl: 0,
+        dollar_sl: 0,
+        percentage_sl: 0,
+        order_type: 'MKT',
+        update_tp: false,
+        update_sl: false,
+        token: PICKMYTRADE_TOKEN,
+        duplicate_position_allow: false,
+        platform: 'RITHMIC',
+        connection_name: RITHMIC_CONNECTION_NAME,
+        reverse_order_close: false,
+        multiple_accounts: [{
+          token: PICKMYTRADE_TOKEN,
+          account_id: APEX_ACCOUNT_ID,
+          connection_name: RITHMIC_CONNECTION_NAME,
+          quantity_multiplier: 0,
+        }],
+      }
+
+      try {
+        console.log('[TEST CONNECTION] Sending test request to PickMyTrade...')
+        const response = await fetch('https://api.pickmytrade.io/v2/add-trade-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(testPayload),
+        })
+
+        const responseData = await response.json()
+        console.log('[TEST CONNECTION] Response:', responseData)
+
+        // Check if we got a response (even an error response means connection works)
+        const pickMyTradeReached = response.status !== 0 && response.status < 500
+        const responseMessage = responseData?.message || responseData?.msg || ''
+
+        // Token is valid if we didn't get an auth error
+        const tokenValid = !responseMessage.toLowerCase().includes('unauthorized') &&
+                          !responseMessage.toLowerCase().includes('invalid token') &&
+                          !responseMessage.toLowerCase().includes('authentication')
+
+        return NextResponse.json({
+          success: pickMyTradeReached && tokenValid,
+          message: pickMyTradeReached
+            ? (tokenValid ? 'PickMyTrade connection verified!' : 'Token may be invalid')
+            : 'Could not reach PickMyTrade API',
+          pickMyTradeReached,
+          tokenValid,
+          accountId: APEX_ACCOUNT_ID,
+          connectionName: RITHMIC_CONNECTION_NAME,
+          httpStatus: response.status,
+          apiResponse: responseData,
+          note: 'This test does NOT verify Rithmic/Apex connection - only PickMyTrade API'
+        })
+      } catch (error) {
+        console.error('[TEST CONNECTION] Error:', error)
+        return NextResponse.json({
+          success: false,
+          message: 'Network error - could not reach PickMyTrade',
+          pickMyTradeReached: false,
+          tokenValid: false,
+          accountId: APEX_ACCOUNT_ID,
+          connectionName: RITHMIC_CONNECTION_NAME,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
+    }
+
     // Test trade to verify PickMyTrade connection - WITH FULL DEBUG
     if (action === 'test') {
       // Direct API test - bypass client to see raw response

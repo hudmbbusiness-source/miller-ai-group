@@ -6,9 +6,10 @@
  */
 
 import { NextResponse } from 'next/server';
+import { getCurrentContractSymbol } from '@/lib/stuntman/pickmytrade-client';
 
-// PickMyTrade webhook URL
-const PICKMYTRADE_WEBHOOK = 'https://hook.pickmytrade.trade/webhook';
+// PickMyTrade API URL (correct one)
+const PICKMYTRADE_API = 'https://api.pickmytrade.io/v2/add-trade-data';
 
 interface Candle {
   time: number;
@@ -270,21 +271,48 @@ async function executeTrade(
   direction: 'BUY' | 'SELL',
   quantity: number,
   token: string,
-  accountId: string
+  accountId: string,
+  currentPrice: number
 ): Promise<{ success: boolean; message: string }> {
   try {
+    // Get proper contract symbol (e.g., ESH6 for March 2026)
+    const symbol = getCurrentContractSymbol('ES');
+
+    // Build proper PickMyTrade payload
     const payload = {
-      token,
-      account: accountId,
-      symbol: 'ES',
-      action: direction,
-      qty: quantity,
-      type: 'MARKET',
+      symbol: symbol,
+      date: new Date().toISOString(),
+      data: direction.toLowerCase(), // 'buy' or 'sell'
+      quantity: quantity,
+      risk_percentage: 0,
+      price: currentPrice, // Required to avoid "Price Not Found" error
+      tp: 0,
+      percentage_tp: 0,
+      dollar_tp: 0,
+      sl: 0,
+      dollar_sl: 0,
+      percentage_sl: 0,
+      order_type: 'MKT',
+      update_tp: false,
+      update_sl: false,
+      token: token,
+      duplicate_position_allow: false,
+      platform: 'RITHMIC',
+      connection_name: 'Rithmic Paper Trading', // Your Rithmic connection name
+      reverse_order_close: true,
+      multiple_accounts: [
+        {
+          token: token,
+          account_id: accountId,
+          connection_name: 'Rithmic Paper Trading',
+          quantity_multiplier: quantity,
+        },
+      ],
     };
 
-    console.log('[ManualTrade] Sending to PickMyTrade:', payload);
+    console.log('[ManualTrade] Sending to PickMyTrade:', JSON.stringify(payload, null, 2));
 
-    const response = await fetch(PICKMYTRADE_WEBHOOK, {
+    const response = await fetch(PICKMYTRADE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -294,7 +322,7 @@ async function executeTrade(
     console.log('[ManualTrade] PickMyTrade response:', result);
 
     if (response.ok) {
-      return { success: true, message: `${direction} order sent successfully` };
+      return { success: true, message: `${direction} ${quantity}x ${symbol} sent to PickMyTrade` };
     } else {
       return { success: false, message: `PickMyTrade error: ${result}` };
     }
@@ -362,6 +390,9 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // Get current market price for the order
+    const { currentPrice } = await fetchMarketData();
+
     // Map action to PickMyTrade direction
     let direction: 'BUY' | 'SELL';
     if (action === 'BUY' || action === 'CLOSE_SHORT') {
@@ -370,13 +401,14 @@ export async function POST(request: Request) {
       direction = 'SELL';
     }
 
-    const result = await executeTrade(direction, quantity, token, accountId);
+    const result = await executeTrade(direction, quantity, token, accountId, currentPrice);
 
     return NextResponse.json({
       success: result.success,
       message: result.message,
       action,
       quantity,
+      price: currentPrice,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

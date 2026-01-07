@@ -158,9 +158,7 @@ async function saveTradingState(state: TradingState): Promise<void> {
 async function executePickMyTrade(
   direction: 'BUY' | 'SELL',
   contracts: number = 1
-): Promise<{ success: boolean; message: string; details?: any }> {
-  // PICKMYTRADE_CONNECTION_NAME = your connection name in PickMyTrade dashboard
-  // APEX_ACCOUNT_ID = your Apex account ID (e.g., "APEX-12345-01")
+): Promise<{ success: boolean; message: string; orderId?: string; details?: any }> {
   const connectionName = process.env.PICKMYTRADE_CONNECTION_NAME?.trim();
   const accountId = process.env.APEX_ACCOUNT_ID?.trim();
 
@@ -171,20 +169,18 @@ async function executePickMyTrade(
     };
   }
 
-  // PickMyTrade correct payload format
   const payload = {
     connection_name: connectionName,
     account_id: accountId,
-    data: direction.toLowerCase(),  // "buy" or "sell"
-    symbol: 'ES',
+    data: direction.toLowerCase(),
+    symbol: 'ES',  // MUST be ES not NQ - we only trade ES
     quantity: contracts,
-    order_type: 'MKT'  // Market order
+    order_type: 'MKT'
   };
 
   console.log('[PickMyTrade] Sending order:', JSON.stringify(payload));
 
   try {
-    // CORRECT URL for Tradovate/Apex
     const response = await fetch('https://api.pickmytrade.trade/v2/add-trade-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -192,12 +188,25 @@ async function executePickMyTrade(
     });
 
     const result = await response.json();
-
     console.log('[PickMyTrade] Response:', response.status, JSON.stringify(result));
 
+    // CRITICAL: Check for ACTUAL success - must have order_id or no error message
+    const hasError = result.error ||
+                     result.message?.includes('NO PERMISSION') ||
+                     result.message?.includes('REJECTED') ||
+                     result.message?.includes('FAILED') ||
+                     result.message?.includes('Not Found') ||
+                     result.message?.includes('Invalid');
+
+    const hasOrderId = result.order_id || result.orderId || result.id;
+
+    // Only consider successful if NO errors AND either has order_id or HTTP 200 with success message
+    const isReallySuccessful = !hasError && response.ok && (hasOrderId || result.status === 'success' || result.message?.includes('success'));
+
     return {
-      success: response.ok,
-      message: result.message || result.error || (response.ok ? 'Trade sent' : 'Trade failed'),
+      success: isReallySuccessful,
+      message: hasError ? (result.error || result.message || 'Trade failed') : (result.message || 'Trade sent'),
+      orderId: hasOrderId ? (result.order_id || result.orderId || result.id) : undefined,
       details: result
     };
   } catch (e: any) {
@@ -312,7 +321,8 @@ export async function GET(request: NextRequest) {
         const exitDirection = pos.direction === 'LONG' ? 'SELL' : 'BUY';
         const closeResult = await executePickMyTrade(exitDirection, 1);
 
-        if (closeResult.success) {
+        // CRITICAL: Only record close if CONFIRMED by PickMyTrade
+        if (closeResult.success && !closeResult.message?.includes('NO PERMISSION')) {
           // Record trade outcome for learning
           await adaptiveLearningSystem.recordTradeOutcome({
             id: `trade_${Date.now()}`,
@@ -336,9 +346,17 @@ export async function GET(request: NextRequest) {
 
           autoCloseResult = {
             closed: true,
+            orderId: closeResult.orderId,
             exitType,
             pnl: pnl.toFixed(2),
-            message: `AUTO-CLOSED: ${exitType} at $${pnl.toFixed(2)}`
+            message: `CONFIRMED CLOSE: ${exitType} at $${pnl.toFixed(2)}${closeResult.orderId ? ` (ID: ${closeResult.orderId})` : ''}`
+          };
+        } else {
+          // Close FAILED - position still open
+          autoCloseResult = {
+            closed: false,
+            error: closeResult.message,
+            message: `CLOSE REJECTED: ${closeResult.message} - Position still open`
           };
         }
       }
@@ -360,7 +378,9 @@ export async function GET(request: NextRequest) {
       const direction = signal.direction === 'LONG' ? 'BUY' : 'SELL';
       const execResult = await executePickMyTrade(direction, 1);
 
-      if (execResult.success) {
+      // CRITICAL: Only record trade if CONFIRMED by PickMyTrade
+      // execResult.success is only true if no errors AND confirmed
+      if (execResult.success && !execResult.message?.includes('NO PERMISSION')) {
         // Update state with new position
         tradingState.currentPosition = {
           direction: signal.direction,
@@ -377,17 +397,21 @@ export async function GET(request: NextRequest) {
 
         autoExecutionResult = {
           executed: true,
+          orderId: execResult.orderId,  // Include order ID for verification
           strategy: signal.strategy,
           direction: signal.direction,
           entry: signal.entry,
           stopLoss: signal.stopLoss,
           takeProfit: signal.takeProfit,
-          message: `AUTO-EXECUTED: ${signal.direction} via ${signal.strategy}`
+          message: `CONFIRMED: ${signal.direction} via ${signal.strategy}${execResult.orderId ? ` (ID: ${execResult.orderId})` : ''}`
         };
       } else {
+        // TRADE FAILED - Do NOT record it
         autoExecutionResult = {
           executed: false,
-          error: execResult.message
+          error: execResult.message,
+          details: execResult.details,
+          message: `REJECTED: ${execResult.message}`
         };
       }
     }

@@ -187,17 +187,22 @@ export class AdaptiveLearningSystem {
   }
 
   private getDefaultState(): LearningState {
-    // VALIDATED weights from Monte Carlo testing
+    // VALIDATED weights from 100-SCENARIO Monte Carlo testing (Jan 7, 2026)
     const validatedWeights = {
-      FAILED_BREAKOUT: 1.0,    // 51.9% WR, +$11,370
-      RANGE_FADE: 1.0,         // 50.0% WR, +$808
-      LIQUIDITY_SWEEP: 1.0,    // 100% WR (limited data)
-      ORB_BREAKOUT: 0.8,
-      CHOCH_REVERSAL: 0.8,
-      KILLZONE_REVERSAL: 0.7,
-      VOLATILITY_BREAKOUT: 0.7,
-      VWAP_DEVIATION: 0.5,     // 37.1% WR - needs improvement
-      TREND_PULLBACK: 0.3,     // 25% WR - reduced weight
+      // WINNERS - Tested across 100 scenarios
+      RANGE_FADE: 1.0,         // 51.8% WR, +$1.3M across 100 scenarios - BEST
+      FAILED_BREAKOUT: 1.0,    // 44.1% WR, +$257K across 100 scenarios - GOOD
+
+      // REDUCED - Not fully tested or inconsistent
+      ORB_BREAKOUT: 0.5,
+      CHOCH_REVERSAL: 0.5,
+      KILLZONE_REVERSAL: 0.5,
+      VOLATILITY_BREAKOUT: 0.5,
+      VWAP_DEVIATION: 0.3,     // Inconsistent
+
+      // DISABLED - Failed 100-scenario testing
+      LIQUIDITY_SWEEP: 0.0,    // 25.8% WR, -$188K - DISABLED!
+      TREND_PULLBACK: 0.0,     // Poor performer - DISABLED
       BOS_CONTINUATION: 0.0,   // 0% WR - DISABLED
       SESSION_REVERSION: 0.0   // 18.2% WR - DISABLED
     };

@@ -254,6 +254,126 @@ export async function GET(request: NextRequest) {
                      !tradingState.currentPosition &&
                      !drawdownExceeded; // CRITICAL: Stop trading if drawdown exceeded
 
+    // ========================================================================
+    // AUTO-CLOSE: Check if current position hit SL/TP
+    // ========================================================================
+    let autoCloseResult = null;
+    const currentPrice = currentCandle.close;
+
+    if (tradingState.currentPosition && tradingState.enabled) {
+      const pos = tradingState.currentPosition;
+      let shouldClose = false;
+      let exitType = '';
+      let pnl = 0;
+
+      if (pos.direction === 'LONG') {
+        // Long position: close if price <= stopLoss OR price >= takeProfit
+        if (currentPrice <= pos.stopLoss) {
+          shouldClose = true;
+          exitType = 'STOP_LOSS';
+          pnl = (pos.stopLoss - pos.entry) * 50 - 6.84; // ES = $50/point
+        } else if (currentPrice >= pos.takeProfit) {
+          shouldClose = true;
+          exitType = 'TAKE_PROFIT';
+          pnl = (pos.takeProfit - pos.entry) * 50 - 6.84;
+        }
+      } else {
+        // Short position: close if price >= stopLoss OR price <= takeProfit
+        if (currentPrice >= pos.stopLoss) {
+          shouldClose = true;
+          exitType = 'STOP_LOSS';
+          pnl = (pos.entry - pos.stopLoss) * 50 - 6.84;
+        } else if (currentPrice <= pos.takeProfit) {
+          shouldClose = true;
+          exitType = 'TAKE_PROFIT';
+          pnl = (pos.entry - pos.takeProfit) * 50 - 6.84;
+        }
+      }
+
+      if (shouldClose) {
+        const exitDirection = pos.direction === 'LONG' ? 'SELL' : 'BUY';
+        const closeResult = await executePickMyTrade(exitDirection, 1);
+
+        if (closeResult.success) {
+          // Record trade outcome for learning
+          await adaptiveLearningSystem.recordTradeOutcome({
+            id: `trade_${Date.now()}`,
+            timestamp: new Date(),
+            strategy: pos.strategy,
+            regime: regime,
+            direction: pos.direction,
+            entry: pos.entry,
+            exit: exitType === 'STOP_LOSS' ? pos.stopLoss : pos.takeProfit,
+            pnl,
+            exitType,
+            isSimulation: false
+          });
+
+          // Update state
+          tradingState.dailyPnL += pnl;
+          tradingState.totalPnL += pnl;
+          if (pnl > 0) tradingState.totalWins++;
+          tradingState.currentPosition = null;
+          await saveTradingState(tradingState);
+
+          autoCloseResult = {
+            closed: true,
+            exitType,
+            pnl: pnl.toFixed(2),
+            message: `AUTO-CLOSED: ${exitType} at $${pnl.toFixed(2)}`
+          };
+        }
+      }
+    }
+
+    // ========================================================================
+    // AUTO-EXECUTION: Automatically execute trades when conditions are met
+    // ========================================================================
+    let autoExecutionResult = null;
+
+    // Recalculate canTrade after potential auto-close
+    const canTradeNow = withinTradingHours &&
+                        tradingState.enabled &&
+                        !tradingState.currentPosition &&
+                        !drawdownExceeded;
+
+    if (canTradeNow && signal && tradingState.enabled) {
+      // AUTO-EXECUTE THE TRADE
+      const direction = signal.direction === 'LONG' ? 'BUY' : 'SELL';
+      const execResult = await executePickMyTrade(direction, 1);
+
+      if (execResult.success) {
+        // Update state with new position
+        tradingState.currentPosition = {
+          direction: signal.direction,
+          entry: signal.entry,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit,
+          strategy: signal.strategy,
+          timestamp: new Date().toISOString()
+        };
+        tradingState.dailyTrades++;
+        tradingState.totalTrades++;
+        tradingState.lastTradeTime = new Date().toISOString();
+        await saveTradingState(tradingState);
+
+        autoExecutionResult = {
+          executed: true,
+          strategy: signal.strategy,
+          direction: signal.direction,
+          entry: signal.entry,
+          stopLoss: signal.stopLoss,
+          takeProfit: signal.takeProfit,
+          message: `AUTO-EXECUTED: ${signal.direction} via ${signal.strategy}`
+        };
+      } else {
+        autoExecutionResult = {
+          executed: false,
+          error: execResult.message
+        };
+      }
+    }
+
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       estTime: est.toISOString(),
@@ -354,7 +474,13 @@ export async function GET(request: NextRequest) {
 
       // PickMyTrade status
       pickMyTradeConnected: !!(process.env.PICKMYTRADE_TOKEN && process.env.APEX_ACCOUNT_ID),
-      apexAccountId: process.env.APEX_ACCOUNT_ID ? '***' + process.env.APEX_ACCOUNT_ID.slice(-4) : null
+      apexAccountId: process.env.APEX_ACCOUNT_ID ? '***' + process.env.APEX_ACCOUNT_ID.slice(-4) : null,
+
+      // Auto-execution result (if trade was auto-executed this poll)
+      autoExecution: autoExecutionResult,
+
+      // Auto-close result (if position was auto-closed this poll)
+      autoClose: autoCloseResult
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

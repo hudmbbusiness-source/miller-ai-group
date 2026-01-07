@@ -372,9 +372,12 @@ export class AdaptiveLearningSystem {
       if (!config.regimes.includes(regime)) continue;
 
       const signal = this.checkStrategy(stratName, candles, idx, ind, hour, c, prev);
-      if (signal && signal.confidence >= config.minConfidence) {
+      if (signal && signal.confidence && signal.direction && signal.strategy && signal.confidence >= config.minConfidence) {
         signals.push({
-          ...signal,
+          strategy: signal.strategy,
+          direction: signal.direction,
+          confidence: signal.confidence,
+          reason: signal.reason || '',
           weight,
           regime,
           entry: c.close,

@@ -409,13 +409,14 @@ export class AdaptiveLearningSystem {
 
     switch (strategy) {
       case 'FAILED_BREAKOUT': {
-        if (prev.high > bollingerUpper && prev.close > bollingerUpper) {
-          if (c.close < bollingerUpper && c.close < c.open && rsi > 55) {
+        // Loosened: Don't require prev candle to close outside BB, just touch it
+        if (prev.high > bollingerUpper) {
+          if (c.close < bollingerUpper && c.close < c.open && rsi > 50) {
             return { strategy, direction: 'SHORT', confidence: 0.70, reason: 'Failed BB breakout above' };
           }
         }
-        if (prev.low < bollingerLower && prev.close < bollingerLower) {
-          if (c.close > bollingerLower && c.close > c.open && rsi < 45) {
+        if (prev.low < bollingerLower) {
+          if (c.close > bollingerLower && c.close > c.open && rsi < 50) {
             return { strategy, direction: 'LONG', confidence: 0.70, reason: 'Failed BB breakout below' };
           }
         }
@@ -428,10 +429,11 @@ export class AdaptiveLearningSystem {
         const rangeLow = Math.min(...candles.slice(idx - 25, idx).map(x => x.low));
         const rangeSize = rangeHigh - rangeLow;
 
-        if (c.high >= rangeHigh - rangeSize * 0.03 && c.close < c.open && rsi > 62) {
+        // Loosened conditions: 5% from extremes, RSI 55/45 instead of 62/38
+        if (c.high >= rangeHigh - rangeSize * 0.05 && c.close < c.open && rsi > 55) {
           return { strategy, direction: 'SHORT', confidence: 0.64, reason: 'At range high with rejection' };
         }
-        if (c.low <= rangeLow + rangeSize * 0.03 && c.close > c.open && rsi < 38) {
+        if (c.low <= rangeLow + rangeSize * 0.05 && c.close > c.open && rsi < 45) {
           return { strategy, direction: 'LONG', confidence: 0.64, reason: 'At range low with rejection' };
         }
         break;
@@ -454,10 +456,11 @@ export class AdaptiveLearningSystem {
       }
 
       case 'VWAP_DEVIATION': {
-        if (c.low <= vwapLower * 1.001 && c.close > vwapLower && c.close > c.open && rsi < 42) {
+        // Loosened: RSI 48/52 instead of 42/58, touch tolerance 0.2% instead of 0.1%
+        if (c.low <= vwapLower * 1.002 && c.close > vwapLower && c.close > c.open && rsi < 48) {
           return { strategy, direction: 'LONG', confidence: 0.63, reason: 'Bounce off lower VWAP band' };
         }
-        if (c.high >= vwapUpper * 0.999 && c.close < vwapUpper && c.close < c.open && rsi > 58) {
+        if (c.high >= vwapUpper * 0.998 && c.close < vwapUpper && c.close < c.open && rsi > 52) {
           return { strategy, direction: 'SHORT', confidence: 0.63, reason: 'Rejection at upper VWAP band' };
         }
         break;

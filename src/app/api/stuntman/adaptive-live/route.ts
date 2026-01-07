@@ -281,7 +281,7 @@ export async function GET(request: NextRequest) {
     if (tradingState.currentPosition && tradingState.enabled) {
       const pos = tradingState.currentPosition;
       let shouldClose = false;
-      let exitType = '';
+      let exitType: 'STOP_LOSS' | 'TAKE_PROFIT' | 'MAX_HOLD' | 'MANUAL' = 'STOP_LOSS';
       let pnl = 0;
 
       if (pos.direction === 'LONG') {

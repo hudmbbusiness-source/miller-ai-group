@@ -204,9 +204,10 @@ function isWithinTradingHours(): boolean {
   // Skip weekends
   if (day === 0 || day === 6) return false;
 
-  // Trading hours: 9:35 AM - 3:45 PM EST (avoid first 5 min and last 15 min)
+  // Trading hours: 9:35 AM - 4:59 PM EST
+  // Apex allows last trade at 4:59 PM
   const timeInMinutes = hour * 60 + minute;
-  return timeInMinutes >= 9 * 60 + 35 && timeInMinutes <= 15 * 60 + 45;
+  return timeInMinutes >= 9 * 60 + 35 && timeInMinutes <= 16 * 60 + 59;
 }
 
 // ============================================================================
@@ -238,16 +239,20 @@ export async function GET(request: NextRequest) {
     const currentCandle = candles[candles.length - 1];
     const withinTradingHours = isWithinTradingHours();
 
-    // Check if can trade
-    const minTimeBetweenTrades = 15 * 60 * 1000; // 15 minutes
-    const timeSinceLastTrade = tradingState.lastTradeTime
-      ? Date.now() - new Date(tradingState.lastTradeTime).getTime()
-      : Infinity;
+    // APEX ACCOUNT LIMITS
+    const APEX_MAX_DRAWDOWN = 5000; // $5,000 max drawdown or eval fails
+    const STARTING_BALANCE = 150000;
+
+    // Calculate current drawdown
+    const currentBalance = STARTING_BALANCE + tradingState.totalPnL;
+    const drawdown = STARTING_BALANCE - currentBalance;
+    const drawdownExceeded = drawdown >= APEX_MAX_DRAWDOWN;
+
+    // Check if can trade - NO minimum time between trades (that's not an Apex rule)
     const canTrade = withinTradingHours &&
                      tradingState.enabled &&
                      !tradingState.currentPosition &&
-                     timeSinceLastTrade > minTimeBetweenTrades &&
-                     tradingState.dailyTrades < 10; // Max 10 trades per day
+                     !drawdownExceeded; // CRITICAL: Stop trading if drawdown exceeded
 
     return NextResponse.json({
       timestamp: new Date().toISOString(),
@@ -283,6 +288,20 @@ export async function GET(request: NextRequest) {
         winRate: tradingState.totalTrades > 0
           ? ((tradingState.totalWins / tradingState.totalTrades) * 100).toFixed(1) + '%'
           : 'N/A'
+      },
+
+      // APEX ACCOUNT STATUS
+      apexStatus: {
+        startingBalance: STARTING_BALANCE,
+        currentBalance: currentBalance.toFixed(2),
+        drawdown: drawdown.toFixed(2),
+        maxDrawdown: APEX_MAX_DRAWDOWN,
+        drawdownPercent: ((drawdown / APEX_MAX_DRAWDOWN) * 100).toFixed(1) + '%',
+        drawdownExceeded,
+        remainingBuffer: (APEX_MAX_DRAWDOWN - drawdown).toFixed(2),
+        status: drawdownExceeded ? 'EVAL FAILED - STOP TRADING' :
+                drawdown > 4000 ? 'DANGER - Near limit' :
+                drawdown > 3000 ? 'WARNING - Reduce size' : 'SAFE'
       },
 
       // Signal

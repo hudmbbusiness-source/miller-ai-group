@@ -152,38 +152,56 @@ async function saveTradingState(state: TradingState): Promise<void> {
 
 // ============================================================================
 // PICKMYTRADE EXECUTION
+// URL: https://api.pickmytrade.trade/v2/add-trade-data (for Tradovate/Apex)
+// Docs: https://docs.pickmytrade.trade/docs/
 // ============================================================================
 async function executePickMyTrade(
   direction: 'BUY' | 'SELL',
   contracts: number = 1
-): Promise<{ success: boolean; message: string }> {
-  const token = process.env.PICKMYTRADE_TOKEN?.trim();
+): Promise<{ success: boolean; message: string; details?: any }> {
+  // PICKMYTRADE_CONNECTION_NAME = your connection name in PickMyTrade dashboard
+  // APEX_ACCOUNT_ID = your Apex account ID (e.g., "APEX-12345-01")
+  const connectionName = process.env.PICKMYTRADE_CONNECTION_NAME?.trim();
   const accountId = process.env.APEX_ACCOUNT_ID?.trim();
 
-  if (!token || !accountId) {
-    return { success: false, message: 'PickMyTrade not configured' };
+  if (!connectionName || !accountId) {
+    return {
+      success: false,
+      message: 'PickMyTrade not configured. Need PICKMYTRADE_CONNECTION_NAME and APEX_ACCOUNT_ID'
+    };
   }
 
+  // PickMyTrade correct payload format
+  const payload = {
+    connection_name: connectionName,
+    account_id: accountId,
+    data: direction.toLowerCase(),  // "buy" or "sell"
+    symbol: 'ES',
+    quantity: contracts,
+    order_type: 'MKT'  // Market order
+  };
+
+  console.log('[PickMyTrade] Sending order:', JSON.stringify(payload));
+
   try {
-    const response = await fetch('https://hook.pickmytrade.trade/webhook', {
+    // CORRECT URL for Tradovate/Apex
+    const response = await fetch('https://api.pickmytrade.trade/v2/add-trade-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token,
-        account_id: accountId,
-        symbol: 'ES',
-        action: direction,
-        qty: contracts,
-        order_type: 'market'
-      })
+      body: JSON.stringify(payload)
     });
 
     const result = await response.json();
+
+    console.log('[PickMyTrade] Response:', response.status, JSON.stringify(result));
+
     return {
       success: response.ok,
-      message: result.message || 'Trade executed'
+      message: result.message || result.error || (response.ok ? 'Trade sent' : 'Trade failed'),
+      details: result
     };
   } catch (e: any) {
+    console.error('[PickMyTrade] Error:', e.message);
     return { success: false, message: e.message };
   }
 }
@@ -473,7 +491,8 @@ export async function GET(request: NextRequest) {
       },
 
       // PickMyTrade status
-      pickMyTradeConnected: !!(process.env.PICKMYTRADE_TOKEN && process.env.APEX_ACCOUNT_ID),
+      pickMyTradeConnected: !!(process.env.PICKMYTRADE_CONNECTION_NAME && process.env.APEX_ACCOUNT_ID),
+      pickMyTradeConnectionName: process.env.PICKMYTRADE_CONNECTION_NAME ? '***' + process.env.PICKMYTRADE_CONNECTION_NAME.slice(-4) : null,
       apexAccountId: process.env.APEX_ACCOUNT_ID ? '***' + process.env.APEX_ACCOUNT_ID.slice(-4) : null,
 
       // Auto-execution result (if trade was auto-executed this poll)

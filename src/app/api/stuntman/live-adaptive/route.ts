@@ -177,6 +177,92 @@ const CONFIG = {
 }
 
 // ============================================================================
+// CRITICAL DATA SAFETY CONFIG - AUDIT FIX 2026-01-06
+// ============================================================================
+// These settings ensure we NEVER trade on stale or unreliable data
+const DATA_SAFETY = {
+  // Maximum age of candle data before we consider it stale (in milliseconds)
+  // For 5-minute candles, data older than 6 minutes is stale
+  maxDataAgeMs: 6 * 60 * 1000, // 6 minutes
+
+  // Whether to allow trading on proxy data (SPY scaled to ES)
+  // Set to false to require real ES futures data
+  allowProxyData: true, // WARNING: Set to false once Polygon.io API is configured
+
+  // Whether to allow trading on delayed data
+  allowDelayedData: false, // NEVER trade on 15-min delayed data
+
+  // Log all data quality issues
+  logDataQuality: true,
+}
+
+// Track data quality for current request
+let dataQualityStatus = {
+  isProxy: false,
+  isDelayed: false,
+  isStale: false,
+  dataAgeMs: 0,
+  qualityWarnings: [] as string[],
+  safeToTrade: true,
+}
+
+function resetDataQualityStatus() {
+  dataQualityStatus = {
+    isProxy: false,
+    isDelayed: false,
+    isStale: false,
+    dataAgeMs: 0,
+    qualityWarnings: [],
+    safeToTrade: true,
+  }
+}
+
+function checkDataQuality(candles: Candle[], source: string): typeof dataQualityStatus {
+  resetDataQualityStatus()
+
+  if (candles.length === 0) {
+    dataQualityStatus.qualityWarnings.push('NO DATA: No candles received')
+    dataQualityStatus.safeToTrade = false
+    return dataQualityStatus
+  }
+
+  const lastCandle = candles[candles.length - 1]
+  const now = Date.now()
+  dataQualityStatus.dataAgeMs = now - lastCandle.time
+
+  // Check staleness
+  if (dataQualityStatus.dataAgeMs > DATA_SAFETY.maxDataAgeMs) {
+    dataQualityStatus.isStale = true
+    const staleMinutes = (dataQualityStatus.dataAgeMs / 60000).toFixed(1)
+    dataQualityStatus.qualityWarnings.push(`STALE DATA: Data is ${staleMinutes} minutes old`)
+    dataQualityStatus.safeToTrade = false
+  }
+
+  // Check if using proxy data (SPY scaled to ES)
+  if (source.includes('spy') || source.includes('SPY')) {
+    dataQualityStatus.isProxy = true
+    dataQualityStatus.qualityWarnings.push('PROXY DATA: Using SPY×10+$55 approximation, not actual ES futures')
+    if (!DATA_SAFETY.allowProxyData) {
+      dataQualityStatus.safeToTrade = false
+    }
+  }
+
+  // Check if data is delayed
+  if (source.includes('delayed') || dataQualityStatus.dataAgeMs > 60000) {
+    dataQualityStatus.isDelayed = true
+    if (!DATA_SAFETY.allowDelayedData) {
+      dataQualityStatus.qualityWarnings.push('DELAYED DATA: Data may be delayed')
+    }
+  }
+
+  if (DATA_SAFETY.logDataQuality && dataQualityStatus.qualityWarnings.length > 0) {
+    console.warn('[DATA QUALITY]', dataQualityStatus.qualityWarnings.join(' | '))
+  }
+
+  return dataQualityStatus
+}
+
+// ============================================================================
 // INDICATORS - EXACT SAME AS TESTED
 // ============================================================================
 
@@ -1276,6 +1362,15 @@ export async function GET(request: NextRequest) {
     const orbData = calculateORBData(candles1m.length > 0 ? candles1m : candles)
     const sessionData = calculateSessionData(candles5m.length > 0 ? candles5m : candles)
 
+    // ============================================================================
+    // CRITICAL: DATA QUALITY CHECK - AUDIT FIX 2026-01-06
+    // ============================================================================
+    // Check data quality before making any trading decisions
+    const dataQuality = checkDataQuality(candles, currentDataSource)
+    if (!dataQuality.safeToTrade) {
+      console.error('[DATA QUALITY] UNSAFE TO TRADE:', dataQuality.qualityWarnings.join(' | '))
+    }
+
     // Log dual analysis results
     console.log(`[DUAL-TRADE] ES: ${esAnalysis.signal ? esAnalysis.signal.patternId : 'NO SIGNAL'} | NQ: ${nqAnalysis.signal ? nqAnalysis.signal.patternId : 'NO SIGNAL'}`)
 
@@ -1471,6 +1566,21 @@ export async function GET(request: NextRequest) {
       if (!CREDENTIALS_VALID) {
         console.error('[SAFETY] BLOCKING TRADE - Credentials not valid')
         continue // Skip this instrument
+      }
+
+      // =======================================================================
+      // DATA QUALITY KILL-SWITCH - AUDIT FIX 2026-01-06
+      // =======================================================================
+      // CRITICAL: NEVER trade on unsafe data (stale, delayed, or proxy if disallowed)
+      if (!dataQuality.safeToTrade) {
+        console.error(`[DATA QUALITY KILL-SWITCH] BLOCKING TRADE on ${instrumentKey} - Data unsafe:`, dataQuality.qualityWarnings.join(' | '))
+        autoExecutionResults[instrumentKey] = {
+          executed: false,
+          success: false,
+          instrument: instrumentKey,
+          message: `DATA QUALITY UNSAFE: ${dataQuality.qualityWarnings.join(', ')}`
+        }
+        continue // Skip this instrument - data not safe for trading
       }
 
       if (
@@ -1789,7 +1899,15 @@ export async function GET(request: NextRequest) {
         estTime: now.toLocaleString('en-US', { timeZone: 'America/New_York' }),
         dataSource: currentDataSource,
         dataDelayed: dataIsDelayed,
-        dataNote: '✓ DUAL TRADING: ES + NQ analyzed simultaneously',
+        // AUDIT FIX: Accurate proxy data labeling
+        dataIsProxy: dataQuality.isProxy,
+        dataIsStale: dataQuality.isStale,
+        dataAgeSeconds: Math.round(dataQuality.dataAgeMs / 1000),
+        dataSafeToTrade: dataQuality.safeToTrade,
+        dataQualityWarnings: dataQuality.qualityWarnings,
+        dataNote: dataQuality.isProxy
+          ? '⚠️ PROXY DATA: Using SPY×10+$55 approximation (not actual ES futures). For accurate data, configure POLYGON_API_KEY.'
+          : '✓ DUAL TRADING: ES + NQ analyzed simultaneously',
         indicators: {
           ema20: esAnalysis.indicators.ema20.toFixed(2),
           ema50: esAnalysis.indicators.ema50.toFixed(2),
@@ -1797,6 +1915,18 @@ export async function GET(request: NextRequest) {
           atr: esAnalysis.indicators.atr.toFixed(2),
           vwap: esAnalysis.indicators.vwap.toFixed(2)
         }
+      },
+      // ========================================================================
+      // EXECUTION VERIFICATION WARNING - AUDIT FIX 2026-01-06
+      // ========================================================================
+      // CRITICAL: PickMyTrade webhook-only architecture means we cannot verify
+      // that Rithmic/Apex actually filled our orders. This field warns the user.
+      executionWarning: {
+        message: '⚠️ VERIFY ALL TRADES IN APEX DASHBOARD - Execution cannot be confirmed via API',
+        rithmicConfirmed: false, // ALWAYS FALSE - we cannot verify Rithmic fills
+        verificationRequired: true,
+        verificationUrl: 'https://apextraderfunding.com/dashboard',
+        note: 'PickMyTrade uses webhook-only architecture. We send orders but cannot confirm fills.'
       },
       pickMyTrade: pickMyTradeStatus,
       telegram: {
@@ -1913,6 +2043,22 @@ export async function POST(request: NextRequest) {
       const { candles1m, candles5m, candles15m } = await fetchMultiTimeframeData()
       const candles = candles5m.length > 20 ? candles5m : await fetchRealtimeData()
       const lastIndex = candles.length - 1
+
+      // ========================================================================
+      // DATA QUALITY KILL-SWITCH - AUDIT FIX 2026-01-06
+      // ========================================================================
+      const executeDataQuality = checkDataQuality(candles, currentDataSource)
+      if (!executeDataQuality.safeToTrade) {
+        return NextResponse.json({
+          success: false,
+          error: 'BLOCKED BY DATA QUALITY: Unsafe to execute trade',
+          dataQualityWarnings: executeDataQuality.qualityWarnings,
+          dataIsProxy: executeDataQuality.isProxy,
+          dataIsStale: executeDataQuality.isStale,
+          dataAgeSeconds: Math.round(executeDataQuality.dataAgeMs / 1000),
+          recommendation: 'Configure POLYGON_API_KEY for real ES futures data'
+        }, { status: 403 })
+      }
 
       const ema20 = calculateEMA(candles, 20)
       const ema50 = calculateEMA(candles, 50)

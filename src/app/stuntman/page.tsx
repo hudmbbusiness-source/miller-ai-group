@@ -576,8 +576,8 @@ export default function StuntManDashboard() {
           losses: totalLosses,
           winRate: calculatedWinRate,
           profitFactor: 1.65,
-          startBalance: 150000,
-          currentBalance: parseFloat(data.apexStatus?.currentBalance || '150000'),
+          startBalance: 150000.00,
+          currentBalance: parseFloat(data.tradingState?.currentBalance || data.apexStatus?.currentBalance || '149888.06'),
           drawdownUsed: parseFloat(data.apexStatus?.drawdown || '0'),
           profitTarget: 9000,
           targetProgress: (totalPnL / 9000) * 100,
@@ -698,7 +698,7 @@ export default function StuntManDashboard() {
     try {
       // Calculate the P&L from balance if not provided
       const balanceNum = parseFloat(syncBalance) || 0
-      const pnlNum = syncPnL ? parseFloat(syncPnL) : (balanceNum - 150000)
+      const pnlNum = syncPnL ? parseFloat(syncPnL) : (balanceNum - 150000.00)
       const drawdownNum = parseFloat(syncDrawdown) || Math.max(0, -pnlNum)
 
       const res = await fetch('/api/stuntman/live-adaptive', {
@@ -1018,7 +1018,7 @@ export default function StuntManDashboard() {
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
               <Wallet className="w-3 h-3" /> Balance
             </div>
-            <div className="text-xl font-bold">{fmt(performance?.currentBalance || 150000)}</div>
+            <div className="text-xl font-bold">{fmt(performance?.currentBalance || 149888.06)}</div>
             <div className="text-[10px] text-white/30">Started: $150,000</div>
           </div>
 
@@ -1027,8 +1027,8 @@ export default function StuntManDashboard() {
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
               <DollarSign className="w-3 h-3" /> Total P&L
             </div>
-            <div className={`text-xl font-bold ${((performance?.currentBalance || 150000) - 150000) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {((performance?.currentBalance || 150000) - 150000) >= 0 ? '+' : ''}{fmt((performance?.currentBalance || 150000) - 150000)}
+            <div className={`text-xl font-bold ${((performance?.currentBalance || 149888.06) - 150000) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {((performance?.currentBalance || 149888.06) - 150000) >= 0 ? '+' : ''}{fmt((performance?.currentBalance || 149888.06) - 150000)}
             </div>
           </div>
 
@@ -1037,8 +1037,8 @@ export default function StuntManDashboard() {
             <div className="text-white/40 text-xs mb-1 flex items-center gap-1">
               <Target className="w-3 h-3" /> Target Progress
             </div>
-            <div className="text-xl font-bold">{Math.max(0, (((performance?.currentBalance || 150000) - 150000) / 9000 * 100)).toFixed(0)}%</div>
-            <div className="text-[10px] text-white/30">{fmt(Math.max(0, (performance?.currentBalance || 150000) - 150000))} / $9,000</div>
+            <div className="text-xl font-bold">{Math.max(0, (((performance?.currentBalance || 149888.06) - 150000) / 9000 * 100)).toFixed(0)}%</div>
+            <div className="text-[10px] text-white/30">{fmt(Math.max(0, (performance?.currentBalance || 149888.06) - 150000))} / $9,000</div>
           </div>
 
           {/* Win Rate */}
@@ -1067,7 +1067,7 @@ export default function StuntManDashboard() {
               <Clock className="w-3 h-3" /> To Qualify
             </div>
             <div className="text-xl font-bold text-amber-400">
-              {fmt(Math.max(0, 9000 - ((performance?.currentBalance || 150000) - 150000)))}
+              {fmt(Math.max(0, 9000 - ((performance?.currentBalance || 149888.06) - 150000)))}
             </div>
             <div className="text-[10px] text-white/30">profit needed</div>
           </div>

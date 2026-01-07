@@ -1537,7 +1537,7 @@ export default function StuntManDashboard() {
             </div>
 
             <div className="mt-3 pt-2 border-t border-white/5 text-[10px] text-white/30 text-center">
-              RANGE_FADE & FAILED_BREAKOUT work in SIDEWAYS markets | Signal: {signal ? `${signal.strategy} ${signal.direction}` : 'Waiting...'}
+              3 strategies proven on REAL data | Signal: {autoStatus?.lastSignal ? `${autoStatus.lastSignal.strategy} ${autoStatus.lastSignal.direction}` : 'Waiting...'}
             </div>
           </div>
 

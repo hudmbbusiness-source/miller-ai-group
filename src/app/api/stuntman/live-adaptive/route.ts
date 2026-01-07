@@ -2113,7 +2113,98 @@ export async function POST(request: NextRequest) {
 
       const contractSymbol = getCurrentContractSymbol('ES')
 
-      // Store the position in Supabase (persists across restarts)
+      // ============================================================================
+      // CRITICAL FIX: EXECUTE TRADE FIRST, ONLY SAVE POSITION IF PICKMYTRADE ACCEPTS
+      // ============================================================================
+      const client = getPickMyTradeClient()
+      let executionResult: TradeResult | null = null
+
+      if (!client) {
+        // NO CLIENT = NO TRADING - Don't simulate!
+        return NextResponse.json({
+          success: false,
+          error: 'PickMyTrade not configured - cannot execute trades',
+          message: 'Set PICKMYTRADE_TOKEN, APEX_ACCOUNT_ID, and RITHMIC_CONNECTION_NAME in environment',
+          pickMyTradeConnected: false,
+          positionSaved: false
+        })
+      }
+
+      // LONG-ONLY MODE: Block SHORT trades until PickMyTrade account is fixed
+      if (LONG_ONLY_MODE && signal.direction === 'SHORT') {
+        return NextResponse.json({
+          success: false,
+          message: 'SHORT trades blocked - LONG-ONLY MODE active until PickMyTrade account fixed',
+          reason: 'Change PickMyTrade connection account from APEX-456334 to APEX-456334-01',
+          longOnlyMode: true,
+          positionSaved: false
+        })
+      }
+
+      console.log(`[LiveAdaptive] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
+
+      try {
+        // Use entry price as reference for PickMyTrade (fixes "Price Not Found" error)
+        const referencePrice = signal.entryPrice
+
+        if (signal.direction === 'LONG') {
+          executionResult = await client.buyMarket(
+            contractSymbol,
+            1, // Start with 1 contract for safety
+            signal.stopLoss,
+            signal.takeProfit,
+            referencePrice // Reference price for PickMyTrade
+          )
+        } else {
+          executionResult = await client.sellMarket(
+            contractSymbol,
+            1, // Start with 1 contract for safety
+            signal.stopLoss,
+            signal.takeProfit,
+            referencePrice // Reference price for PickMyTrade
+          )
+        }
+
+        console.log(`[LiveAdaptive] Execution result:`, executionResult)
+      } catch (error) {
+        console.error(`[LiveAdaptive] Execution error:`, error)
+        // CRITICAL: Do NOT save position on execution failure
+        return NextResponse.json({
+          success: false,
+          error: 'Trade execution failed',
+          message: error instanceof Error ? error.message : 'Execution failed',
+          pickMyTradeConnected: true,
+          positionSaved: false
+        })
+      }
+
+      // ============================================================================
+      // CRITICAL: ONLY SAVE POSITION IF PICKMYTRADE ACCEPTED THE ORDER
+      // ============================================================================
+      if (!executionResult || !executionResult.pickMyTradeAccepted) {
+        console.error(`[LiveAdaptive] PickMyTrade REJECTED order - NOT saving position`)
+        return NextResponse.json({
+          success: false,
+          error: 'PickMyTrade rejected the order',
+          message: executionResult?.message || 'Order not accepted',
+          warningMessage: executionResult?.warningMessage,
+          pickMyTradeConnected: true,
+          positionSaved: false, // CRITICAL: Position NOT saved
+          execution: {
+            success: false,
+            message: executionResult?.message || 'Order rejected',
+            pickMyTradeAccepted: false,
+            rithmicConfirmed: false
+          }
+        })
+      }
+
+      // ============================================================================
+      // PICKMYTRADE ACCEPTED - NOW save position to Supabase
+      // NOTE: This still doesn't guarantee Rithmic filled, but at least PickMyTrade got it
+      // ============================================================================
+      console.log(`[LiveAdaptive] PickMyTrade ACCEPTED - saving position to Supabase`)
+
       const newPosition: OpenPosition = {
         direction: signal.direction,
         entryPrice: signal.entryPrice,
@@ -2126,69 +2217,10 @@ export async function POST(request: NextRequest) {
       }
       await openPosition(newPosition)
 
-      // ============================================================================
-      // EXECUTE TRADE VIA PICKMYTRADE TO APEX
-      // ============================================================================
-      const client = getPickMyTradeClient()
-      let executionResult: TradeResult | null = null
-
-      if (client) {
-        // LONG-ONLY MODE: Block SHORT trades until PickMyTrade account is fixed
-        if (LONG_ONLY_MODE && signal.direction === 'SHORT') {
-          return NextResponse.json({
-            success: false,
-            message: 'SHORT trades blocked - LONG-ONLY MODE active until PickMyTrade account fixed',
-            reason: 'Change PickMyTrade connection account from APEX-456334 to APEX-456334-01',
-            longOnlyMode: true
-          })
-        }
-
-        console.log(`[LiveAdaptive] Executing ${signal.direction} ${contractSymbol} via PickMyTrade...`)
-
-        try {
-          // Use entry price as reference for PickMyTrade (fixes "Price Not Found" error)
-          const referencePrice = signal.entryPrice
-
-          if (signal.direction === 'LONG') {
-            executionResult = await client.buyMarket(
-              contractSymbol,
-              1, // Start with 1 contract for safety
-              signal.stopLoss,
-              signal.takeProfit,
-              referencePrice // Reference price for PickMyTrade
-            )
-          } else {
-            executionResult = await client.sellMarket(
-              contractSymbol,
-              1, // Start with 1 contract for safety
-              signal.stopLoss,
-              signal.takeProfit,
-              referencePrice // Reference price for PickMyTrade
-            )
-          }
-
-          console.log(`[LiveAdaptive] Execution result:`, executionResult)
-        } catch (error) {
-          console.error(`[LiveAdaptive] Execution error:`, error)
-          executionResult = {
-            success: false,
-            message: error instanceof Error ? error.message : 'Execution failed',
-            timestamp: Date.now(),
-            pickMyTradeAccepted: false,
-            rithmicConfirmed: false,
-            signal: {
-              action: signal.direction === 'LONG' ? 'BUY' : 'SELL',
-              symbol: contractSymbol,
-              quantity: 1,
-              orderType: 'MKT'
-            }
-          }
-        }
-      }
-
       return NextResponse.json({
         success: true,
-        message: `Signal generated: ${signal.direction} via ${signal.patternId}`,
+        message: `Trade SENT to PickMyTrade: ${signal.direction} via ${signal.patternId}`,
+        warning: 'Order accepted by PickMyTrade but Rithmic fill NOT verified - check Apex dashboard',
         signal: {
           pattern: signal.patternId,
           direction: signal.direction,
@@ -2198,17 +2230,16 @@ export async function POST(request: NextRequest) {
           reason: signal.reason
         },
         position: newPosition,
-        positionSaved: true, // Confirm saved to Supabase
-        execution: executionResult ? {
+        positionSaved: true,
+        execution: {
           success: executionResult.success,
           message: executionResult.message,
           orderId: executionResult.orderId,
-          timestamp: executionResult.timestamp
-        } : {
-          success: false,
-          message: 'PickMyTrade not configured - set PICKMYTRADE_TOKEN in environment'
+          timestamp: executionResult.timestamp,
+          pickMyTradeAccepted: true,
+          rithmicConfirmed: false // We can NEVER verify this
         },
-        pickMyTradeConnected: !!client
+        pickMyTradeConnected: true
       })
     }
 

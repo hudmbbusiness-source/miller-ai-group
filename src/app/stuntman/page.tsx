@@ -492,6 +492,7 @@ export default function StuntManDashboard() {
   // APEX State
   const [apexRules, setApexRules] = useState<any>(null)
   const [marketStatus, setMarketStatus] = useState<any>(null)
+  const [adaptiveStatus, setAdaptiveStatus] = useState<any>(null)
   const [tradingDays, setTradingDays] = useState(0)
   const [tradingDaysNeeded, setTradingDaysNeeded] = useState(7)
   const [paperMode, setPaperMode] = useState(true)
@@ -533,106 +534,96 @@ export default function StuntManDashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      // Use live-adaptive endpoint (updated with PickMyTrade integration)
-      const res = await fetch('/api/stuntman/live-adaptive')
+      // Use adaptive-live endpoint with 7 strategies and proper PickMyTrade verification
+      const res = await fetch('/api/stuntman/adaptive-live')
       const data = await res.json()
 
-      if (data.success) {
-        // Map live-adaptive response to UI state
+      // Map adaptive-live response to UI state
+      if (data.timestamp) {
+        // Auto status from tradingState
         setAutoStatus({
-          enabled: data.status?.enabled || false,
+          enabled: data.tradingState?.enabled || false,
           instrument: instrument,
-          session: data.market?.withinTradingHours ? 'RTH' : 'CLOSED',
-          hasPosition: !!data.status?.currentPosition,
-          position: data.status?.currentPosition,
+          session: data.marketStatus?.withinTradingHours ? 'RTH' : 'CLOSED',
+          hasPosition: !!data.tradingState?.currentPosition,
+          position: data.tradingState?.currentPosition,
           lastSignal: data.signal ? {
             direction: data.signal.direction,
-            confidence: data.signal.confidence,
+            confidence: parseFloat(data.signal.confidence),
             entry: parseFloat(data.signal.entry),
-            stopLoss: parseFloat(data.signal.stop),
-            takeProfit: parseFloat(data.signal.target),
-            strategy: data.signal.pattern,
+            stopLoss: parseFloat(data.signal.stopLoss),
+            takeProfit: parseFloat(data.signal.takeProfit),
+            strategy: data.signal.strategy,
             reasons: [data.signal.reason],
             timestamp: Date.now()
           } : null,
           lastCheck: Date.now()
         })
 
-        // Use persisted state values from Supabase
-        const totalPnL = parseFloat(data.status?.totalPnL || '0')
-        const dailyPnL = parseFloat(data.status?.dailyPnL || '0')
-        const totalWins = data.status?.totalWins || 0
-        const totalLosses = data.status?.totalLosses || 0
-        const totalTrades = data.status?.totalTrades || 0
+        // Performance from tradingState
+        const totalPnL = parseFloat(data.tradingState?.totalPnL || '0')
+        const dailyPnL = parseFloat(data.tradingState?.dailyPnL || '0')
+        const totalWins = data.tradingState?.totalWins || 0
+        const totalTrades = data.tradingState?.totalTrades || 0
+        const totalLosses = totalTrades - totalWins
         const calculatedWinRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 60.3
 
         setPerformance({
           todayPnL: dailyPnL,
-          todayTrades: data.status?.dailyTrades || 0,
+          todayTrades: data.tradingState?.dailyTrades || 0,
           totalTrades: totalTrades,
           wins: totalWins,
           losses: totalLosses,
           winRate: calculatedWinRate,
           profitFactor: 1.65,
           startBalance: 150000,
-          currentBalance: 150000 + totalPnL,
-          drawdownUsed: Math.max(0, -totalPnL),
+          currentBalance: parseFloat(data.apexStatus?.currentBalance || '150000'),
+          drawdownUsed: parseFloat(data.apexStatus?.drawdown || '0'),
           profitTarget: 9000,
           targetProgress: (totalPnL / 9000) * 100,
           withdrawable: Math.max(0, totalPnL - 5000)
         })
 
-        setRecentTrades(data.status?.tradeHistory || [])
-        setConfigured(data.pickMyTrade?.connected || false)
+        setRecentTrades([])  // Trade history handled separately
+        setConfigured(data.pickMyTradeConnected || false)
 
-        // Track open positions - if currentPosition exists, show it (FROM SUPABASE)
-        if (data.status?.currentPosition) {
-          const pos = data.status.currentPosition
+        // Track open positions
+        if (data.tradingState?.currentPosition) {
+          const pos = data.tradingState.currentPosition
           setOpenPositions([{
-            id: pos.entryTime || Date.now(),
-            symbol: pos.symbol || 'ESH26',
+            id: pos.timestamp || Date.now(),
+            symbol: 'ESH26',
             direction: pos.direction,
-            contracts: pos.contracts || 1,
-            entryPrice: pos.entryPrice,
+            contracts: 1,
+            entryPrice: pos.entry,
             stopLoss: pos.stopLoss,
             takeProfit: pos.takeProfit,
-            pattern: pos.patternId,
-            entryTime: pos.entryTime // Persist entry time
+            pattern: pos.strategy,
+            entryTime: pos.timestamp
           }])
         } else {
           setOpenPositions([])
         }
 
-        // Track state persistence status
-        if (data.status?.statePersisted) {
-          console.log('[StuntMan] State persisted to Supabase:', data.status.lastUpdated)
-        }
-
         // Update last refresh time
         setLastRefresh(new Date())
 
-        // Market data + Data Quality (AUDIT FIX 2026-01-06)
+        // Market status from adaptive-live
         setMarketStatus({
-          ...data.market,
-          price: parseFloat(data.market?.price || '0'),
-          open: data.market?.withinTradingHours,
-          pickMyTradeConnected: data.pickMyTrade?.connected,
-          pickMyTradeAccount: data.pickMyTrade?.account,
-          connectionName: data.pickMyTrade?.connectionName || 'RITHMIC1',
-          estHour: data.market?.estHour || '0',
-          estTime: data.market?.estTime || '',
-          dataSource: data.market?.dataSource || 'yahoo',
-          dataDelayed: data.market?.dataDelayed !== false,
-          dataNote: data.market?.dataNote || '',
-          // NEW: Data Quality Fields from Audit
-          dataIsProxy: data.market?.dataIsProxy || false,
-          dataIsStale: data.market?.dataIsStale || false,
-          dataAgeSeconds: data.market?.dataAgeSeconds || 0,
-          dataSafeToTrade: data.market?.dataSafeToTrade !== false,
-          dataQualityWarnings: data.market?.dataQualityWarnings || [],
-          // Execution Warning
-          executionWarning: data.executionWarning || null
+          ...data.marketStatus,
+          price: data.marketStatus?.price || 0,
+          open: data.marketStatus?.withinTradingHours,
+          regime: data.marketStatus?.regime,
+          indicators: data.marketStatus?.indicators,
+          pickMyTradeConnected: data.pickMyTradeConnected,
+          pickMyTradeAccount: data.apexAccountId,
+          connectionName: data.pickMyTradeConnectionName || 'RITHMIC1',
+          estHour: data.estHour || 0,
+          estTime: data.estTime || ''
         })
+
+        // CRITICAL: Set adaptiveStatus for the strategy panel
+        setAdaptiveStatus(data.adaptiveStatus)
 
         setTradingDays(1) // Will track properly later
         setTradingDaysNeeded(7)

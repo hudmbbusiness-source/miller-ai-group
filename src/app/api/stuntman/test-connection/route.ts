@@ -35,7 +35,7 @@ export async function GET() {
       'Connection appears configured. POST to this endpoint to send a test trade.'
     ],
 
-    apiUrl: 'https://api.pickmytrade.trade/v2/add-trade-data',
+    apiUrl: 'https://api.pickmytrade.io/v2/add-trade-data',
     docs: 'https://docs.pickmytrade.trade/docs/'
   });
 }
@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
   console.log('[TestConnection] Sending test payload:', JSON.stringify(payload));
 
   try {
-    const response = await fetch('https://api.pickmytrade.trade/v2/add-trade-data', {
+    // CRITICAL: Use .io for Rithmic/Apex, NOT .trade (which is for Tradovate)
+    const response = await fetch('https://api.pickmytrade.io/v2/add-trade-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
 
       request: {
-        url: 'https://api.pickmytrade.trade/v2/add-trade-data',
+        url: 'https://api.pickmytrade.io/v2/add-trade-data',
         method: 'POST',
         payload
       },

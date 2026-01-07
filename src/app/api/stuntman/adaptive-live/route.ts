@@ -181,7 +181,8 @@ async function executePickMyTrade(
   console.log('[PickMyTrade] Sending order:', JSON.stringify(payload));
 
   try {
-    const response = await fetch('https://api.pickmytrade.trade/v2/add-trade-data', {
+    // CRITICAL: Use .io for Rithmic/Apex, NOT .trade (which is for Tradovate)
+    const response = await fetch('https://api.pickmytrade.io/v2/add-trade-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

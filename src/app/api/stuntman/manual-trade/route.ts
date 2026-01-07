@@ -361,7 +361,7 @@ export async function GET() {
       suggestion,
       config: {
         pickMyTradeConfigured,
-        accountId: process.env.APEX_ACCOUNT_ID || 'NOT SET',
+        accountId: process.env.APEX_ACCOUNT_ID?.trim() || 'NOT SET',
       },
     });
   } catch (error) {
@@ -380,8 +380,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
     }
 
-    const token = process.env.PICKMYTRADE_TOKEN;
-    const accountId = process.env.APEX_ACCOUNT_ID;
+    const token = process.env.PICKMYTRADE_TOKEN?.trim();
+    const accountId = process.env.APEX_ACCOUNT_ID?.trim();
 
     if (!token || !accountId) {
       return NextResponse.json({

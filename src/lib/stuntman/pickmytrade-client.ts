@@ -121,6 +121,8 @@ export class PickMyTradeClient {
         success: false,
         message: 'Trading is disabled',
         timestamp: Date.now(),
+        pickMyTradeAccepted: false,
+        rithmicConfirmed: false,
         signal,
       };
     }
@@ -132,6 +134,8 @@ export class PickMyTradeClient {
         success: false,
         message: `Rate limited. Wait ${this.minTimeBetweenTrades - timeSinceLastTrade}ms`,
         timestamp: Date.now(),
+        pickMyTradeAccepted: false,
+        rithmicConfirmed: false,
         signal,
       };
     }
@@ -143,6 +147,8 @@ export class PickMyTradeClient {
         success: false,
         message: 'Invalid quantity',
         timestamp: Date.now(),
+        pickMyTradeAccepted: false,
+        rithmicConfirmed: false,
         signal,
       };
     }

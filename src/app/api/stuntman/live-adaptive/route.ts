@@ -2174,6 +2174,8 @@ export async function POST(request: NextRequest) {
             success: false,
             message: error instanceof Error ? error.message : 'Execution failed',
             timestamp: Date.now(),
+            pickMyTradeAccepted: false,
+            rithmicConfirmed: false,
             signal: {
               action: signal.direction === 'LONG' ? 'BUY' : 'SELL',
               symbol: contractSymbol,

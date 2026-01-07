@@ -520,6 +520,10 @@ export default function StuntManDashboard() {
   const [connectionTestResult, setConnectionTestResult] = useState<any>(null)
   const [showTestModal, setShowTestModal] = useState(false)
 
+  // Trade Verification State - View PickMyTrade API responses
+  const [selectedTrade, setSelectedTrade] = useState<any>(null)
+  const [showTradeVerifyModal, setShowTradeVerifyModal] = useState(false)
+
   // Chart now uses custom RealTimeESChart component with Yahoo Finance data
   // This ensures chart shows EXACT same data as trading signals
 
@@ -1399,9 +1403,16 @@ export default function StuntManDashboard() {
               ) : (
                 <div className="space-y-2 max-h-[280px] overflow-y-auto">
                   {recentTrades.map(trade => (
-                    <div key={trade.id} className={`flex items-center justify-between p-3 rounded-lg ${
-                      trade.pnl >= 0 ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'
-                    }`}>
+                    <div
+                      key={trade.id}
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer hover:opacity-80 transition-opacity ${
+                        trade.pnl >= 0 ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'
+                      }`}
+                      onClick={() => {
+                        setSelectedTrade(trade)
+                        setShowTradeVerifyModal(true)
+                      }}
+                    >
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${
                           trade.pnl >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
@@ -1409,10 +1420,16 @@ export default function StuntManDashboard() {
                           {trade.pnl >= 0 ? '✓' : '✗'}
                         </div>
                         <div>
-                          <div className="text-sm font-bold">
+                          <div className="text-sm font-bold flex items-center gap-2">
                             {trade.direction} {trade.contracts || 1}x {trade.instrument || 'ES'}
+                            {/* API Verification indicator */}
+                            {trade.pickMyTradeEntry?.accepted ? (
+                              <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">API ✓</span>
+                            ) : (
+                              <span className="text-[9px] px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">OLD</span>
+                            )}
                           </div>
-                          <div className="text-[10px] text-white/40">{trade.reason || trade.exitReason || 'Trade'}</div>
+                          <div className="text-[10px] text-white/40">{trade.reason || trade.exitReason || 'Trade'} • Click for details</div>
                         </div>
                       </div>
                       <div className={`text-lg font-black ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -1987,6 +2004,187 @@ export default function StuntManDashboard() {
 
               <button
                 onClick={() => setShowTestModal(false)}
+                className="w-full mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================ */}
+        {/* TRADE VERIFICATION MODAL - Shows PickMyTrade API responses */}
+        {/* ================================================================ */}
+        {showTradeVerifyModal && selectedTrade && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+            <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 w-full max-w-xl mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-emerald-400" />
+                  Trade Verification Details
+                </h3>
+                <button
+                  onClick={() => setShowTradeVerifyModal(false)}
+                  className="text-white/40 hover:text-white p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Trade Summary */}
+              <div className={`p-4 rounded-xl border mb-4 ${
+                selectedTrade.pnl >= 0
+                  ? 'bg-emerald-500/10 border-emerald-500/30'
+                  : 'bg-red-500/10 border-red-500/30'
+              }`}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-lg font-bold text-white">
+                      {selectedTrade.direction} {selectedTrade.contracts || 1}x {selectedTrade.instrument || 'ES'}
+                    </div>
+                    <div className="text-sm text-white/60">{selectedTrade.pattern || selectedTrade.reason || 'Trade'}</div>
+                  </div>
+                  <div className={`text-2xl font-black ${selectedTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {selectedTrade.pnl >= 0 ? '+' : ''}{fmt(selectedTrade.pnl)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Trade Details */}
+              <div className="bg-white/5 rounded-xl p-4 space-y-2 mb-4">
+                <div className="text-sm font-medium text-white/80 mb-2">Trade Details</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Entry Price:</span>
+                    <span className="text-white">${parseFloat(selectedTrade.entryPrice).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Exit Price:</span>
+                    <span className="text-white">${parseFloat(selectedTrade.exitPrice).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Exit Reason:</span>
+                    <span className="text-white/70">{selectedTrade.exitReason || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50">Time:</span>
+                    <span className="text-white/70">{new Date(selectedTrade.time).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PickMyTrade Entry Response */}
+              <div className="bg-white/5 rounded-xl p-4 mb-4">
+                <div className="text-sm font-medium text-white/80 mb-2 flex items-center gap-2">
+                  Entry API Response
+                  {selectedTrade.pickMyTradeEntry?.accepted ? (
+                    <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">VERIFIED ✓</span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">NO API DATA</span>
+                  )}
+                </div>
+                {selectedTrade.pickMyTradeEntry ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-white/50">Accepted:</span>
+                        <span className={selectedTrade.pickMyTradeEntry.accepted ? 'text-emerald-400' : 'text-red-400'}>
+                          {selectedTrade.pickMyTradeEntry.accepted ? 'Yes ✓' : 'No ✗'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/50">HTTP Status:</span>
+                        <span className="text-white/70">{selectedTrade.pickMyTradeEntry.httpStatus || 'N/A'}</span>
+                      </div>
+                      {selectedTrade.pickMyTradeEntry.orderId && (
+                        <div className="col-span-2 flex justify-between">
+                          <span className="text-white/50">Order ID:</span>
+                          <span className="text-emerald-400 font-mono text-xs">{selectedTrade.pickMyTradeEntry.orderId}</span>
+                        </div>
+                      )}
+                    </div>
+                    {selectedTrade.pickMyTradeEntry.rawResponse && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="text-xs text-white/40 mb-1">Raw Response:</div>
+                        <pre className="text-xs text-white/60 bg-black/50 p-2 rounded overflow-x-auto max-h-32">
+                          {JSON.stringify(selectedTrade.pickMyTradeEntry.rawResponse, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/40">No API tracking data available (trade before update)</p>
+                )}
+              </div>
+
+              {/* PickMyTrade Exit Response */}
+              <div className="bg-white/5 rounded-xl p-4 mb-4">
+                <div className="text-sm font-medium text-white/80 mb-2 flex items-center gap-2">
+                  Exit API Response
+                  {selectedTrade.pickMyTradeExit?.accepted ? (
+                    <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">VERIFIED ✓</span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">NO API DATA</span>
+                  )}
+                </div>
+                {selectedTrade.pickMyTradeExit ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-white/50">Accepted:</span>
+                        <span className={selectedTrade.pickMyTradeExit.accepted ? 'text-emerald-400' : 'text-red-400'}>
+                          {selectedTrade.pickMyTradeExit.accepted ? 'Yes ✓' : 'No ✗'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/50">HTTP Status:</span>
+                        <span className="text-white/70">{selectedTrade.pickMyTradeExit.httpStatus || 'N/A'}</span>
+                      </div>
+                    </div>
+                    {selectedTrade.pickMyTradeExit.rawResponse && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="text-xs text-white/40 mb-1">Raw Response:</div>
+                        <pre className="text-xs text-white/60 bg-black/50 p-2 rounded overflow-x-auto max-h-32">
+                          {JSON.stringify(selectedTrade.pickMyTradeExit.rawResponse, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/40">No exit API data (SL/TP handled by PickMyTrade or before update)</p>
+                )}
+              </div>
+
+              {/* Verification Note */}
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl mb-4">
+                <p className="text-xs text-amber-200">
+                  <strong>How to verify:</strong> Compare the Order ID above with your PickMyTrade alerts log
+                  and Apex/Rithmic trade history. If all match, the trade was executed correctly.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <a
+                  href="https://pickmytrade.trade/pages/alertPage"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/70 text-center text-sm transition"
+                >
+                  Check PickMyTrade Logs
+                </a>
+                <a
+                  href="https://login.apextraderfunding.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/70 text-center text-sm transition"
+                >
+                  Check Apex History
+                </a>
+              </div>
+
+              <button
+                onClick={() => setShowTradeVerifyModal(false)}
                 className="w-full mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition"
               >
                 Close

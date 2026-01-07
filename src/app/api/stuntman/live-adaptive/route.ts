@@ -1494,7 +1494,15 @@ export async function GET(request: NextRequest) {
           const result = await client.closePosition(currentPosition.symbol)
           if (result.success) {
             const exitPrice = esAnalysis.candles[esAnalysis.candles.length - 1]?.close || currentPosition.entryPrice
-            const { state: closedState, pnl } = await closePositionState(exitPrice, 'MANDATORY CLOSE - 4:59 PM Apex Rule')
+            // Pass PickMyTrade response for verification
+            const exitPickMyTradeResponse = {
+              accepted: result.pickMyTradeAccepted,
+              orderId: result.orderId,
+              httpStatus: result.success ? 200 : 400,
+              message: result.message,
+              rawResponse: result.response
+            }
+            const { state: closedState, pnl } = await closePositionState(exitPrice, 'MANDATORY CLOSE - 4:59 PM Apex Rule', exitPickMyTradeResponse)
 
             // Send Telegram notification
             sendTradeNotification({
@@ -2200,10 +2208,10 @@ export async function POST(request: NextRequest) {
       }
 
       // ============================================================================
-      // PICKMYTRADE ACCEPTED - NOW save position to Supabase
+      // PICKMYTRADE ACCEPTED - NOW save position to Supabase WITH RESPONSE DATA
       // NOTE: This still doesn't guarantee Rithmic filled, but at least PickMyTrade got it
       // ============================================================================
-      console.log(`[LiveAdaptive] PickMyTrade ACCEPTED - saving position to Supabase`)
+      console.log(`[LiveAdaptive] PickMyTrade ACCEPTED - saving position to Supabase WITH response data for verification`)
 
       const newPosition: OpenPosition = {
         direction: signal.direction,
@@ -2213,7 +2221,16 @@ export async function POST(request: NextRequest) {
         contracts: 1,
         patternId: signal.patternId,
         entryTime: new Date().toISOString(),
-        symbol: contractSymbol
+        symbol: contractSymbol,
+        // CRITICAL: Store PickMyTrade response for verification
+        pickMyTradeResponse: {
+          accepted: executionResult.pickMyTradeAccepted,
+          httpStatus: 200, // We only get here if HTTP was OK
+          orderId: executionResult.orderId,
+          message: executionResult.message,
+          rawResponse: executionResult.response, // Full raw response from PickMyTrade
+          timestamp: new Date().toISOString()
+        }
       }
       await openPosition(newPosition)
 
@@ -2267,7 +2284,15 @@ export async function POST(request: NextRequest) {
         const exitPrice = lastCandle.close
 
         // Clear position state in Supabase and record the trade with P&L
-        const { state: newState, pnl } = await closePositionState(exitPrice, 'Manual close via CLOSE ALL button')
+        // CRITICAL: Pass PickMyTrade exit response for verification
+        const exitPickMyTradeResponse = {
+          accepted: result.pickMyTradeAccepted,
+          orderId: result.orderId,
+          httpStatus: result.success ? 200 : 400,
+          message: result.message,
+          rawResponse: result.response
+        }
+        const { state: newState, pnl } = await closePositionState(exitPrice, 'Manual close via CLOSE ALL button', exitPickMyTradeResponse)
 
         return NextResponse.json({
           success: true,

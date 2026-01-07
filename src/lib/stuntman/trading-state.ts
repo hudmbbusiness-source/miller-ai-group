@@ -35,6 +35,15 @@ export interface OpenPosition {
   patternId: string
   entryTime: string  // ISO timestamp
   symbol: string
+  // PickMyTrade execution data - for verification
+  pickMyTradeResponse?: {
+    accepted: boolean
+    httpStatus?: number
+    orderId?: string
+    message?: string
+    rawResponse?: any
+    timestamp: string
+  }
 }
 
 export interface TradeRecord {
@@ -47,6 +56,23 @@ export interface TradeRecord {
   contracts: number
   pnl: number
   exitReason: string
+  // PickMyTrade execution tracking - for verification
+  pickMyTradeEntry?: {
+    accepted: boolean
+    orderId?: string
+    httpStatus?: number
+    message?: string
+    rawResponse?: any
+    timestamp: string
+  }
+  pickMyTradeExit?: {
+    accepted: boolean
+    orderId?: string
+    httpStatus?: number
+    message?: string
+    rawResponse?: any
+    timestamp: string
+  }
 }
 
 export interface TradingState {
@@ -239,8 +265,13 @@ export async function openPosition(position: OpenPosition): Promise<TradingState
 
 /**
  * Close current position
+ * @param exitPickMyTradeResponse - Optional PickMyTrade response for the exit order
  */
-export async function closePosition(exitPrice: number, exitReason: string): Promise<{ state: TradingState, pnl: number }> {
+export async function closePosition(
+  exitPrice: number,
+  exitReason: string,
+  exitPickMyTradeResponse?: { accepted: boolean; orderId?: string; httpStatus?: number; message?: string; rawResponse?: any }
+): Promise<{ state: TradingState, pnl: number }> {
   const state = await loadTradingState()
 
   if (!state.currentPosition) {
@@ -255,7 +286,7 @@ export async function closePosition(exitPrice: number, exitReason: string): Prom
     : pos.entryPrice - exitPrice
   const pnl = priceDiff * pointValue * pos.contracts
 
-  // Record the trade
+  // Record the trade WITH PickMyTrade responses for verification
   const trade: TradeRecord = {
     id: `trade_${Date.now()}`,
     time: new Date().toISOString(),
@@ -265,7 +296,25 @@ export async function closePosition(exitPrice: number, exitReason: string): Prom
     exitPrice: exitPrice,
     contracts: pos.contracts,
     pnl: pnl,
-    exitReason: exitReason
+    exitReason: exitReason,
+    // Store PickMyTrade entry response (from when position was opened)
+    pickMyTradeEntry: pos.pickMyTradeResponse ? {
+      accepted: pos.pickMyTradeResponse.accepted,
+      orderId: pos.pickMyTradeResponse.orderId,
+      httpStatus: pos.pickMyTradeResponse.httpStatus,
+      message: pos.pickMyTradeResponse.message,
+      rawResponse: pos.pickMyTradeResponse.rawResponse,
+      timestamp: pos.pickMyTradeResponse.timestamp
+    } : undefined,
+    // Store PickMyTrade exit response
+    pickMyTradeExit: exitPickMyTradeResponse ? {
+      accepted: exitPickMyTradeResponse.accepted,
+      orderId: exitPickMyTradeResponse.orderId,
+      httpStatus: exitPickMyTradeResponse.httpStatus,
+      message: exitPickMyTradeResponse.message,
+      rawResponse: exitPickMyTradeResponse.rawResponse,
+      timestamp: new Date().toISOString()
+    } : undefined
   }
 
   // Update state

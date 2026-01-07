@@ -187,24 +187,23 @@ export class AdaptiveLearningSystem {
   }
 
   private getDefaultState(): LearningState {
-    // VALIDATED weights from 100-SCENARIO Monte Carlo testing (Jan 7, 2026)
+    // VALIDATED weights from REAL Yahoo Finance 60-day backtest (Jan 7, 2026)
+    // NOT Monte Carlo synthetic data - ACTUAL market performance
     const validatedWeights = {
-      // WINNERS - Tested across 100 scenarios
-      RANGE_FADE: 1.0,         // 51.8% WR, +$1.3M across 100 scenarios - BEST
-      FAILED_BREAKOUT: 1.0,    // 44.1% WR, +$257K across 100 scenarios - GOOD
+      // WINNERS - Profitable on REAL Yahoo Finance data (60 days)
+      FAILED_BREAKOUT: 1.0,    // 47.9% WR, +$10,515, PF 1.69 - BEST!
+      VWAP_DEVIATION: 1.0,     // 42.7% WR, +$6,422, PF 1.22 - PROFITABLE
+      KILLZONE_REVERSAL: 1.0,  // 46.2% WR, +$4,112, PF 2.28 - PROFITABLE
 
-      // REDUCED - Not fully tested or inconsistent
-      ORB_BREAKOUT: 0.5,
-      CHOCH_REVERSAL: 0.5,
-      KILLZONE_REVERSAL: 0.5,
-      VOLATILITY_BREAKOUT: 0.5,
-      VWAP_DEVIATION: 0.3,     // Inconsistent
-
-      // DISABLED - Failed 100-scenario testing
-      LIQUIDITY_SWEEP: 0.0,    // 25.8% WR, -$188K - DISABLED!
-      TREND_PULLBACK: 0.0,     // Poor performer - DISABLED
-      BOS_CONTINUATION: 0.0,   // 0% WR - DISABLED
-      SESSION_REVERSION: 0.0   // 18.2% WR - DISABLED
+      // DISABLED - Lost money on REAL market data
+      RANGE_FADE: 0.0,         // 39.2% WR, -$392, PF 0.98 - LOSES MONEY
+      ORB_BREAKOUT: 0.0,       // 26.0% WR, -$8,263, PF 0.52 - TERRIBLE
+      VOLATILITY_BREAKOUT: 0.0,// 34.7% WR, -$8,389, PF 0.62 - TERRIBLE
+      CHOCH_REVERSAL: 0.0,     // 0% WR, -$963 - DISABLED
+      LIQUIDITY_SWEEP: 0.0,    // DISABLED
+      TREND_PULLBACK: 0.0,     // DISABLED
+      BOS_CONTINUATION: 0.0,   // DISABLED
+      SESSION_REVERSION: 0.0   // DISABLED
     };
 
     return {

@@ -298,13 +298,13 @@ async function executeTrade(
       token: token,
       duplicate_position_allow: false,
       platform: 'RITHMIC',
-      connection_name: 'Rithmic Paper Trading', // Your Rithmic connection name
+      connection_name: 'RITHMIC1',
       reverse_order_close: true,
       multiple_accounts: [
         {
           token: token,
           account_id: accountId,
-          connection_name: 'Rithmic Paper Trading',
+          connection_name: 'RITHMIC1',
           quantity_multiplier: quantity,
         },
       ],

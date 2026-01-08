@@ -266,7 +266,7 @@ function generateSuggestion(candles: Candle[]): Suggestion {
   };
 }
 
-// Execute trade via PickMyTrade
+// Execute trade via PickMyTrade - Updated 2026-01-08
 async function executeTrade(
   direction: 'BUY' | 'SELL',
   quantity: number,

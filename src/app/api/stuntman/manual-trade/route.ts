@@ -352,6 +352,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      version: 'v3-RITHMIC1',
       market: {
         price: currentPrice,
         time: now.toISOString(),
@@ -362,6 +363,7 @@ export async function GET() {
       config: {
         pickMyTradeConfigured,
         accountId: process.env.APEX_ACCOUNT_ID?.trim() || 'NOT SET',
+        connectionName: 'RITHMIC1',
       },
     });
   } catch (error) {

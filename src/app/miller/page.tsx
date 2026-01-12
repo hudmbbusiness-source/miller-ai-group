@@ -519,6 +519,17 @@ function MillerPageContent() {
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </motion.div>
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <Button
+                variant="outline"
+                size="lg"
+                className="min-h-[52px] px-8 text-lg border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 hover:border-violet-500/50 text-violet-300"
+                onClick={() => setIsInquiryOpen(true)}
+              >
+                <Mail className="w-5 h-5 mr-2" />
+                Get in Touch
+              </Button>
+            </motion.div>
           </motion.div>
 
           {/* Social Links */}
@@ -851,40 +862,6 @@ function MillerPageContent() {
               </motion.div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* Inquiries & Offers Section */}
-      <section className="py-28 relative">
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <motion.div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-violet-500/30 bg-violet-500/10 backdrop-blur-xl mb-6"
-            >
-              <Mail className="w-4 h-4 text-violet-400" />
-              <span className="text-xs font-medium text-violet-300 uppercase tracking-widest">Direct Line</span>
-            </motion.div>
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
-              Inquiries & Offers
-            </h2>
-            <p className="text-lg text-neutral-400 mb-10 max-w-xl mx-auto">
-              Have a business proposal, partnership opportunity, or inquiry? I&apos;m always open to connecting with serious opportunities.
-            </p>
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button
-                size="lg"
-                onClick={() => setIsInquiryOpen(true)}
-                className="px-10 py-6 text-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-2xl shadow-violet-500/25 border-0"
-              >
-                <Mail className="w-5 h-5 mr-2" />
-                Get in Touch
-              </Button>
-            </motion.div>
-          </motion.div>
         </div>
       </section>
 

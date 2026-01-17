@@ -16,6 +16,11 @@ import {
   BarChart3,
   Clock,
   Zap,
+  Play,
+  Square,
+  AlertTriangle,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +61,8 @@ interface TradingState {
     won: boolean;
   }>;
   timestamp: string;
+  systemStatus?: 'stopped' | 'running' | 'starting' | 'stopping';
+  connected?: boolean;
 }
 
 export default function TradingDashboard() {
@@ -63,6 +70,23 @@ export default function TradingDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [commandPending, setCommandPending] = useState(false);
+
+  const sendCommand = async (command: "START" | "STOP" | "FLATTEN") => {
+    setCommandPending(true);
+    try {
+      const response = await fetch("/api/trading/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "command", command }),
+      });
+      await fetchData();
+    } catch (err) {
+      setError("Failed to send command");
+    } finally {
+      setCommandPending(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -84,7 +108,7 @@ export default function TradingDashboard() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -117,34 +141,43 @@ export default function TradingDashboard() {
 
   const profit = data?.account?.profit || 0;
   const isProfit = profit >= 0;
+  const isConnected = data?.connected === true;
+  const systemStatus = data?.systemStatus || "stopped";
+  const isRunning = systemStatus === "running";
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       {/* Page Header */}
-      <div className="px-4 sm:px-6 py-4 border-b border-neutral-800 flex items-center justify-between">
-        <div>
-          <h1 className="font-bold text-xl">Apex Trading</h1>
-          <p className="text-sm text-neutral-500">Real-time monitoring</p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2",
-              data?.position
-                ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-            )}
-          >
-            <span
-              className={cn(
-                "w-2 h-2 rounded-full",
-                data?.position ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
-              )}
-            />
-            {data?.position ? "IN POSITION" : "SYSTEM ACTIVE"}
+      <div className="px-4 sm:px-6 py-4 border-b border-neutral-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-bold text-xl">Apex Trading System</h1>
+            <p className="text-sm text-neutral-500">{data?.account?.name || "Waiting for connection..."}</p>
           </div>
-          <span className="text-xs text-neutral-600">{lastUpdate}</span>
+          <div className="flex items-center gap-3">
+            <div className={cn("px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2", isConnected ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-red-500/15 text-red-400 border border-red-500/30")}>
+              {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              {isConnected ? "CONNECTED" : "DISCONNECTED"}
+            </div>
+            <div className={cn("px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2", isRunning ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" : "bg-neutral-500/15 text-neutral-400 border border-neutral-500/30")}>
+              <span className={cn("w-2 h-2 rounded-full", isRunning ? "bg-emerald-400 animate-pulse" : "bg-neutral-500")} />
+              {systemStatus.toUpperCase()}
+            </div>
+            <span className="text-xs text-neutral-600">{lastUpdate}</span>
+          </div>
+        </div>
+        {/* Control Buttons */}
+        <div className="flex items-center gap-3 mt-4">
+          <button onClick={() => sendCommand("START")} disabled={!isConnected || isRunning || commandPending} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm", isConnected && !isRunning && !commandPending ? "bg-emerald-600 hover:bg-emerald-500 text-white" : "bg-neutral-800 text-neutral-500 cursor-not-allowed")}>
+            <Play className="w-4 h-4" /> Start Trading
+          </button>
+          <button onClick={() => sendCommand("STOP")} disabled={!isConnected || !isRunning || commandPending} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm", isConnected && isRunning && !commandPending ? "bg-red-600 hover:bg-red-500 text-white" : "bg-neutral-800 text-neutral-500 cursor-not-allowed")}>
+            <Square className="w-4 h-4" /> Stop Trading
+          </button>
+          <button onClick={() => sendCommand("FLATTEN")} disabled={!isConnected || commandPending} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm", isConnected && !commandPending ? "bg-amber-600 hover:bg-amber-500 text-white" : "bg-neutral-800 text-neutral-500 cursor-not-allowed")}>
+            <AlertTriangle className="w-4 h-4" /> Flatten All
+          </button>
+          {commandPending && <span className="text-sm text-amber-400 animate-pulse">Sending to Tradovate...</span>}
         </div>
       </div>
 
@@ -153,6 +186,13 @@ export default function TradingDashboard() {
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl flex items-center gap-2">
             <Shield className="w-4 h-4" />
             {error}
+          </div>
+        )}
+        {!isConnected && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-3 rounded-xl flex items-center gap-2">
+            <WifiOff className="w-4 h-4" />
+            <span className="font-medium">Local trading system not connected.</span>
+            <span className="text-amber-400/70">Run the trading system on your computer to see real data.</span>
           </div>
         )}
 
@@ -165,9 +205,9 @@ export default function TradingDashboard() {
               <span className="text-xs font-medium uppercase tracking-wider">Balance</span>
             </div>
             <div className="text-2xl sm:text-3xl font-bold">
-              {formatMoney(data?.account?.balance || 0)}
+              {isConnected ? formatMoney(data?.account?.balance || 0) : "--"}
             </div>
-            <div className="text-sm text-neutral-500 mt-1">Apex 300K PA</div>
+            <div className="text-sm text-neutral-500 mt-1">{isConnected ? "Live from Tradovate" : "Waiting for data"}</div>
           </div>
 
           {/* Profit */}
